@@ -89,6 +89,7 @@ class ServiceProvider extends AddonServiceProvider
             ->registerNavigation()
             ->registerPermissions()
             ->registerSchedule()
+            ->bootCommands()
             ->registerPublishables();
     }
 
