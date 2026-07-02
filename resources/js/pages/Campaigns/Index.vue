@@ -92,7 +92,7 @@ function destroy() {
             <template #prepended-row-actions="{ row }">
                 <DropdownItem
                     :text="__('View report')"
-                    icon="chart-line"
+                    icon="chart-pie"
                     :href="row.show_url"
                 />
                 <DropdownItem

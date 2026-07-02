@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Button, Badge, Field, Input, Select, Listing,
+    Header, Panel, Button, Badge, Field, Input, Select, Listing,
     DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
@@ -194,7 +194,7 @@ function destroy() {
                 <DropdownItem
                     v-if="canManageSubscribers && row.status !== 'unsubscribed'"
                     :text="__('Unsubscribe')"
-                    icon="close"
+                    icon="archive"
                     @click="unsubscribe(row)"
                 />
                 <DropdownItem
