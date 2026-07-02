@@ -36,13 +36,27 @@ WEBHOOK_MANAGER_REPO="${WEBHOOK_MANAGER_REPO:-https://github.com/goldnead/statam
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
+# The pest plugin must be allowed to run even when this executes as root (CI).
+export COMPOSER_ALLOW_SUPERUSER=1
+
 echo "==> Staging a throwaway copy of the addon in $WORKDIR"
 git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$WORKDIR"
 cd "$WORKDIR"
 
-# LeadHub is a hard dependency resolved via a relative path repo; keep that
-# resolvable from the throwaway location.
-composer config repositories.leadhub path "${LEADHUB_PATH:-$REPO_ROOT/../statamic-leadhub}"
+# LeadHub is a hard dependency declared as a RELATIVE path repository in
+# composer.json — rewrite it to an absolute path so it resolves from the
+# throwaway location.
+LEADHUB_ABS="$(cd "${LEADHUB_PATH:-$REPO_ROOT/../statamic-leadhub}" && pwd)"
+php -r '
+    $file = "composer.json";
+    $data = json_decode(file_get_contents($file), true);
+    foreach ($data["repositories"] ?? [] as $i => $repo) {
+        if (($repo["type"] ?? null) === "path" && str_contains($repo["url"], "statamic-leadhub")) {
+            $data["repositories"][$i]["url"] = $argv[1];
+        }
+    }
+    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+' "$LEADHUB_ABS"
 
 echo "==> Registering the sibling addons as Composer dev dependencies"
 if [[ -n "$AUTOMATIONS_PATH" ]]; then
