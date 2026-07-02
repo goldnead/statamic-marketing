@@ -1,0 +1,78 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pest:
+    name: PHP ${{ matrix.php }} · Statamic ${{ matrix.statamic }} · ${{ matrix.driver }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+        statamic: ['6.*']
+        driver: ['flat', 'eloquent']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: statamic-marketing
+
+      # LeadHub is a hard dependency resolved via the ../statamic-leadhub path
+      # repository. The repo is private, so a PAT with read access must be
+      # configured as the SIBLING_REPOS_TOKEN secret.
+      - name: Checkout goldnead/statamic-leadhub (sibling path repo)
+        uses: actions/checkout@v4
+        with:
+          repository: goldnead/statamic-leadhub
+          path: statamic-leadhub
+          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_sqlite, sqlite3, intl, fileinfo, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Determine Composer cache directory
+        id: composer-cache
+        working-directory: statamic-marketing
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ matrix.php }}-${{ matrix.statamic }}-${{ hashFiles('statamic-marketing/composer.json') }}
+          restore-keys: |
+            composer-${{ matrix.php }}-${{ matrix.statamic }}-
+            composer-${{ matrix.php }}-
+
+      - name: Pin Statamic version for this matrix cell
+        working-directory: statamic-marketing
+        run: composer require "statamic/cms:${{ matrix.statamic }}" --no-update --no-interaction
+
+      - name: Install dependencies
+        working-directory: statamic-marketing
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Show installed Statamic / Laravel versions
+        working-directory: statamic-marketing
+        run: |
+          composer show statamic/cms | grep -E '^(name|versions)'
+          composer show laravel/framework | grep -E '^(name|versions)' || true
+
+      - name: Run Pest test suite (${{ matrix.driver }} driver)
+        working-directory: statamic-marketing
+        env:
+          MARKETING_DRIVER: ${{ matrix.driver }}
+        run: vendor/bin/pest --colors=always

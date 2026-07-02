@@ -1,0 +1,90 @@
+{
+    "name": "goldnead/statamic-marketing",
+    "description": "Email marketing and newsletters directly inside your Statamic Control Panel — lists, double opt-in, campaigns, sending, and tracking built on LeadHub contacts.",
+    "type": "statamic-addon",
+    "license": "MIT",
+    "keywords": [
+        "statamic",
+        "statamic-addon",
+        "newsletter",
+        "email",
+        "marketing",
+        "campaigns",
+        "mailcoach"
+    ],
+    "authors": [
+        {
+            "name": "Adrian Goldner",
+            "email": "info@adriangoldner.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/goldnead/statamic-marketing/issues",
+        "source": "https://github.com/goldnead/statamic-marketing"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../statamic-leadhub",
+            "options": { "symlink": false }
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "goldnead/statamic-leadhub": "*@dev",
+        "inertiajs/inertia-laravel": "^1.0|^2.0",
+        "laravel/framework": "^11.0|^12.0|^13.0",
+        "statamic/cms": "^6.0",
+        "symfony/yaml": "^6.0|^7.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
+        "pestphp/pest": "^2.0|^3.0",
+        "pestphp/pest-plugin-laravel": "^2.0|^3.0"
+    },
+    "suggest": {
+        "goldnead/statamic-automations": "Build drip sequences and welcome flows from marketing triggers/actions in the visual workflow builder",
+        "goldnead/statamic-webhook-manager": "Receive ESP feedback webhooks (bounces, complaints) and fire outbound webhooks on marketing events"
+    },
+    "autoload": {
+        "psr-4": {
+            "Goldnead\\Marketing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Goldnead\\Marketing\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "statamic": {
+            "name": "Marketing",
+            "description": "Email marketing and newsletters directly inside your Statamic Control Panel.",
+            "vite": {
+                "input": ["resources/js/cp.js", "resources/css/cp.css"],
+                "publicDirectory": "resources/dist"
+            }
+        },
+        "laravel": {
+            "providers": [
+                "Goldnead\\Marketing\\ServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": [
+            "@php vendor/bin/pest"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "pixelfear/composer-dist-plugin": true,
+            "composer/installers": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
