@@ -103,7 +103,7 @@ function formatDate(value) {
                                     <Link :href="campaign.url" class="font-medium hover:underline">
                                         {{ campaign.name }}
                                     </Link>
-                                    <Text size="xs" variant="subtle">{{ formatDate(campaign.sent_at) }}</Text>
+                                    <Text v-if="campaign.sent_at" size="xs" variant="subtle" class="block mt-0.5">{{ formatDate(campaign.sent_at) }}</Text>
                                 </td>
                                 <td class="py-2.5">
                                     <Badge :color="statusColor(campaign.status)" :text="campaign.status" />
