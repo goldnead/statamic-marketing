@@ -14,6 +14,15 @@
         <testsuite name="Feature">
             <directory suffix="Test.php">./tests/Feature</directory>
         </testsuite>
+        <!--
+            Live integration with the optional sibling addons
+            (statamic-automations, statamic-webhook-manager). These tests skip
+            themselves when the addons are not installed, so they are a no-op
+            in the default suite; run scripts/test-siblings.sh to exercise them.
+        -->
+        <testsuite name="Integration">
+            <directory suffix="Test.php">./tests/Integration</directory>
+        </testsuite>
     </testsuites>
     <source>
         <include>
