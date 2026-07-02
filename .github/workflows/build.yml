@@ -1,0 +1,77 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+
+    name: Frontend (Vite + Vue 3)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: statamic-marketing
+
+      - name: Checkout goldnead/statamic-leadhub (sibling path repo)
+        uses: actions/checkout@v4
+        with:
+          repository: goldnead/statamic-leadhub
+          path: statamic-leadhub
+          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      # The Statamic 6 Vite convention pulls @statamic/cms from the installed
+      # Composer package (a `file:` npm dependency), so Composer must run first.
+      - name: Install Composer dependencies
+        working-directory: statamic-marketing
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('statamic-marketing/package.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-
+
+      - name: Install Node dependencies
+        working-directory: statamic-marketing
+        run: npm install --no-audit --no-fund
+
+      - name: Build production bundle
+        working-directory: statamic-marketing
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: statamic-marketing
+        run: |
+          test -f resources/dist/build/manifest.json
+          echo "✓ manifest present:"
+          cat resources/dist/build/manifest.json
+
+      - name: Upload build artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cp-assets-${{ github.sha }}
+          path: statamic-marketing/resources/dist/build/
+          retention-days: 14
+          if-no-files-found: error

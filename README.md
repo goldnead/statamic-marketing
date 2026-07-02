@@ -94,7 +94,17 @@ Or POST to `{{ marketing:subscribe_url }}` yourself (`email`, `list`, optional
 composer install
 vendor/bin/pest                     # flat driver (default)
 MARKETING_DRIVER=eloquent vendor/bin/pest   # eloquent driver
+
+# Live cross-addon integration suite (installs automations + webhook-manager
+# into a throwaway copy; point the *_PATH vars at local checkouts):
+AUTOMATIONS_PATH=../statamic-automations \
+WEBHOOK_MANAGER_PATH=../statamic-webhook-manager \
+scripts/test-siblings.sh
 ```
+
+CI note: `goldnead/statamic-leadhub` is a private sibling repo, so the GitHub
+Actions workflows need a `SIBLING_REPOS_TOKEN` repository secret (a PAT with
+read access to it) to check it out next to this package.
 
 ## License
 
