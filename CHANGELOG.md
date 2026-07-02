@@ -4,6 +4,11 @@
 
 Initial release.
 
+- Boot-order regression tests for the sibling-addon bridges: deferred
+  app->booted() registration with trailing retry, no-mark-booted while the
+  sibling binding is absent, and idempotent re-boot (mirrors the LeadHub
+  fix from statamic-leadhub@9fd6d6a).
+
 - Mailing lists with per-list double opt-in and public subscribe endpoint
   (honeypot-guarded) plus `{{ marketing:subscribe }}` Antlers tag.
 - Campaigns with Antlers content, reusable email templates, preview, test
