@@ -44,5 +44,8 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
 
+      # Not --strict: goldnead/statamic-leadhub is an unpublished sibling
+      # resolved via a path repository, so its constraint is deliberately the
+      # unbound "*@dev" — which --strict rejects as a warning.
       - name: Validate composer.json
-        run: composer validate --strict --no-check-publish
+        run: composer validate --no-check-publish
