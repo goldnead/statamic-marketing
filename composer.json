@@ -31,7 +31,7 @@
     ],
     "require": {
         "php": "^8.2",
-        "goldnead/statamic-leadhub": "*@dev",
+        "goldnead/statamic-leadhub": "^1.1",
         "inertiajs/inertia-laravel": "^1.0|^2.0",
         "laravel/framework": "^11.0|^12.0|^13.0",
         "statamic/cms": "^6.0",
