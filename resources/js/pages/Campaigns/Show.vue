@@ -29,21 +29,21 @@ const statTiles = computed(() => [
 
 function campaignStatusColor(status) {
     return {
-        draft: 'gray',
+        draft: 'default',
         scheduled: 'purple',
         sending: 'yellow',
         sent: 'green',
-    }[status] || 'gray';
+    }[status] || 'default';
 }
 
 function messageStatusColor(status) {
     return {
-        pending: 'gray',
+        pending: 'default',
         sent: 'green',
         failed: 'red',
-        skipped: 'gray',
+        skipped: 'default',
         bounced: 'red',
-    }[status] || 'gray';
+    }[status] || 'default';
 }
 
 function formatDate(value) {
@@ -86,12 +86,17 @@ function reloadPage() {
             </Card>
         </div>
 
-        <!-- Messages -->
+        <!-- Messages. Rows are paginated server-side (custom pager below), so the
+             Listing's client-side search/sort would only cover the current page
+             and mislead — disable the built-in toolbar and keep it a clean table. -->
         <Listing
             :items="messages"
             :columns="columns"
-            preferences-prefix="marketing.messages"
-            @refreshing="reloadPage"
+            :allow-search="false"
+            :allow-bulk-actions="false"
+            :allow-customizing-columns="false"
+            :allow-presets="false"
+            :sortable="false"
         >
             <template #cell-email="{ row }">
                 <span class="font-medium">{{ row.email }}</span>

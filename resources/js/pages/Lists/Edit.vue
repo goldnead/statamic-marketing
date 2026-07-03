@@ -101,10 +101,10 @@ function destroy() {
         </Panel>
 
         <ConfirmationModal
-            v-if="showDeleteConfirm"
+            :open="showDeleteConfirm"
             :title="__('Delete list')"
-            :message="__('Delete this list and all of its subscriptions? This cannot be undone.')"
-            variant="danger"
+            :body-text="__('Delete this list and all of its subscriptions? This cannot be undone.')"
+            danger
             :button-text="__('Delete')"
             @cancel="showDeleteConfirm = false"
             @confirm="destroy"

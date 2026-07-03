@@ -23,11 +23,11 @@ const statTiles = computed(() => [
 
 function statusColor(status) {
     return {
-        draft: 'gray',
+        draft: 'default',
         scheduled: 'purple',
         sending: 'yellow',
         sent: 'green',
-    }[status] || 'gray';
+    }[status] || 'default';
 }
 
 function formatDate(value) {
