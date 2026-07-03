@@ -21,6 +21,11 @@ Think Mailcoach, but native to Statamic and built on top of
 - **Campaigns** composed in Antlers (`{{ first_name }}`, `{{ name }}`,
   `{{ email }}`, `{{ unsubscribe_url }}`, …), wrapped in reusable **email
   templates**, with preview, test send, scheduling, and send-now.
+- **Segment targeting**: optionally narrow a campaign's audience to a **LeadHub
+  segment** (with a live member count in the CP). The audience is `subscribed
+  list members ∩ segment members`, resolved at send time — the segment only
+  narrows; consent always comes from the list. No segment = the whole list.
+  Requires LeadHub ^1.1; degrades gracefully (whole-list send) on older LeadHub.
 - **Queued batch sending** through any Laravel mailer with configurable
   throttle, per-recipient message records, and automatic finalization.
 - **Tracking**: open pixel, signed click redirects, per-campaign reports

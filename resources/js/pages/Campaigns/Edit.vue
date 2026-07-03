@@ -19,6 +19,7 @@ const props = defineProps([
     'previewUrl',      // GET, rendered HTML (edit only)
     'showUrl',         // report page (edit only)
     'lists',           // [{ value, label }]
+    'segments',        // [{ value, label, members_count }] — empty if LeadHub lacks segments
     'templates',       // [{ value, label }]
     'editable',        // bool (edit only)
     'canSend',         // bool
@@ -32,6 +33,7 @@ const handle = ref(props.campaign?.handle || '');
 const subject = ref(props.campaign?.subject || '');
 const preheader = ref(props.campaign?.preheader || '');
 const list = ref(props.campaign?.list || '');
+const segment = ref(props.campaign?.segment || '');
 const template = ref(props.campaign?.template || '');
 const fromName = ref(props.campaign?.from_name || '');
 const fromEmail = ref(props.campaign?.from_email || '');
@@ -59,6 +61,21 @@ const templateOptions = computed(() => [
     ...(props.templates || []),
 ]);
 
+const hasSegments = computed(() => (props.segments || []).length > 0);
+
+const segmentOptions = computed(() => [
+    { value: '', label: __('Entire list (no segment)') },
+    ...(props.segments || []).map((s) => ({
+        value: s.value,
+        label: `${s.label} (${s.members_count})`,
+    })),
+]);
+
+const selectedSegmentCount = computed(() => {
+    const match = (props.segments || []).find((s) => s.value === segment.value);
+    return match ? match.members_count : null;
+});
+
 function statusColor(status) {
     return {
         draft: 'gray',
@@ -79,6 +96,7 @@ function payload() {
         subject: subject.value || null,
         preheader: preheader.value || null,
         list: list.value || null,
+        segment: segment.value || null,
         template: template.value || null,
         from_name: fromName.value || null,
         from_email: fromEmail.value || null,
@@ -243,6 +261,20 @@ function destroy() {
                             <div class="space-y-4">
                                 <Field :label="__('List')">
                                     <Select v-model="list" :options="listOptions" />
+                                </Field>
+
+                                <Field v-if="hasSegments" :label="__('Segment')">
+                                    <Select v-model="segment" :options="segmentOptions" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <template v-if="segment && selectedSegmentCount !== null">
+                                            {{ __('Narrows to subscribers who are also in this segment.') }}
+                                            <Badge color="blue" :text="String(selectedSegmentCount)" />
+                                            {{ __('contacts currently match.') }}
+                                        </template>
+                                        <template v-else>
+                                            {{ __('Optionally narrow the audience to a LeadHub segment. Consent still comes from the list.') }}
+                                        </template>
+                                    </p>
                                 </Field>
 
                                 <Field :label="__('Template')">
