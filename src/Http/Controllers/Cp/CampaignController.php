@@ -76,6 +76,7 @@ class CampaignController extends Controller
             'campaign' => null,
             'storeUrl' => cp_route('marketing.campaigns.store'),
             'lists' => $this->listOptions(),
+            'segments' => $this->segmentOptions(),
             'templates' => $this->templateOptions(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
         ]);
@@ -102,6 +103,7 @@ class CampaignController extends Controller
             fromEmail: $data['from_email'] ?? null,
             replyTo: $data['reply_to'] ?? null,
             listHandle: $data['list'] ?? null,
+            segmentHandle: $data['segment'] ?? null,
             templateHandle: $data['template'] ?? null,
             content: $data['content'] ?? '',
         );
@@ -176,6 +178,7 @@ class CampaignController extends Controller
             'previewUrl' => cp_route('marketing.campaigns.preview', $handle),
             'showUrl' => cp_route('marketing.campaigns.show', $handle),
             'lists' => $this->listOptions(),
+            'segments' => $this->segmentOptions(),
             'templates' => $this->templateOptions(),
             'editable' => $campaign->isEditable(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
@@ -202,6 +205,7 @@ class CampaignController extends Controller
         $campaign->fromEmail = $data['from_email'] ?? null;
         $campaign->replyTo = $data['reply_to'] ?? null;
         $campaign->listHandle = $data['list'] ?? null;
+        $campaign->segmentHandle = $data['segment'] ?? null;
         $campaign->templateHandle = $data['template'] ?? null;
         $campaign->content = $data['content'] ?? '';
 
@@ -321,6 +325,7 @@ class CampaignController extends Controller
             'from_email' => ['nullable', 'email'],
             'reply_to' => ['nullable', 'email'],
             'list' => ['nullable', 'string'],
+            'segment' => ['nullable', 'string'],
             'template' => ['nullable', 'string'],
             'content' => ['nullable', 'string'],
         ]);
@@ -338,6 +343,35 @@ class CampaignController extends Controller
     {
         return $this->templates->all()
             ->map(fn ($template) => ['value' => $template->handle, 'label' => $template->name])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Segment options for the campaign audience picker, from LeadHub.
+     *
+     * Guarded: if the installed LeadHub predates segments (no `segments()` on
+     * the facade root), returns an empty array so the picker hides itself and
+     * campaigns keep sending to the whole list. Facades proxy via __callStatic,
+     * so method_exists targets the resolved root object.
+     *
+     * @return array<int,array{value:string,label:string,members_count:int}>
+     */
+    protected function segmentOptions(): array
+    {
+        $root = \Goldnead\Leadhub\Facades\LeadHub::getFacadeRoot();
+
+        if (! $root || ! method_exists($root, 'segments')) {
+            return [];
+        }
+
+        return collect(\Goldnead\Leadhub\Facades\LeadHub::segments())
+            ->filter(fn ($segment) => $segment['is_active'] ?? true)
+            ->map(fn ($segment) => [
+                'value' => (string) $segment['handle'],
+                'label' => (string) $segment['name'],
+                'members_count' => (int) ($segment['members_count'] ?? 0),
+            ])
             ->values()
             ->all();
     }
