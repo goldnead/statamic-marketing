@@ -61,7 +61,7 @@ function destroy() {
             </template>
 
             <template #cell-double_opt_in="{ row }">
-                <Badge :color="row.double_opt_in ? 'green' : 'gray'" :text="row.double_opt_in ? __('On') : __('Off')" />
+                <Badge :color="row.double_opt_in ? 'green' : 'default'" :text="row.double_opt_in ? __('On') : __('Off')" />
             </template>
 
             <template #cell-subscribed="{ row }">
@@ -69,7 +69,7 @@ function destroy() {
             </template>
 
             <template #cell-pending="{ row }">
-                <Badge color="gray" :text="String(row.pending)" />
+                <Badge color="default" :text="String(row.pending)" />
             </template>
 
             <template #prepended-row-actions="{ row }">
@@ -89,10 +89,10 @@ function destroy() {
         </Listing>
 
         <ConfirmationModal
-            v-if="listToDelete"
+            :open="listToDelete !== null"
             :title="__('Delete list')"
-            :message="__('Delete this list and all of its subscriptions? This cannot be undone.')"
-            variant="danger"
+            :body-text="__('Delete this list and all of its subscriptions? This cannot be undone.')"
+            danger
             :button-text="__('Delete')"
             @cancel="listToDelete = null"
             @confirm="destroy"
