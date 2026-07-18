@@ -349,7 +349,7 @@ class CampaignController extends Controller
         $seen = collect($options)->pluck('value')->all();
 
         // When the optional email-templates addon is installed, offer its
-        // managed `email_templates` entries too (referenced by slug). A slug
+        // managed template entries too (referenced by slug). A slug
         // already served by a marketing template is skipped so the select never
         // shows a duplicate option; at render time the managed entry wins.
         foreach ($this->emailTemplateEntryOptions() as $option) {
@@ -373,7 +373,12 @@ class CampaignController extends Controller
         }
 
         try {
-            return collect(\Statamic\Facades\Entry::query()->where('collection', 'email_templates')->get())
+            // Handle comes from the addon itself (single source of truth); the
+            // addon owns `et_templates` to avoid colliding with any unrelated
+            // host-app `email_templates` collection.
+            $handle = \Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager::HANDLE;
+
+            return collect(\Statamic\Facades\Entry::query()->where('collection', $handle)->get())
                 ->map(fn ($entry) => [
                     'value' => (string) $entry->slug(),
                     'label' => (string) ($entry->value('title') ?? $entry->slug()),
