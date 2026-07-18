@@ -1,0 +1,59 @@
+name: build-check
+
+# Fails the build if the committed resources/dist bundle is stale.
+# resources/dist is shipped via Composer (no npm at install time), so it must
+# always match current source. See scripts/check-dist-fresh.sh.
+#
+# marketing depends on goldnead/statamic-leadhub via a Composer `path` repo
+# (../statamic-leadhub), so the sibling repo is checked out alongside.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dist-fresh:
+    runs-on: ubuntu-latest
+    name: Committed dist is fresh (npm ci + build diff)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: statamic-marketing
+
+      - name: Checkout sibling goldnead/statamic-leadhub (path repo)
+        uses: actions/checkout@v4
+        with:
+          repository: goldnead/statamic-leadhub
+          path: statamic-leadhub
+          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      # @statamic/cms is a `file:` npm dependency resolved from the installed
+      # Composer package, so Composer must run before npm.
+      - name: Install Composer dependencies
+        working-directory: statamic-marketing
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: statamic-marketing/package-lock.json
+
+      - name: Install Node dependencies (reproducible)
+        working-directory: statamic-marketing
+        run: npm ci
+
+      - name: Verify committed resources/dist is fresh
+        working-directory: statamic-marketing
+        run: npm run build:check

@@ -37,10 +37,9 @@ class CampaignRenderer
 
         $content = $this->parse($campaign->content, $variables);
 
-        $template = ($campaign->templateHandle ? $this->templates->find($campaign->templateHandle) : null)
-            ?? EmailTemplate::fallback();
+        $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 
-        $html = $this->parse($template->html, array_merge($variables, ['content' => $content]));
+        $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
 
         if ($message) {
             if (config('marketing.tracking.clicks', true)) {
@@ -60,6 +59,40 @@ class CampaignRenderer
             text: $this->toText($content, $variables['unsubscribe_url']),
             unsubscribeUrl: $variables['unsubscribe_url'],
         );
+    }
+
+    /**
+     * Resolve the layout HTML for a campaign's template reference.
+     *
+     * When the optional email-templates addon is installed, a managed
+     * `email_templates` entry with a matching slug wins; the marketing
+     * template repository is the caller-supplied fallback (entry wins, file
+     * fallback). When the addon is absent, or the slug resolves to neither an
+     * entry nor a repository template, we fall back to the marketing template
+     * repository and finally the built-in layout. Raw legacy handles therefore
+     * keep resolving exactly as before — existing campaigns never break.
+     */
+    protected function resolveTemplateHtml(?string $handle): string
+    {
+        if ($handle !== null && $handle !== ''
+            && class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)) {
+            $resolved = \Goldnead\EmailTemplates\Facades\EmailTemplates::resolve(
+                $handle,
+                function (string $slug): ?array {
+                    $template = $this->templates->find($slug);
+
+                    return $template ? ['html' => $template->html, 'name' => $template->name] : null;
+                },
+            );
+
+            if ($resolved !== null && $resolved->body !== '') {
+                return $resolved->body;
+            }
+        }
+
+        $template = ($handle !== null && $handle !== '') ? $this->templates->find($handle) : null;
+
+        return ($template ?? EmailTemplate::fallback())->html;
     }
 
     /**
