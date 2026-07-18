@@ -82,10 +82,10 @@ function destroy() {
         </Listing>
 
         <ConfirmationModal
-            v-if="templateToDelete"
+            :open="templateToDelete !== null"
             :title="__('Delete template')"
-            :message="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
-            variant="danger"
+            :body-text="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
+            danger
             :button-text="__('Delete')"
             @cancel="templateToDelete = null"
             @confirm="destroy"

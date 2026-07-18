@@ -78,11 +78,11 @@ const selectedSegmentCount = computed(() => {
 
 function statusColor(status) {
     return {
-        draft: 'gray',
+        draft: 'default',
         scheduled: 'purple',
         sending: 'yellow',
         sent: 'green',
-    }[status] || 'gray';
+    }[status] || 'default';
 }
 
 function formatDate(value) {
@@ -335,11 +335,7 @@ function destroy() {
 
                                 <div v-else class="space-y-2">
                                     <Field :label="__('Schedule for later')">
-                                        <input
-                                            v-model="scheduledAt"
-                                            type="datetime-local"
-                                            class="w-full h-10 px-3 rounded border border-content-border bg-white dark:bg-gray-900 text-sm"
-                                        />
+                                        <Input v-model="scheduledAt" type="datetime-local" />
                                     </Field>
                                     <Button :text="__('Schedule')" variant="default" :disabled="!scheduledAt" @click="schedule" />
                                 </div>
@@ -360,20 +356,20 @@ function destroy() {
         </template>
 
         <ConfirmationModal
-            v-if="showSendConfirm"
+            :open="showSendConfirm"
             :title="__('Send campaign')"
-            :message="__('Send this campaign to all subscribers of the selected list now? This cannot be undone.')"
-            variant="danger"
+            :body-text="__('Send this campaign to all subscribers of the selected list now? This cannot be undone.')"
+            danger
             :button-text="__('Send now')"
             @cancel="showSendConfirm = false"
             @confirm="sendNow"
         />
 
         <ConfirmationModal
-            v-if="showDeleteConfirm"
+            :open="showDeleteConfirm"
             :title="__('Delete campaign')"
-            :message="__('Delete this campaign? This cannot be undone.')"
-            variant="danger"
+            :body-text="__('Delete this campaign? This cannot be undone.')"
+            danger
             :button-text="__('Delete')"
             @cancel="showDeleteConfirm = false"
             @confirm="destroy"

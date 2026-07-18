@@ -21,11 +21,11 @@ function reloadPage() {
 
 function statusColor(status) {
     return {
-        draft: 'gray',
+        draft: 'default',
         scheduled: 'purple',
         sending: 'yellow',
         sent: 'green',
-    }[status] || 'gray';
+    }[status] || 'default';
 }
 
 function confirmDelete(campaign) {
@@ -111,10 +111,10 @@ function destroy() {
         </Listing>
 
         <ConfirmationModal
-            v-if="campaignToDelete"
+            :open="campaignToDelete !== null"
             :title="__('Delete campaign')"
-            :message="__('Delete this campaign? This cannot be undone.')"
-            variant="danger"
+            :body-text="__('Delete this campaign? This cannot be undone.')"
+            danger
             :button-text="__('Delete')"
             @cancel="campaignToDelete = null"
             @confirm="destroy"

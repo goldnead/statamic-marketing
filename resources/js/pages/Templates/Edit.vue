@@ -94,10 +94,10 @@ function destroy() {
         </Panel>
 
         <ConfirmationModal
-            v-if="showDeleteConfirm"
+            :open="showDeleteConfirm"
             :title="__('Delete template')"
-            :message="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
-            variant="danger"
+            :body-text="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
+            danger
             :button-text="__('Delete')"
             @cancel="showDeleteConfirm = false"
             @confirm="destroy"

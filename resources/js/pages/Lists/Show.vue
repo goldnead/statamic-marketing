@@ -44,7 +44,7 @@ const statusOptions = computed(() => [
 const statBadges = computed(() => [
     { label: statusLabel('subscribed'), value: props.stats.subscribed, color: 'green' },
     { label: statusLabel('pending'), value: props.stats.pending, color: 'yellow' },
-    { label: statusLabel('unsubscribed'), value: props.stats.unsubscribed, color: 'gray' },
+    { label: statusLabel('unsubscribed'), value: props.stats.unsubscribed, color: 'default' },
     { label: statusLabel('bounced'), value: props.stats.bounced, color: 'red' },
 ]);
 
@@ -52,10 +52,10 @@ function statusColor(key) {
     return {
         subscribed: 'green',
         pending: 'yellow',
-        unsubscribed: 'gray',
+        unsubscribed: 'default',
         bounced: 'red',
         complained: 'red',
-    }[key] || 'gray';
+    }[key] || 'default';
 }
 
 function formatDate(value) {
@@ -149,10 +149,10 @@ function destroy() {
                 <Field :label="__('Email')" class="flex-1">
                     <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
                 </Field>
-                <Field :label="__('marketing::subscribers.first_name')">
+                <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44">
                     <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
-                <Field :label="__('marketing::subscribers.last_name')">
+                <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44">
                     <Input v-model="newLastName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
                 <Button :text="__('marketing::subscribers.add')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />
@@ -170,13 +170,18 @@ function destroy() {
             <Button :text="__('Filter')" variant="default" @click="applyFilters" />
         </div>
 
-        <!-- Subscribers -->
+        <!-- Subscribers. Search, status filtering and pagination are handled
+             server-side (above / below), so the Listing's own client-side
+             search/sort/column tools are disabled — otherwise they'd render a
+             second search box and only ever operate on the current page. -->
         <Listing
             :items="subscribers"
             :columns="columns"
             :allow-search="false"
-            preferences-prefix="marketing.subscribers"
-            @refreshing="reloadPage"
+            :allow-bulk-actions="false"
+            :allow-customizing-columns="false"
+            :allow-presets="false"
+            :sortable="false"
         >
             <template #cell-email="{ row }">
                 <span class="font-medium">{{ row.email }}</span>
@@ -231,10 +236,10 @@ function destroy() {
         </div>
 
         <ConfirmationModal
-            v-if="subscriberToDelete"
+            :open="subscriberToDelete !== null"
             :title="__('marketing::subscribers.delete_confirm.title')"
-            :message="__('marketing::subscribers.delete_confirm.message')"
-            variant="danger"
+            :body-text="__('marketing::subscribers.delete_confirm.message')"
+            danger
             :button-text="__('marketing::subscribers.actions.delete')"
             @cancel="subscriberToDelete = null"
             @confirm="destroy"
