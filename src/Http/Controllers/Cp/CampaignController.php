@@ -341,10 +341,48 @@ class CampaignController extends Controller
 
     protected function templateOptions(): array
     {
-        return $this->templates->all()
+        $options = $this->templates->all()
             ->map(fn ($template) => ['value' => $template->handle, 'label' => $template->name])
             ->values()
             ->all();
+
+        $seen = collect($options)->pluck('value')->all();
+
+        // When the optional email-templates addon is installed, offer its
+        // managed `email_templates` entries too (referenced by slug). A slug
+        // already served by a marketing template is skipped so the select never
+        // shows a duplicate option; at render time the managed entry wins.
+        foreach ($this->emailTemplateEntryOptions() as $option) {
+            if (! in_array($option['value'], $seen, true)) {
+                $options[] = $option;
+                $seen[] = $option['value'];
+            }
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    protected function emailTemplateEntryOptions(): array
+    {
+        if (! class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)
+            || ! class_exists(\Statamic\Facades\Entry::class)) {
+            return [];
+        }
+
+        try {
+            return collect(\Statamic\Facades\Entry::query()->where('collection', 'email_templates')->get())
+                ->map(fn ($entry) => [
+                    'value' => (string) $entry->slug(),
+                    'label' => (string) ($entry->value('title') ?? $entry->slug()),
+                ])
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

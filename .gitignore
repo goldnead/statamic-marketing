@@ -3,6 +3,6 @@
 /playground
 /.phpunit.cache
 composer.lock
-package-lock.json
+# package-lock.json is COMMITTED — CI runs `npm ci` for reproducible dist builds.
 .DS_Store
 /resources/dist/hot

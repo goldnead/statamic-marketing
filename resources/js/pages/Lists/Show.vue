@@ -28,20 +28,24 @@ const newLastName = ref('');
 
 const subscriberToDelete = ref(null);
 
+function statusLabel(key) {
+    return __(`marketing::subscribers.statuses.${key}`);
+}
+
 const statusOptions = computed(() => [
-    { value: '', label: __('All statuses') },
-    { value: 'subscribed', label: __('Subscribed') },
-    { value: 'pending', label: __('Pending') },
-    { value: 'unsubscribed', label: __('Unsubscribed') },
-    { value: 'bounced', label: __('Bounced') },
-    { value: 'complained', label: __('Complained') },
+    { value: '', label: __('marketing::subscribers.filter.all_statuses') },
+    { value: 'subscribed', label: statusLabel('subscribed') },
+    { value: 'pending', label: statusLabel('pending') },
+    { value: 'unsubscribed', label: statusLabel('unsubscribed') },
+    { value: 'bounced', label: statusLabel('bounced') },
+    { value: 'complained', label: statusLabel('complained') },
 ]);
 
 const statBadges = computed(() => [
-    { label: __('subscribed'), value: props.stats.subscribed, color: 'green' },
-    { label: __('pending'), value: props.stats.pending, color: 'yellow' },
-    { label: __('unsubscribed'), value: props.stats.unsubscribed, color: 'default' },
-    { label: __('bounced'), value: props.stats.bounced, color: 'red' },
+    { label: statusLabel('subscribed'), value: props.stats.subscribed, color: 'green' },
+    { label: statusLabel('pending'), value: props.stats.pending, color: 'yellow' },
+    { label: statusLabel('unsubscribed'), value: props.stats.unsubscribed, color: 'default' },
+    { label: statusLabel('bounced'), value: props.stats.bounced, color: 'red' },
 ]);
 
 function statusColor(key) {
@@ -140,18 +144,18 @@ function destroy() {
         </p>
 
         <!-- Add subscriber -->
-        <Panel v-if="canManageSubscribers" class="mb-4">
+        <Panel v-if="canManageSubscribers" :heading="__('marketing::subscribers.add')" class="mb-4">
             <div class="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-end">
                 <Field :label="__('Email')" class="flex-1">
                     <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
                 </Field>
-                <Field :label="__('First name')" class="w-full sm:w-44">
-                    <Input v-model="newFirstName" :placeholder="__('Optional')" />
+                <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44">
+                    <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
-                <Field :label="__('Last name')" class="w-full sm:w-44">
-                    <Input v-model="newLastName" :placeholder="__('Optional')" />
+                <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44">
+                    <Input v-model="newLastName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
-                <Button :text="__('Add subscriber')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />
+                <Button :text="__('marketing::subscribers.add')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />
             </div>
         </Panel>
 
@@ -161,7 +165,7 @@ function destroy() {
                 <Select v-model="status" :options="statusOptions" @update:model-value="applyFilters" />
             </Field>
             <Field :label="__('Search')" class="flex-1 sm:max-w-xs">
-                <Input v-model="search" :placeholder="__('Search email or name...')" @keyup.enter="applyFilters" />
+                <Input v-model="search" :placeholder="__('marketing::subscribers.search_placeholder')" @keyup.enter="applyFilters" />
             </Field>
             <Button :text="__('Filter')" variant="default" @click="applyFilters" />
         </div>
@@ -189,7 +193,7 @@ function destroy() {
             </template>
 
             <template #cell-status="{ row }">
-                <Badge :color="statusColor(row.status)" :text="row.status" />
+                <Badge :color="statusColor(row.status)" :text="statusLabel(row.status)" />
             </template>
 
             <template #cell-subscribed_at="{ row }">
@@ -199,13 +203,13 @@ function destroy() {
             <template #prepended-row-actions="{ row }">
                 <DropdownItem
                     v-if="canManageSubscribers && row.status !== 'unsubscribed'"
-                    :text="__('Unsubscribe')"
+                    :text="__('marketing::subscribers.actions.unsubscribe')"
                     icon="archive"
                     @click="unsubscribe(row)"
                 />
                 <DropdownItem
                     v-if="canManageSubscribers"
-                    :text="__('Delete')"
+                    :text="__('marketing::subscribers.actions.delete')"
                     icon="trash"
                     @click="confirmDelete(row)"
                 />
@@ -233,10 +237,10 @@ function destroy() {
 
         <ConfirmationModal
             :open="subscriberToDelete !== null"
-            :title="__('Delete subscriber')"
-            :body-text="__('Permanently delete this subscription? This cannot be undone.')"
+            :title="__('marketing::subscribers.delete_confirm.title')"
+            :body-text="__('marketing::subscribers.delete_confirm.message')"
             danger
-            :button-text="__('Delete')"
+            :button-text="__('marketing::subscribers.actions.delete')"
             @cancel="subscriberToDelete = null"
             @confirm="destroy"
         />
