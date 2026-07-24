@@ -2,12 +2,15 @@
 
 namespace Goldnead\Marketing\Models;
 
+use Goldnead\BrandContext\Concerns\HasBrand;
 use Goldnead\Leadhub\Support\EmailNormalizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Subscription extends Model
 {
+    use HasBrand;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_SUBSCRIBED = 'subscribed';

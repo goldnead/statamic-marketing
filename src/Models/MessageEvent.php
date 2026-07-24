@@ -2,10 +2,13 @@
 
 namespace Goldnead\Marketing\Models;
 
+use Goldnead\BrandContext\Concerns\HasBrand;
 use Illuminate\Database\Eloquent\Model;
 
 class MessageEvent extends Model
 {
+    use HasBrand;
+
     public const TYPE_OPEN = 'open';
 
     public const TYPE_CLICK = 'click';

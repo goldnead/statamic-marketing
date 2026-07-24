@@ -27,11 +27,17 @@
             "type": "path",
             "url": "../statamic-leadhub",
             "options": { "symlink": false }
+        },
+        {
+            "type": "path",
+            "url": "../statamic-brand-context",
+            "options": { "symlink": true }
         }
     ],
     "require": {
         "php": "^8.2",
-        "goldnead/statamic-leadhub": "^1.1",
+        "goldnead/statamic-brand-context": "dev-main as 1.0.0",
+        "goldnead/statamic-leadhub": "^1.1 || dev-main as 1.3.0",
         "inertiajs/inertia-laravel": "^1.0|^2.0",
         "laravel/framework": "^11.0|^12.0|^13.0",
         "statamic/cms": "^6.0",

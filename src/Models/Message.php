@@ -2,11 +2,14 @@
 
 namespace Goldnead\Marketing\Models;
 
+use Goldnead\BrandContext\Concerns\HasBrand;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
 class Message extends Model
 {
+    use HasBrand;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_SENT = 'sent';
