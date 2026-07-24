@@ -71,7 +71,9 @@ return new class extends Migration
         // 3b. The critical consent unique.
         Schema::table('marketing_subscriptions', function (Blueprint $blueprint) {
             $blueprint->dropUnique(['list_handle', 'email_normalized']);
-            $blueprint->unique(['brand_id', 'list_handle', 'email_normalized']);
+            // Explicit short name: the auto-generated one exceeds MySQL's
+            // 64-char identifier limit.
+            $blueprint->unique(['brand_id', 'list_handle', 'email_normalized'], 'ms_brand_list_email_unique');
         });
 
         // 4. Now that all rows carry a brand, enforce NOT NULL.
@@ -99,7 +101,7 @@ return new class extends Migration
         }
 
         Schema::table('marketing_subscriptions', function (Blueprint $blueprint) {
-            $blueprint->dropUnique(['brand_id', 'list_handle', 'email_normalized']);
+            $blueprint->dropUnique('ms_brand_list_email_unique');
             $blueprint->unique(['list_handle', 'email_normalized']);
         });
 
