@@ -1,6 +1,8 @@
 <?php
 
 use Carbon\CarbonImmutable;
+use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -10,6 +12,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 beforeEach(function (): void {
     Mail::fake();
@@ -124,6 +127,58 @@ it('sends a test email without creating message records', function (): void {
 
     $campaign = app(CampaignRepository::class)->find('welcome');
     expect($campaign->status)->toBe(Campaign::STATUS_DRAFT);
+});
+
+/**
+ * Opt-out enforcement must not depend on the subscription → contact link.
+ *
+ * LeadHub is the opt-out source of record (`do_not_contact`). The audience loop
+ * used to resolve that flag exclusively via `Subscription.contact_uuid` and
+ * treated a missing link as "not opted out", so any subscription whose contact
+ * link was never written (failed ingest) or went stale (contact deleted) was
+ * exempt from every opt-out check. These three cases pin the fail-closed rule:
+ * resolve by uuid, then by email — and if nothing resolves, do not send.
+ */
+it('never sends to an opted-out contact when the subscription has no contact link', function (): void {
+    $subscription = app(SubscriptionService::class)->subscribe($this->list, 'optout@example.com', ['first_name' => 'Opt']);
+
+    // Opted out in LeadHub …
+    LeadHub::optOut($subscription->fresh()->contact_uuid);
+
+    // … but the subscription row carries no contact_uuid (link never written).
+    $subscription->forceFill(['contact_uuid' => null])->save();
+
+    app(CampaignSender::class)->queue($this->campaign);
+
+    Mail::assertNotSent(CampaignMail::class, fn (CampaignMail $mail) => $mail->hasTo('optout@example.com'));
+    expect(Message::forCampaign('welcome')->where('email', 'optout@example.com')->count())->toBe(0);
+});
+
+it('never sends to an opted-out contact when the contact link is stale', function (): void {
+    $subscription = app(SubscriptionService::class)->subscribe($this->list, 'stale@example.com', ['first_name' => 'Stale']);
+
+    LeadHub::optOut($subscription->fresh()->contact_uuid);
+
+    // The stored uuid resolves to nothing; only the email still identifies them.
+    $subscription->forceFill(['contact_uuid' => 'gone-'.Str::uuid()->toString()])->save();
+
+    app(CampaignSender::class)->queue($this->campaign);
+
+    Mail::assertNotSent(CampaignMail::class, fn (CampaignMail $mail) => $mail->hasTo('stale@example.com'));
+});
+
+it('skips a subscriber whose identity cannot be resolved against the opt-out source', function (): void {
+    $subscription = app(SubscriptionService::class)->subscribe($this->list, 'orphan@example.com', ['first_name' => 'Orphan']);
+
+    // Contact gone and no link left: the opt-out source cannot be consulted for
+    // this address at all, so consent is unprovable — fail closed.
+    Contact::query()->where('uuid', $subscription->fresh()->contact_uuid)->delete();
+    $subscription->forceFill(['contact_uuid' => null])->save();
+
+    app(CampaignSender::class)->queue($this->campaign);
+
+    Mail::assertNotSent(CampaignMail::class, fn (CampaignMail $mail) => $mail->hasTo('orphan@example.com'));
+    expect(Message::forCampaign('welcome')->where('email', 'orphan@example.com')->count())->toBe(0);
 });
 
 it('wraps content in the referenced template layout', function (): void {

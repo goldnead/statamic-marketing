@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Jobs;
 
 use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Events\CampaignSending;
@@ -140,14 +141,49 @@ class StartCampaignJob implements ShouldQueue
         return array_fill_keys(array_map('strval', $ids), true);
     }
 
+    /**
+     * Is this recipient barred from receiving the campaign?
+     *
+     * LeadHub's `do_not_contact` is the opt-out source of record, so this check
+     * fails CLOSED: it returns true whenever the answer cannot be established.
+     *
+     * The contact link (`Subscription.contact_uuid`) is only a shortcut, never
+     * the identity itself — for email sending the address is the identity. So we
+     * resolve by uuid first and fall back to the normalized email (the same
+     * fallback SubscriptionService::syncContactOnUnsubscribe() already uses). A
+     * missing or stale link therefore no longer exempts anyone from the check.
+     *
+     * If neither lookup resolves a contact, we do not send. Every path that
+     * confirms a subscription (SubscriptionService::markSubscribed() →
+     * syncContactOnSubscribe() → LeadHub::ingest()) creates or resolves a
+     * contact for the address, so "no contact at all" means the CRM sync failed
+     * or the contact was deleted — neither of which may be read as consent.
+     */
     protected function contactOptedOut(ContactRepository $contacts, Subscription $subscription): bool
     {
-        if (! $subscription->contact_uuid) {
-            return false;
+        $contact = $subscription->contact_uuid
+            ? $contacts->findByUuid((string) $subscription->contact_uuid)
+            : null;
+
+        if (! $contact) {
+            $emailNormalized = (string) ($subscription->email_normalized
+                ?: EmailNormalizer::normalize((string) $subscription->email));
+
+            $contact = $emailNormalized !== ''
+                ? $contacts->findByEmailNormalized($emailNormalized)
+                : null;
         }
 
-        $contact = $contacts->find($subscription->contact_uuid);
+        if (! $contact) {
+            Log::warning(
+                'Marketing skipped subscription ['.$subscription->uuid.'] on list ['
+                .$subscription->list_handle.']: no LeadHub contact resolvable by uuid or email, '
+                .'so the opt-out state cannot be verified (fail-closed).'
+            );
 
-        return (bool) ($contact?->do_not_contact ?? false);
+            return true;
+        }
+
+        return (bool) ($contact->do_not_contact ?? false);
     }
 }
