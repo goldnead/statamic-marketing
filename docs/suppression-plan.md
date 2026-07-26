@@ -9,6 +9,14 @@ Scope note: this plan covers the *suppression* layer only — the authoritative 
 to "may we send to this address at all?", enforced before a send is ever constructed.
 It is not a deliverability dashboard and not an ESP abstraction layer.
 
+> **Decision status, 2026-07-27.** Adrian decided **D1–D6 and D8** (recorded in
+> `GoldnerOS:memory/decisions.md`, section "Produktiv-Gang & Suppression"). Six follow
+> the recommendation. **D3 does not** — a complaint suppression *may* be released
+> through the CP, with a prominent warning and a mandatory audit trail; §3.4 and §4.3
+> carry the resulting requirement, and it is a WP1/WP4 acceptance criterion, not a note.
+> **D7 (Scaleway TEM) is still open** — it has no recommendation and no decision; §11.6
+> and §12 say so explicitly. WP1 is unblocked; D1 and D2 no longer gate it.
+
 ---
 
 ## 1. Why now, and how urgent
@@ -179,7 +187,7 @@ Zustellinfrastruktur bleibt extern." Mapping them to this plan:
 | --- | --- |
 | Hard Bounce | §4, `reason = hard_bounce`, global |
 | Soft Bounce | §4.2, event-logged, threshold-promoted |
-| Complaint | §4, §4.3, brand-scoped and non-releasable |
+| Complaint | §4, §4.3, brand-scoped; releasable only through the deliberate, audited path (D3) |
 | Provider Suppression | §4 `provider_import`, WP8 |
 | Message ID | §6, `provider_message_id` + custom-header uuid |
 | Delivery Status | §6.1, `delivery_status` + `delivered_at` on `marketing_messages` |
@@ -216,9 +224,13 @@ Schema::create('marketing_suppressions', function (Blueprint $table) {
 
     $table->timestamp('suppressed_at');
     $table->timestamp('expires_at')->nullable();   // NULL = permanent
+
+    // Release audit trail. Nullable at the column level because an unreleased row
+    // has none of them — but see §3.4: for reason = complaint the service treats
+    // all three as mandatory, and a release without them must fail.
     $table->timestamp('released_at')->nullable();  // released, never hard-deleted
-    $table->string('released_by')->nullable();
-    $table->string('release_reason')->nullable();
+    $table->string('released_by')->nullable();     // who — CP user identifier
+    $table->string('release_reason')->nullable();  // why — free text, required for complaint
 
     $table->text('notes')->nullable();
     $table->json('meta')->nullable();
@@ -300,19 +312,61 @@ Instead:
 This exception is intentional and must be preserved; a future agent "fixing" these
 models to use `HasBrand` would reintroduce the fail-open bug.
 
+### 3.4 Release audit trail — a hard requirement (D3)
+
+**D3 was decided against the recommendation** (2026-07-27): a complaint suppression
+**may** be released through the CP. Adrian attached one condition, and it is a data-model
+requirement rather than a UI nicety:
+
+> Releasing a complaint suppression needs an audit trail — **who, when, and on what
+> stated grounds** — so that it is afterwards provable that delivering to a complainant
+> again was a deliberate decision.
+
+That turns three fields from "nice to have" into invariants. Concretely, for
+`reason = complaint`:
+
+| Question | Where it is recorded | Rule |
+| --- | --- | --- |
+| **Who** | `marketing_suppressions.released_by` **and** `marketing_suppression_events.actor` | Required. The authenticated CP user's identifier, taken from the request — never accepted from a form field. |
+| **When** | `marketing_suppressions.released_at` **and** the event's `occurred_at` | Required. Server clock. |
+| **Why** | `marketing_suppressions.release_reason` **and** the event's `payload` | Required, non-empty after trimming. A minimum length is enforced in config (`marketing.suppression.release.min_reason_length`, default 20) so that "ok" does not satisfy the rule. |
+
+Enforcement rules an implementer must not soften:
+
+1. **The service refuses an incomplete release.** `SuppressionService::release()` throws
+   for `reason = complaint` unless actor and a reason passing the minimum length are
+   both present. There is no code path that clears `released_at` without them.
+2. **State change and audit event are one transaction.** The `released` event row is
+   written in the same DB transaction as the update to `marketing_suppressions`. A
+   release that cannot be logged must not happen — this is the whole point of the
+   condition. Note the interaction with `marketing_suppression_events.dedupe_key`: manual
+   events carry no key (§3.2), so nothing suppresses a second, legitimate release event
+   for the same address.
+3. **The audit log is append-only for releases too.** Re-suppression after a release
+   writes a new `suppressed` event; it never edits or deletes the `released` row. The
+   history of "blocked → released by X on date D because R → blocked again" must stay
+   readable in full.
+4. **`released_by` is not a display name.** Store a stable identifier (Statamic user id
+   or email); a renamed user must not orphan the record.
+
+Column types are unchanged from §3.1 — `release_reason` as `string` is enough for a
+sentence. It is deliberately **not** nullable-by-convention here: the constraint lives
+in the service and in tests (§10, T3/T3b), because a DB-level conditional NOT NULL is
+not portable across the SQLite and MySQL targets this addon supports.
+
 ---
 
 ## 4. Suppression types and semantics
 
-`reason` values, their scope, and their reversibility. **Scope** is the recommendation
-argued in §4.1 and is decision point **D1**.
+`reason` values, their scope, and their reversibility. **Scope** was decision point
+**D1**, decided 2026-07-27 as the split argued in §4.1.
 
 | `reason` | Trigger | Scope | Duration | Reversible? | By whom |
 | --- | --- | --- | --- | --- | --- |
 | `hard_bounce` | Provider reports a permanent bounce | **global** (`brand_id = 0`) | permanent (`expires_at = NULL`) | yes | CP editor, with a typed confirmation and a logged reason |
 | `invalid_email` | Provider reports the address is malformed / non-existent | **global** | permanent | yes | CP editor |
 | `soft_bounce_threshold` | N soft bounces within window W (§4.2) | **global** | permanent once promoted | yes | CP editor |
-| `complaint` | Provider reports a spam complaint / FBL hit | **brand** (`brand_id = current`) | permanent | **no** | nobody — see §4.3 |
+| `complaint` | Provider reports a spam complaint / FBL hit | **brand** (`brand_id = current`) | permanent | **yes, but gated** | CP editor — prominent warning **and** the mandatory audit trail of §3.4. See §4.3 |
 | `manual` | Editor blocks an address in the CP | **brand** | permanent, or `expires_at` if set | yes | CP editor |
 | `provider_import` | Sync from the ESP's own suppression list | **global** | permanent | yes | CP editor |
 
@@ -320,9 +374,15 @@ Individual soft bounces are **not** suppressions. They are logged as
 `marketing_suppression_events` rows with `event_type = soft_bounce` and only produce a
 suppression once the threshold trips.
 
-### 4.1 D1 — global vs. brand-scoped: the recommendation and its reasoning
+### 4.1 D1 — global vs. brand-scoped: decided as the split
 
-**This is largely already decided.** The Hub P0 analysis
+> **D1 decided (2026-07-27): the split, as recommended.** Deliverability facts —
+> `hard_bounce`, `invalid_email`, `soft_bounce_threshold`, `provider_import` — are
+> **global across all brands** (`brand_id = 0`). Consent facts — `complaint`, `manual` —
+> are **brand-scoped**. Reversible via config, not migration. The reasoning below stands
+> as the record of *why*; it is no longer an open question, and it no longer blocks WP1.
+
+**This was largely already decided.** The Hub P0 analysis
 (`GoldnerOS/TASKS/hub-p0-analyse-bericht.md`) records:
 
 > Einziger Global-vs-Brand-Fall: Hard-Bounce = providerweit global, Unsubscribe/Consent
@@ -359,9 +419,13 @@ choice and Adrian should confirm it before build starts.
 
 The schema supports either answer without migration: forcing everything global means
 always writing `brand_id = 0`; forcing everything brand-scoped means never writing it.
-**A late reversal costs a config change, not a migration.**
+**A late reversal costs a config change, not a migration.** That property is now a
+decided requirement, not just a convenience — it must survive implementation.
 
 ### 4.2 Soft bounce threshold
+
+> **D4 decided (2026-07-27): 5 within 30 days**, as recommended — a starting value, to be
+> tuned once real data exists. Keep it in config for exactly that reason; do not inline it.
 
 Config-driven, defaults conservative:
 
@@ -380,19 +444,45 @@ suppression. A successful delivery to the address writes no event but **resets t
 window** by recording a `reasserted` event — otherwise a long-lived address slowly
 accumulates unrelated transient failures until it trips.
 
-### 4.3 Complaints are not releasable through the normal path
+### 4.3 Complaints are releasable in the CP — with a warning and an audit trail (D3)
 
-A complaint suppression must not be removable by the ordinary CP "release" button.
-Rationale: it is the one record with regulatory weight, and an accidental release
-directly produces the illegal outcome. Implementation:
+> **D3 decided (2026-07-27), against the recommendation of this plan.** The plan proposed
+> console-only removal with a forced written reason. Adrian decided: **the CP may do it**,
+> with a clear warning and a log entry. The condition he attached is the audit trail
+> specified in §3.4 — who, when, on what stated grounds — so that delivering to a
+> complainant again is afterwards provable as a deliberate act.
 
-- `SuppressionService::release()` refuses `reason = complaint` and throws.
-- Removal requires an explicit console command
-  (`marketing:suppression-release --email=… --force --reason="…"`) which demands a
-  written reason and writes a `released` audit event naming the actor.
-- The CP shows the row as permanently locked with the reason surfaced.
+The rationale that motivated the stricter recommendation has not gone away: this is the
+one record with regulatory weight, and an accidental release directly produces the
+illegal outcome. So the decision does not remove the protection, it **moves it from
+"impossible" to "impossible by accident"**. That distinction is what the implementation
+has to deliver.
 
-This is not a UI preference. It is tested (§9, T3).
+Implementation:
+
+- **The ordinary release path still refuses.** `SuppressionService::release()` throws for
+  `reason = complaint`. Nothing changes for the normal CP "release" button — it is not
+  the mechanism, and a stray click on a filtered list must never release a complaint.
+- **A separate, explicit path exists:** `SuppressionService::releaseComplaint()`, reached
+  in the CP only through a dedicated confirmation flow, never from the listing's row
+  actions. It requires actor and reason and enforces §3.4 rules 1–2.
+- **The confirmation flow must state the consequence in plain language**, not "are you
+  sure?": that this address complained about mail from this brand, that releasing it
+  means it can be mailed again, and that the action is recorded with the editor's name.
+  A typed confirmation (retyping the address) is the affordance of choice — it makes the
+  act deliberate without making it impossible.
+- **The written reason is mandatory** and must clear
+  `marketing.suppression.release.min_reason_length` (default 20). The submit action is
+  refused otherwise, server-side — a disabled button is not enforcement.
+- **The console command stays** (`marketing:suppression-release --email=… --force
+  --reason="…"`). It was the recommended sole path; it is now the second path, useful for
+  scripted or bulk corrections. It obeys the same §3.4 invariants, with the actor taken
+  from the OS user or an explicit `--actor` flag rather than from a session.
+- **The CP shows the history on the row**: current state, and for a released complaint who
+  released it, when, and why — read directly from the audit log, not from a cached field.
+  A record that cannot be inspected is not an audit trail.
+
+This is not a UI preference. It is tested (§10, T3 and T3b).
 
 ---
 
@@ -534,6 +624,15 @@ There is no HMAC and no shared-secret header. Consequences:
      (**open — §11.3**: whether Brevo can be configured to send credentials at all is
      unverified; its "Secure webhook calls" doc page 404s);
   3. IP allowlist on `1.179.112.0/20`.
+
+  > **D5 decided (2026-07-27): yes — the web-server-level IP allowlist is built**, in
+  > addition to the app-level verifier. The reasoning Adrian gave is the one that matters
+  > here: **Brevo sends no HMAC signature, so the source IP is the only distinguishing
+  > characteristic the endpoint has.** That makes the allowlist load-bearing rather than
+  > belt-and-braces, and it should not be dropped because point 2 turns out to be
+  > configurable. Note the operational cost: Brevo's range is documented, not
+  > contractual — if it changes, events fail closed and silently stop arriving. The
+  > allowlist therefore needs an owner and a note in the runbook, not just a config line.
 - **`IpAllowlistVerifier` exists but is not registered.** Verified in
   `statamic-webhook-manager/src/Registries/AuthSchemeRegistry::registerDefaults()`,
   which registers only `NoAuthVerifier`, `StaticHeaderVerifier`, `BearerTokenVerifier`,
@@ -694,7 +793,7 @@ no longer the only one, so the `contact_uuid IS NULL` hole (§2.3) closes.
 | `marketing_subscriptions.status = 'unsubscribed'` | **Leave untouched. Do not mirror.** | A per-list unsubscribe is a scoped withdrawal of consent for that list. `marketing.unsubscribe.global_opt_out` already defaults to `false`, i.e. Adrian has explicitly decided a list unsubscribe is not a global opt-out. Promoting them retroactively would silently reverse that decision and destroy legitimate subscriptions on other lists. |
 | `marketing_subscriptions.status = 'bounced'` | **Backfill** → `hard_bounce`, `brand_id = 0`, `source = 'backfill'` | Already-recorded deliverability facts that merely lack a queryable home. |
 | `marketing_subscriptions.status = 'complained'` | **Backfill** → `complaint`, `brand_id` = the row's own `brand_id` | Same, and brand-scoped per §4.1. |
-| `leadhub_contacts.do_not_contact = true` | **Backfill** → `manual`, brand-scoped, `source = 'leadhub'` — **decision point D2** | Makes the email-keyed gate cover contacts too, closing the `contact_uuid IS NULL` hole for existing data. Risk: two sources of truth. Recommendation: backfill once, keep reading both, and treat the suppression table as authoritative going forward. |
+| `leadhub_contacts.do_not_contact = true` | **Backfill** → `manual`, brand-scoped, `source = 'leadhub'` — **D2, decided yes (2026-07-27)** | Makes the email-keyed gate cover contacts too, closing the `contact_uuid IS NULL` hole for existing data. Risk: two sources of truth. Decided as recommended: backfill once, keep reading both signals, and treat the suppression table as authoritative going forward. |
 
 The backfill migration is idempotent (`updateOrCreate` on `(brand_id, email_normalized)`)
 and writes a matching `imported` audit event per row. It is reversible: `down()` deletes
@@ -703,6 +802,11 @@ only rows with `source IN ('backfill','leadhub')`.
 **Volume today is effectively zero**, so the backfill is a formality now and a genuine
 data migration later. That asymmetry is the strongest practical argument for building
 this before the second brand.
+
+> **D8 decided (2026-07-27): yes — this lands before the P4 send handover.** Same
+> reasoning, now binding: the backfill is free today and expensive later. Practically this
+> means WP1–WP3 (the working gate with real data) are a prerequisite of the handover, not
+> a parallel track. WP5–WP8 may follow after it.
 
 ---
 
@@ -714,10 +818,10 @@ ingress last.
 
 | # | Package | Size | Owner |
 | --- | --- | --- | --- |
-| **WP1** | Schema + models + service. Both migrations (§3), `Suppression` / `SuppressionEvent` models with `scopeVisibleTo()`, `SuppressionService` (suppress / release / classify / threshold), config block under `marketing.suppression`. No behaviour change yet. | **M** | agent |
-| **WP2** | `SuppressionGate` + enforcement at all four call sites (§7), fail-closed handling, removal of the N+1. Register `IpAllowlistVerifier` in webhook-manager's `registerDefaults()` (one line, separate PR in that repo). | **M** | agent |
+| **WP1** | Schema + models + service. Both migrations (§3), `Suppression` / `SuppressionEvent` models with `scopeVisibleTo()`, `SuppressionService` (suppress / release / classify / threshold), config block under `marketing.suppression`. **Includes the release audit trail of §3.4 as a service invariant:** `release()` refuses `complaint`; `releaseComplaint()` requires actor + reason (min length from `marketing.suppression.release.min_reason_length`, default 20) and writes state change + `released` event in **one transaction**. No behaviour change yet. | **M** | agent |
+| **WP2** | `SuppressionGate` + enforcement at all four call sites (§7), fail-closed handling, removal of the N+1. Register `IpAllowlistVerifier` in webhook-manager's `registerDefaults()` (one line, separate PR in that repo) — **required, not optional: D5 makes the IP allowlist load-bearing** (§5.2). | **M** | agent |
 | **WP3** | Backfill migration (§8) + `marketing:suppression-backfill` command for re-runs. | **S** | agent |
-| **WP4** | CP surface: suppression listing (global + own brand, scope badge), manual add, release flow with the complaint lock (§4.3), audit-log detail view. | **M** | agent |
+| **WP4** | CP surface: suppression listing (global + own brand, scope badge), manual add, ordinary release flow. **Plus the complaint-release flow decided in D3** (§4.3): a dedicated confirmation screen — never a row action — carrying a plain-language warning, a typed confirmation of the address, and a mandatory reason field validated **server-side**; and the audit-log detail view showing who released a complaint, when, and why, read from the event log rather than a cached field. **Acceptance:** a complaint cannot be released without all three audit fields, and the resulting record is inspectable in the CP. | **M** | agent |
 | **WP5** | Message-ID correlation: `marketing_messages` columns, custom headers in `CampaignMail`, capture `getMessageId()` in `SendMessageJob`, delivery-status writes. **Includes the real-send verification in §11.2.** | **M** | agent, then Adrian for the verification send |
 | **WP6** | `normalizeBrevo()` + `normalizeResend()` in `EspEventProcessor`, routed through `SuppressionService`; severity classifier per §5.1 with unknown ⇒ soft; idempotency via `dedupe_key`. | **M** | agent |
 | **WP7** | `ResendSvixVerifier` (§5.1) registered via `WebhookManager::registerAuthScheme()` from `WebhookManagerBridge`. | **S** | agent |
@@ -728,15 +832,19 @@ ingress last.
 
 | Step | Detail | Blocks |
 | --- | --- | --- |
-| **A1** | Confirm D1 (§4.1) and D2 (§8) before WP1 starts. | WP1 |
+| ~~**A1**~~ | ~~Confirm D1 (§4.1) and D2 (§8) before WP1 starts.~~ **Done 2026-07-27** — both decided as recommended. WP1 is unblocked. | — |
 | **A2** | Create the inbound endpoint rows in the CP, one per provider, with unguessable handles. | WP6 |
 | **A3** | Register the webhook URLs in the Brevo and Resend dashboards and select the event sets from §5. | WP6 |
 | **A4** | Generate and store the Resend signing secret (`whsec_…`) and the Brevo endpoint credentials in the endpoint's encrypted `auth_config`. Never in the repo. | WP6/WP7 |
 | **A5** | Send one real campaign message through each provider and confirm the correlation keys round-trip (§11.2). | WP5 sign-off |
-| **A6** | Decide whether the Brevo endpoint sits behind an IP allowlist at the web-server level in addition to the app-level verifier. | WP2 |
+| **A6** | ~~Decide whether~~ **Decided yes (D5).** Configure the IP allowlist for the Brevo endpoint at the web-server level (`1.179.112.0/20`) in addition to the app-level verifier, and record it in the deploy runbook with an owner — if Brevo's range changes, events fail closed and stop arriving silently. | WP2 |
+| **A7** | **D6:** decide and execute the release strategy before any tag is cut — either upgrade adriangoldner.com to the brand-context line first, or cut the tag on a line that site cannot reach. Not an agent decision because it changes a live site's dependency graph. | any release |
 
-Rough shape: WP1-WP3 are the useful minimum (a working gate with real data). WP5-WP7
-are what make it self-maintaining. WP4 and WP8 are quality of life.
+Rough shape: WP1-WP3 are the useful minimum (a working gate with real data) and are
+**prerequisites of the P4 send handover per D8**. WP5-WP7 are what make it
+self-maintaining. WP8 is quality of life. **WP4 is no longer optional**: D3 moved the
+complaint-release safeguard into the CP, so the CP surface now carries a legal
+requirement rather than convenience.
 
 ---
 
@@ -756,7 +864,22 @@ Pest + Testbench harness (`tests/TestCase.php`, sqlite in-memory, both storage d
   *Prevents: the trivial bypass of a suppressed user re-entering through the signup form.*
 - **T3 — complaint suppressions cannot be released through the ordinary path.**
   Assert `SuppressionService::release()` throws for `reason = complaint` and the row is
-  unchanged. *Prevents: an editor undoing a legal block with one CP click.*
+  unchanged. *Prevents: an editor undoing a legal block with one CP click.* Still
+  mandatory after D3 — the decision opened a **separate** path, it did not open this one.
+- **T3b — the deliberate complaint release is refused without a complete audit trail, and
+  recorded when it has one.** Three parts, all required (§3.4):
+  1. `releaseComplaint()` without an actor → throws, row unchanged, no event written.
+  2. With an actor but a reason shorter than
+     `marketing.suppression.release.min_reason_length` → throws, row unchanged, no event.
+  3. With actor and a sufficient reason → the row shows `released_at`, `released_by`,
+     `release_reason`, **and** exactly one `released` event exists carrying the same
+     actor and the reason in its payload.
+
+  Then assert the transactional guarantee: make the event insert fail and confirm the
+  release is rolled back — `released_at` stays `NULL`. *Prevents: exactly the outcome
+  Adrian's condition on D3 exists to rule out — a complainant being mailable again with
+  nobody's name, date or stated grounds attached to the decision. A release that cannot
+  be logged must not happen.*
 - **T4 — the gate fails closed.** Force the suppression query to throw; assert the
   campaign aborts and `Mail::assertNothingSent()`. *Prevents: a DB hiccup silently
   turning into "send to everyone, including the suppressed".*
@@ -867,7 +990,26 @@ Resend's two documentation pages disagree (§5.1). The plan sidesteps this by cl
 on `type` only, so no action is needed — but an implementer should not "complete" the
 subType list from either page and start branching on it.
 
-### 11.6 Scaleway TEM — named as the Hub's default transport, not researched here
+### 11.6 Scaleway TEM — still an open decision (D7)
+
+> **D7 is NOT decided.** In the 2026-07-27 round Adrian decided D1–D6 and D8; **D7 was
+> explicitly left open**, and this plan offered no recommendation on it. It must not be
+> quietly filed under "out of scope" — §12 lists Scaleway only to keep it from being built
+> by accident, which is a different statement from "we have decided not to support it".
+>
+> Two questions are open, and the second cannot be answered before the first:
+> 1. Does Scaleway TEM come into the suppression layer at all?
+> 2. If yes: via the blocklist REST API (pull, WP8-shaped) or the beta webhook (push)?
+>
+> Why this matters concretely: **the Hub sends FamilyStack mail through Scaleway** (per
+> `STATE/projects/project-marketing-hub.md` and the verified sender
+> `hallo@familystack.de`). Until D7 is decided and built, the suppression layer does not
+> cover that traffic — bounces and complaints from FamilyStack sends land nowhere. That is
+> a gap in coverage, not an absence of scope, and it should be visible when the P4 send
+> handover (D8) is planned.
+>
+> Prerequisite for deciding: the research named at the end of this section. Nothing below
+> is a substitute for it.
 
 `STATE/projects/project-marketing-hub.md` states "Scaleway TEM als Default-Transport je
 Brand". The original brief for this plan named only Brevo and Resend, so **no Scaleway
@@ -889,7 +1031,23 @@ slotting into the same `EspEventProcessor::normalize()` match, plus a
 `marketing:suppression-import --provider=scaleway` path — but do not build it from
 assumption. Scope it as its own work package once researched.
 
-### 11.7 Addon version skew between the Hub and adriangoldner.com
+### 11.7 Addon version skew between the Hub and adriangoldner.com (D6 — decided)
+
+> **D6 decided (2026-07-27): no blind tagging. Separate major line or a pin.**
+>
+> **This is the single highest-damage item in this plan, so it is stated plainly:**
+> adriangoldner.com runs addon versions **without** `statamic-brand-context`. Cutting a
+> tag inside `^1.0` that carries the suppression layer would mean the next
+> `composer update` on that live site pulls in `brand_id` and runs
+> `2026_07_24_100001_add_brand_id_to_marketing_tables` **unannounced, on production data,
+> as a side effect of an unrelated update**. Nobody would have decided to do that, and
+> nobody would see it coming from the changelog.
+>
+> Therefore, binding: **the release must be unreachable from adriangoldner.com's current
+> constraint** — either the site is deliberately upgraded onto the brand-context line
+> first, or the tag goes on a line its `composer.json` cannot resolve (new major, or an
+> explicit pin on the site's side). Verify the constraint from the site's `composer.json`
+> before tagging, not from memory. → work item **A7**.
 
 This is a deployment constraint, not a design question, and it will bite whoever ships
 this.
@@ -932,8 +1090,11 @@ Named so nobody builds them by accident:
   already a deliberate, defaulted-off decision.
 - **A public suppression API.** No consumer identified — though §11.1 flags that the Hub
   may want one. Would need its own auth design.
-- **Scaleway TEM support.** Named as the Hub's default transport but not researched;
-  §11.6. Its own work package once the blocklist-vs-webhook question is answered.
+- **Scaleway TEM support.** Out of scope **of this plan's build**, but note carefully:
+  **D7 is an open decision, not a closed one** (§11.6). It is listed here so nobody builds
+  it from assumption — not because supporting TEM has been ruled out. The Hub sends
+  FamilyStack mail through TEM today, so leaving it unbuilt is a known coverage gap that
+  needs deciding, and it must not disappear into this list.
 - **The central Preference Center** (ecosystem doc §6.3), whose scope list is "global
   suppression / brand opt-out / channel opt-out / topic opt-out / list opt-out". This
   plan builds the first of those five and deliberately leaves the other four alone. The
@@ -946,15 +1107,21 @@ Named so nobody builds them by accident:
 
 ---
 
-## 13. Decision points for Adrian
+## 13. Decision points — D1–D6 and D8 decided, D7 open
 
-| # | Decision | Recommendation |
-| --- | --- | --- |
-| **D1** | Is suppression global across brands, or per brand? | **Confirm the existing P0 position**, extended: deliverability facts (hard bounce, invalid, soft-threshold, provider import) **global**; consent facts (complaint, manual) **brand-scoped**. §4.1. Reversible via config, not migration. |
-| **D2** | Backfill `leadhub_contacts.do_not_contact` into the suppression table? | Yes, once, `source = 'leadhub'`, keep reading both signals. §8. |
-| **D3** | Should a complaint suppression be releasable at all? | No — console-only with a forced written reason. §4.3. |
-| **D4** | Soft-bounce threshold and window. | 5 within 30 days. Conservative; tune once real data exists. §4.2. |
-| **D5** | Does the Brevo endpoint get a web-server-level IP allowlist in addition to the app verifier? | Yes if the deployment makes it easy; the correlation constraint (§5.2) is the real protection either way. |
-| **D6** | How is this released given adriangoldner.com runs pre-brand-context addon versions? | Decide before tagging: upgrade adriangoldner.com to the brand-context line first, or tag so it cannot be pulled in unnoticed. §11.7. |
-| **D7** | Is Scaleway TEM in scope, and via blocklist API or webhook? | Out of scope for this plan — research first, then a separate work package. §11.6. Blocklist-pull looks more reliable than the beta webhook. |
-| **D8** | Must this land before the P4 send handover? | Recommended yes — the backfill is free today and expensive later. §1. |
+Decided by Adrian in session on **2026-07-27**. Record:
+`GoldnerOS:memory/decisions.md`, section "Produktiv-Gang & Suppression". Six of the seven
+follow the recommendation; **D3 does not**.
+
+| # | Decision | Outcome (2026-07-27) | Where it lands |
+| --- | --- | --- | --- |
+| **D1** | Global across brands, or per brand? | **Split, as recommended.** Deliverability facts (hard bounce, invalid, soft-threshold, provider import) **global**; consent facts (complaint, manual) **brand-scoped**. Reversible via config, not migration. | §4, §4.1 |
+| **D2** | Backfill `leadhub_contacts.do_not_contact`? | **Yes**, once, `source = 'leadhub'`, keep reading both signals. As recommended. | §8, WP3 |
+| **D3** | Is a complaint suppression releasable at all? | **Yes — in the CP, with a prominent warning. Against this plan's recommendation** (which was console-only). **Condition: a mandatory audit trail — who, when, on what stated grounds.** The ordinary release path still refuses; a separate, deliberate path exists. | §3.4, §4.3, WP1, WP4, T3/T3b |
+| **D4** | Soft-bounce threshold and window. | **5 within 30 days** as a starting value; tune once real data exists. As recommended. | §4.2 |
+| **D5** | Web-server-level IP allowlist for the Brevo endpoint? | **Yes**, in addition to the app verifier. Brevo sends no HMAC, so the source IP is the only distinguishing characteristic — this is load-bearing, not belt-and-braces. | §5.2, WP2, A6 |
+| **D6** | Release strategy given adriangoldner.com runs pre-brand-context versions? | **No blind tagging** — separate major line or a pin. The site must not be able to resolve this release until it is deliberately upgraded. Highest damage potential in the plan. | §11.7, A7 |
+| **D7** | Is Scaleway TEM in scope, and via blocklist API or webhook? | **OPEN — not decided.** No recommendation was offered and none was made. Research first (§11.6), then decide, then scope. The Hub sends FamilyStack mail through TEM, so this is a live coverage gap, not a closed question. | §11.6, §12 |
+| **D8** | Must this land before the P4 send handover? | **Yes.** WP1–WP3 are prerequisites of the handover. The backfill is free today and expensive later. As recommended. | §1, §8 |
+
+**The one open item is D7.** Everything else is settled and WP1 can start.
