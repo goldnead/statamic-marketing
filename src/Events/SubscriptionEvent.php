@@ -27,6 +27,9 @@ abstract class SubscriptionEvent
             'status' => $this->subscription->status,
             'contact_uuid' => $this->subscription->contact_uuid,
             'source' => $this->subscription->source,
+            'unsubscribe_url' => $this->subscription->token
+                ? route('marketing.unsubscribe', ['token' => $this->subscription->token])
+                : null,
         ], $this->metadata);
     }
 }
