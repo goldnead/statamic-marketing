@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 — 2026-07-27
+
+### Fixed — the e-mail field fix in 1.5.0 did not work
+
+1.5.0 replaced `flex-1` with `flex-1 min-w-56`, which was the right diagnosis and the wrong remedy: Statamic's `Field` brings its own `min-w-0`, and between two utilities of equal specificity the stylesheet order decides — so the column still computed to zero width and the neighbouring field still sat on top of it. Measured in a running control panel rather than reasoned about: 26 px before, 313 px after. The field now carries an explicit width, which is what its two neighbours already did.
+
 ## 1.5.0 — 2026-07-27
 
 ### Fixed — the public routes worked for nobody under multi-brand
