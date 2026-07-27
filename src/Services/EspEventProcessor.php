@@ -59,6 +59,12 @@ class EspEventProcessor
     }
 
     /**
+     * `hard` decides whether a bounce suppresses the address permanently, so
+     * unknown severity is always SOFT — the safe default. Only a bounce the
+     * provider explicitly reports as hard may kill a subscriber; a transient
+     * failure (full mailbox, momentarily unreachable server) or an unmapped
+     * provider field must not.
+     *
      * @return array{type:?string, email:?string, message_uuid:?string, hard:bool, meta:array}
      */
     public function normalize(array $payload, ?string $provider = null): array
@@ -70,7 +76,8 @@ class EspEventProcessor
                 'type' => $payload['type'] ?? $payload['event'] ?? null,
                 'email' => $payload['email'] ?? $payload['recipient'] ?? null,
                 'message_uuid' => $payload['message_uuid'] ?? null,
-                'hard' => (bool) ($payload['hard'] ?? true),
+                // Absent `hard` = severity unknown = soft.
+                'hard' => (bool) ($payload['hard'] ?? false),
                 'meta' => $payload,
             ],
         };
@@ -92,7 +99,9 @@ class EspEventProcessor
             'type' => $type,
             'email' => $data['recipient'] ?? null,
             'message_uuid' => $data['user-variables']['marketing_message'] ?? null,
-            'hard' => ($data['severity'] ?? 'permanent') === 'permanent',
+            // Mailgun reports `severity: permanent|temporary`; anything else,
+            // including a missing field, is unknown severity — treat as soft.
+            'hard' => ($data['severity'] ?? null) === 'permanent',
             'meta' => ['provider' => 'mailgun', 'reason' => $data['reason'] ?? null],
         ];
     }
@@ -112,7 +121,9 @@ class EspEventProcessor
             'type' => $type,
             'email' => $payload['Email'] ?? $payload['Recipient'] ?? null,
             'message_uuid' => $payload['Metadata']['marketing_message'] ?? null,
-            'hard' => ($payload['Type'] ?? 'HardBounce') === 'HardBounce',
+            // Only Postmark's explicit HardBounce is permanent; a missing or
+            // unrecognized `Type` is unknown severity — treat as soft.
+            'hard' => ($payload['Type'] ?? null) === 'HardBounce',
             'meta' => ['provider' => 'postmark', 'description' => $payload['Description'] ?? null],
         ];
     }

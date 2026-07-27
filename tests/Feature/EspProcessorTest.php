@@ -93,6 +93,59 @@ it('processes esp unsubscribe events', function (): void {
     expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
 });
 
+/**
+ * Unknown bounce severity must be treated as SOFT.
+ *
+ * Every normalizer branch used to default to hard, so a bounce payload that
+ * carries no severity at all — a transient failure, an unmapped provider field —
+ * was read as permanent: subscription set to `bounced` AND the LeadHub contact
+ * opted out. That silently and irreversibly removed valid subscribers. Only an
+ * explicitly hard-reported bounce may suppress permanently.
+ */
+function expectStillSubscribed(): void
+{
+    expect(test()->subscription->fresh()->status)->toBe(Subscription::STATUS_SUBSCRIBED);
+
+    $contact = LeadHub::findByEmail('jane@example.com');
+
+    expect((bool) \Goldnead\Leadhub\Models\Contact::query()->where('uuid', $contact['uuid'])->first()->do_not_contact)
+        ->toBeFalse();
+}
+
+it('treats a bounce without a severity flag as soft', function (): void {
+    app(EspEventProcessor::class)->process([
+        'type' => 'bounce',
+        'email' => 'jane@example.com',
+        'message_uuid' => $this->message->uuid,
+        // no `hard` key at all — severity unknown.
+    ]);
+
+    expectStillSubscribed();
+});
+
+it('treats a mailgun failure without a severity as soft', function (): void {
+    app(EspEventProcessor::class)->process([
+        'event-data' => [
+            'event' => 'failed',
+            'recipient' => 'jane@example.com',
+            'reason' => 'mailbox full',
+            // no `severity` key.
+        ],
+    ], 'mailgun');
+
+    expectStillSubscribed();
+});
+
+it('treats a postmark bounce without a type as soft', function (): void {
+    app(EspEventProcessor::class)->process([
+        'RecordType' => 'Bounce',
+        'Email' => 'jane@example.com',
+        // no `Type` key.
+    ], 'postmark');
+
+    expectStillSubscribed();
+});
+
 it('ignores events without a recipient', function (): void {
     $result = app(EspEventProcessor::class)->process(['type' => 'bounce']);
 
