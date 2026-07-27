@@ -94,6 +94,17 @@ class CampaignController extends Controller
             return back()->withErrors(['handle' => __('marketing::campaigns.flashes.handle_taken')]);
         }
 
+        // A deleted campaign leaves its delivery rows behind — they are the
+        // record of what was actually sent to whom, so they must survive. But a
+        // message is identified by campaign handle plus subscriber, which means
+        // a new campaign reusing the handle inherits them: the send skips every
+        // recipient it already "has", finishes instantly and reports success,
+        // and not one mail goes out. Refusing the handle is the only version of
+        // this that neither loses history nor lies about a send.
+        if (Message::query()->where('campaign_handle', $handle)->exists()) {
+            return back()->withErrors(['handle' => __('marketing::campaigns.flashes.handle_has_history')]);
+        }
+
         $campaign = new Campaign(
             handle: $handle,
             name: $data['name'],

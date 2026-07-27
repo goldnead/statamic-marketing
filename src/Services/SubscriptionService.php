@@ -20,8 +20,14 @@ class SubscriptionService
      * address is a no-op, a previously unsubscribed or pending one restarts
      * the (double) opt-in flow.
      *
+     * `skip_confirmation` bypasses double opt-in for additions where consent is
+     * already established elsewhere — an editor adding someone by hand vouches
+     * for it. Without it such an addition was confirmed AND asked to confirm at
+     * the same time: the record went straight to subscribed while the person
+     * received "please confirm your subscription" for something already done.
+     *
      * @param  array{first_name?:string,last_name?:string}  $attributes
-     * @param  array{source?:string,meta?:array}  $options
+     * @param  array{source?:string,meta?:array,skip_confirmation?:bool}  $options
      */
     public function subscribe(MailingList $list, string $email, array $attributes = [], array $options = []): Subscription
     {
@@ -52,7 +58,7 @@ class SubscriptionService
         ]);
         $subscription->save();
 
-        if ($list->usesDoubleOptIn()) {
+        if ($list->usesDoubleOptIn() && ! ($options['skip_confirmation'] ?? false)) {
             $this->sendConfirmationMail($list, $subscription);
             event(new SubscriptionPending($subscription));
 

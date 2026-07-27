@@ -146,8 +146,11 @@ function destroy() {
         <!-- Add subscriber -->
         <Panel v-if="canManageSubscribers" :heading="__('marketing::subscribers.add')" class="mb-4">
             <div class="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-end">
-                <Field :label="__('Email')" class="flex-1">
-                    <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
+                <!-- `flex-1` alone gives this a flex-basis of 0, and the field
+                     then collapses to a sliver its neighbour overlaps. A
+                     minimum width is what keeps it usable with a mouse. -->
+                <Field :label="__('Email')" class="w-full sm:flex-1 sm:min-w-56">
+                    <Input v-model="newEmail" type="email" placeholder="jane@example.com" class="w-full" />
                 </Field>
                 <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44">
                     <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />

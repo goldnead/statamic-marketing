@@ -26,6 +26,7 @@ return [
         'updated' => 'Campaign updated.',
         'deleted' => 'Campaign deleted.',
         'handle_taken' => 'A campaign with this handle already exists.',
+        'handle_has_history' => 'This handle was used by a campaign that has already been delivered. Its delivery history is kept, so reusing the handle would silently skip every recipient. Choose a different one.',
         'not_editable' => 'This campaign is already sending or sent and can no longer be edited.',
         'sending' => 'Campaign queued for delivery.',
         'scheduled' => 'Campaign scheduled.',

@@ -33,10 +33,13 @@ class SubscriberController extends Controller
             $list,
             $data['email'],
             ['first_name' => $data['first_name'] ?? null, 'last_name' => $data['last_name'] ?? null],
-            ['source' => 'cp'],
+            // The editor vouches for consent, so no confirmation is requested.
+            // This has to be decided before the subscription is written, not
+            // after: confirming afterwards still left the mail on its way, and
+            // the person was asked to confirm something already confirmed.
+            ['source' => 'cp', 'skip_confirmation' => true],
         );
 
-        // CP additions bypass double opt-in — the editor vouches for consent.
         if ($subscription->isPending()) {
             $this->subscriptions->markSubscribed($subscription);
         }
