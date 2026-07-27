@@ -105,13 +105,24 @@ function payload() {
     };
 }
 
+// Validation failures used to be invisible here: the request came back with
+// errors, nothing was saved, and the screen looked exactly as before — so a
+// rejected campaign handle read as a dead Save button.
+const formErrors = ref({});
+
 function save() {
     if (! name.value.trim()) return;
 
+    const options = {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors; },
+        onSuccess: () => { formErrors.value = {}; },
+    };
+
     if (isCreating.value) {
-        router.post(props.storeUrl, payload(), { preserveScroll: true });
+        router.post(props.storeUrl, payload(), options);
     } else {
-        router.patch(props.updateUrl, payload(), { preserveScroll: true });
+        router.patch(props.updateUrl, payload(), options);
     }
 }
 
@@ -180,7 +191,13 @@ function destroy() {
             </div>
         </Panel>
 
-        <template v-else>
+        <Panel v-if="Object.keys(formErrors).length" class="mb-4">
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, field) in formErrors" :key="field">{{ message }}</p>
+            </div>
+        </Panel>
+
+        <template v-if="isEditable">
             <div class="grid gap-6 lg:grid-cols-3">
                 <!-- Main column -->
                 <div class="lg:col-span-2 space-y-4">

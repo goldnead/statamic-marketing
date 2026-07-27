@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.2 — 2026-07-27
+
+### Fixed — validation errors were invisible in the campaign form
+
+Found while photographing the 1.5.0 fix: the rejected handle worked exactly as intended, and the screen showed nothing at all. The request came back with errors, nothing was saved, and Save simply looked dead. A guard nobody can see is barely better than the silent wrong send it replaced, so the form now renders what came back.
+
+The same gap exists elsewhere in this control panel — no page in it rendered validation errors — but only the campaign form is fixed here, because that is the one this release's guard runs in.
+
 ## 1.5.1 — 2026-07-27
 
 ### Fixed — the e-mail field fix in 1.5.0 did not work
