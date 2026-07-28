@@ -11,5 +11,6 @@ return [
         'updated' => 'Template updated.',
         'deleted' => 'Template deleted.',
         'handle_taken' => 'A template with this handle already exists.',
+        'handle_taken_by_brand' => 'This handle already belongs to the brand ":brand". Handles are unique across brands.',
     ],
 ];

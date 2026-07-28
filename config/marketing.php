@@ -14,6 +14,17 @@ return [
     |
     | Supported drivers: "flat", "eloquent".
     |
+    | Multi-brand and the flat driver: every brand owns a directory under the
+    | flat path, with the type directories inside it —
+    | content/marketing/{brand}/lists/newsletter.yaml. Single-brand installs
+    | keep the plain content/marketing/lists/… layout and need to change
+    | nothing. Files still in that layout are read as the default brand's until
+    | `php artisan marketing:migrate-flat-brands` moves them.
+    |
+    | List handles are unique across ALL brands in both drivers: the public
+    | subscribe endpoint derives the brand from the list handle the form names,
+    | which only works while a handle has exactly one owner.
+    |
     */
 
     'storage' => [

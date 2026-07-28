@@ -129,9 +129,9 @@ it('touches only the brand its own token belongs to — the security boundary', 
 });
 
 it('subscribes through the public form, which names its list', function (): void {
-    // Flat-file storage keeps lists in YAML, where nothing carries a brand, so
-    // there is no brand to derive from a list handle at all. Multi-brand needs
-    // the eloquent driver — which is exactly what a multi-brand install runs.
+    // The eloquent side of the derivation. Its flat counterpart lives in
+    // FlatPublicSubscribeBrandTest: since 1.6 a YAML list carries its brand in
+    // its path, so both drivers answer "which brand owns this handle".
     config()->set('marketing.storage.driver', 'eloquent');
 
     BrandContext::runFor($this->brandB, fn () => MailingListRecord::create([

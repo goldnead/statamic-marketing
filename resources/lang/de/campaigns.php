@@ -26,6 +26,7 @@ return [
         'updated' => 'Kampagne aktualisiert.',
         'deleted' => 'Kampagne gelöscht.',
         'handle_taken' => 'Eine Kampagne mit diesem Handle existiert bereits.',
+        'handle_taken_by_brand' => 'Dieses Handle gehört bereits zur Marke „:brand". Handles sind markenübergreifend eindeutig.',
         'handle_has_history' => 'Unter diesem Handle wurde bereits versendet. Die Versandhistorie bleibt erhalten, deshalb würde eine neue Kampagne mit demselben Handle jeden Empfänger stillschweigend überspringen. Bitte einen anderen wählen.',
         'not_editable' => 'Diese Kampagne wird bereits versendet oder wurde versendet und kann nicht mehr bearbeitet werden.',
         'sending' => 'Kampagne wird versendet.',

@@ -14,5 +14,6 @@ return [
         'updated' => 'Liste aktualisiert.',
         'deleted' => 'Liste gelöscht.',
         'handle_taken' => 'Eine Liste mit diesem Handle existiert bereits.',
+        'handle_taken_by_brand' => 'Dieses Handle gehört bereits zur Marke „:brand". Handles sind markenübergreifend eindeutig, weil das öffentliche Anmeldeformular die Marke aus dem Listen-Handle ableitet.',
     ],
 ];

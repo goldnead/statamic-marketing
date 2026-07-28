@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\EmailTemplate;
+use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Statamic\CP\Column;
@@ -61,6 +62,12 @@ class TemplateController extends Controller
 
         if ($this->templates->find($handle)) {
             return back()->withErrors(['handle' => __('marketing::templates.flashes.handle_taken')]);
+        }
+
+        if ($brand = $this->handleOwnedElsewhere(HandleOwnership::TEMPLATES, $handle)) {
+            return back()->withErrors([
+                'handle' => __('marketing::templates.flashes.handle_taken_by_brand', ['brand' => $brand]),
+            ]);
         }
 
         $this->templates->save(new EmailTemplate(

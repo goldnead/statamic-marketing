@@ -5,7 +5,7 @@ use Goldnead\Marketing\Http\Controllers\ConfirmController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
-use Goldnead\Marketing\Models\MailingListRecord;
+use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Support\Facades\Route;
@@ -15,17 +15,22 @@ use Illuminate\Support\Facades\Route;
  * client, by a stranger's browser, by a provider's unsubscribe robot. Under
  * multi-brand that means no brand is current, the fail-closed scope hides the
  * very record the link points at, and the link 404s. The brand is therefore
- * derived from the value the visitor already carries. Each of these columns
- * holds a database-level unique index across all brands, which is exactly what
- * makes that derivation safe rather than a hole; see SetBrandFromRouteValue.
+ * derived from the value the visitor already carries. Each of these values
+ * addresses exactly one record across all brands, which is exactly what makes
+ * that derivation safe rather than a hole; see SetBrandFromRouteValue.
  */
 $brandFrom = fn (string $model, string $column, string $parameter) => SetBrandFromRouteValue::class.":{$model},{$column},{$parameter}";
 
 Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function () use ($brandFrom) {
     // The form names its list, and a list handle belongs to exactly one brand.
+    // Lists are the one definition entity a public request addresses, and
+    // definitions are not always database rows — under the flat driver a list
+    // is a file. So this one derivation goes through the addon's own
+    // middleware, which answers for both storage drivers with the same
+    // guarantees (one owner, throw on two, silence on none).
     Route::post('/subscribe', [SubscribeController::class, 'store'])
         ->name('marketing.subscribe')
-        ->middleware($brandFrom(MailingListRecord::class, 'handle', 'list'));
+        ->middleware(SetBrandFromListHandle::class.':list');
 
     Route::get('/confirm/{token}', ConfirmController::class)
         ->name('marketing.confirm')

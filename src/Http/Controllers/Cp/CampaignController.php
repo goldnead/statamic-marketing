@@ -11,6 +11,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
+use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use InvalidArgumentException;
@@ -92,6 +93,12 @@ class CampaignController extends Controller
 
         if ($this->campaigns->find($handle)) {
             return back()->withErrors(['handle' => __('marketing::campaigns.flashes.handle_taken')]);
+        }
+
+        if ($brand = $this->handleOwnedElsewhere(HandleOwnership::CAMPAIGNS, $handle)) {
+            return back()->withErrors([
+                'handle' => __('marketing::campaigns.flashes.handle_taken_by_brand', ['brand' => $brand]),
+            ]);
         }
 
         // A deleted campaign leaves its delivery rows behind — they are the

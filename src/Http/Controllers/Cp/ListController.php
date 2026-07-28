@@ -6,6 +6,7 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignStats;
+use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Statamic\CP\Column;
@@ -79,6 +80,12 @@ class ListController extends Controller
 
         if ($this->lists->find($handle)) {
             return back()->withErrors(['handle' => __('marketing::lists.flashes.handle_taken')]);
+        }
+
+        if ($brand = $this->handleOwnedElsewhere(HandleOwnership::LISTS, $handle)) {
+            return back()->withErrors([
+                'handle' => __('marketing::lists.flashes.handle_taken_by_brand', ['brand' => $brand]),
+            ]);
         }
 
         $this->lists->save(new MailingList(

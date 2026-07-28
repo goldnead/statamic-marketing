@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing;
 
+use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
@@ -46,6 +47,7 @@ class ServiceProvider extends AddonServiceProvider
 
     protected $commands = [
         SendScheduledCampaignsCommand::class,
+        MigrateFlatBrandsCommand::class,
     ];
 
     public function register(): void

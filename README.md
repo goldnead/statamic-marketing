@@ -81,6 +81,37 @@ Or POST to `{{ marketing:subscribe_url }}` yourself (`email`, `list`, optional
 `first_name`, `last_name`, `_redirect`). JSON clients receive
 `{ "ok": true, "data": { "status": "pending|subscribed" } }`.
 
+## Multi-brand
+
+Optional, off by default. With `goldnead/statamic-brand-context` in multi-brand
+mode both storage drivers isolate lists, campaigns and templates per brand —
+the eloquent driver by `brand_id`, the flat driver by directory:
+
+```
+content/marketing/
+  acme/lists/newsletter.yaml
+  contoso/lists/updates.yaml
+```
+
+**Single-brand installs need to do nothing.** They keep the plain
+`content/marketing/lists/…` layout, and files still in it are read as the
+default brand's even after multi-brand is switched on. Once a second brand
+exists, move them into the default brand's directory:
+
+```bash
+php artisan marketing:migrate-flat-brands --dry-run   # show the moves
+php artisan marketing:migrate-flat-brands             # do them
+```
+
+It only ever moves; it never overwrites, never deletes, and a second run is a
+no-op. `--brand=` picks a different target brand.
+
+**List handles are unique across all brands** in both drivers. The public
+subscribe endpoint derives the brand from the list handle the form names — no
+brand in the URL, no session, nothing for a visitor to get wrong — and that
+only holds while a handle has exactly one owner. Creating a duplicate is
+refused with a message naming the brand that holds it.
+
 ## Configuration highlights (`config/marketing.php`)
 
 | Key | Default | Purpose |

@@ -11,5 +11,6 @@ return [
         'updated' => 'Vorlage aktualisiert.',
         'deleted' => 'Vorlage gelöscht.',
         'handle_taken' => 'Eine Vorlage mit diesem Handle existiert bereits.',
+        'handle_taken_by_brand' => 'Dieses Handle gehört bereits zur Marke „:brand". Handles sind markenübergreifend eindeutig.',
     ],
 ];

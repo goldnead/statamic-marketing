@@ -1,5 +1,117 @@
 # Changelog
 
+## 1.6.0 — 2026-07-28
+
+### Added — the flat driver works under multi-brand
+
+The plan was to remove this driver. Multi-brand was said to require eloquent
+storage, because a YAML file carries no brand, so the flat driver looked like a
+dead end that only kept people from the driver that works. Two findings turned
+that around.
+
+The first: **adriangoldner.com runs five real mailing lists on it.**
+`content/marketing/lists/{newsletter,chorleitung,saenger,events,offers}.yaml`,
+`MARKETING_DRIVER` unset, so the default. A removal would have stranded every
+one of them, and there was nothing wrong with them.
+
+The second is the one that made the work small. **The flat driver only ever
+held definitions** — lists, campaigns, templates. `Subscription`, `Message` and
+`MessageEvent` are Eloquent models with `HasBrand` in every driver, always were.
+The consent data, the part that must never bleed across brands, was never in
+those files. What was missing was not isolation of anything sensitive; it was
+the definitions saying which brand they belong to.
+
+**A brand is a directory, not a key in the file.** Under multi-brand:
+
+```
+content/marketing/acme/lists/newsletter.yaml
+content/marketing/contoso/lists/updates.yaml
+```
+
+A `brand:` key inside the file was the alternative and was rejected. The handle
+is the filename here, so a key would give every definition two identities that
+can disagree, and reading one brand's lists would mean opening every other
+brand's files to find out they are not yours. Worse, a missing or misspelt key
+falls through to the default brand — a leak that looks like a typo. With a
+directory the isolation is structural: a brand's read never opens another
+brand's file, and being in the wrong place is visible in `ls` and in a diff.
+
+**Nothing has to move for an install to keep working.** Files in the pre-1.6
+layout are read as the default brand's — and as no other brand's, ever. A
+single-brand install keeps writing there too, so its content directory looks
+exactly as it did in 1.5. `php artisan marketing:migrate-flat-brands` moves
+them into the brand directory once a second brand exists; `--dry-run` prints
+the moves and touches nothing, `--brand=` picks the target. It only moves,
+never overwrites and never deletes, refuses on conflict, and a second run finds
+nothing to do. An update that opens to empty lists and a command that repairs
+it afterwards was not an acceptable shape for this.
+
+### Fixed — the public subscribe endpoint had no brand to find, in either driver
+
+Every other public route derives its brand from a token: one token, one record,
+one brand. A subscribe form carries no token. It carries a list handle, and
+until now that was traced back to a brand through `MailingListRecord` — an
+Eloquent model that does not exist in flat storage. On a flat multi-brand
+install the endpoint therefore ran with no brand at all, the store failed
+closed, and the list the form named did not exist. Every public sign-up, 404.
+
+The lookup now goes through `HandleOwnership`, which answers for both drivers
+— a query in one, a path in the other — and keeps the guarantees brand-context
+established unchanged: two owners throw rather than being guessed between, no
+owner sets no brand and leaves the response exactly as it was, and the brand is
+always set explicitly so a long-lived worker cannot serve one visitor under the
+previous visitor's brand.
+
+### Fixed — list handles were unique per brand, which is the one thing they must not be
+
+This is what the middleware rests on, and it was not true. The brand-scoping
+migration turned `marketing_lists.handle` into a `(brand_id, handle)` unique —
+correct for campaigns and templates, wrong for lists, because brand-context
+states the precondition plainly: a column that is unique only *per brand* must
+never be used to derive a brand from. Two brands could each own a list called
+`newsletter`, and the next sign-up for that handle would raise
+`AmbiguousBrandRecord` — the form dead in both brands at once, and no way to
+tell from the outside which brand the visitor meant.
+
+The across-all-brands unique is restored, and both drivers now enforce it
+rather than assume it: the flat store refuses the write, and the control panel
+asks first, so an editor gets a message at the handle field naming the brand
+that holds it instead of a 500. An install that already has the same list
+handle in two brands stops the migration with both names — that state already
+breaks sign-ups and cannot be resolved by picking a winner.
+
+### Fixed — `marketing:send-scheduled` sent nothing at all under multi-brand
+
+A console run has no session, so no brand is current, and both drivers then
+answer with nothing. The command printed "No campaigns due." every minute
+forever while every scheduled campaign quietly missed its date — the silent
+failure `RunsForEachBrand` (brand-context 1.3.0) exists for, still unfixed
+here. It now walks every brand, with `--brand=` to restrict a run. Single-brand
+installs run the body once, exactly as before.
+
+### Why 1.6 and not 2.0
+
+A major would have been right if this forced existing installs to act. It does
+not. A single-brand flat install updates and keeps its layout, its paths and
+its behaviour unchanged — the store writes to `content/marketing/lists/…` as
+long as multi-brand is off, and the new command is only needed once a second
+brand exists. adriangoldner.com pins `^1.0` and would not have received a 2.0;
+receiving this is the point, because it is the install that stays on the
+pre-1.6 layout and must keep working.
+
+### Notes
+
+- Suite green on both drivers: flat **136 passed + 7 skipped**, eloquent
+  **135 passed + 8 skipped** (baseline 104 / 7). Every part was verified to
+  fail without its implementation, by removing it and re-running.
+- Cross-brand coverage is the bulk of it: two brands with their own lists,
+  campaigns and templates seeing nothing of each other; a public sign-up
+  landing in the brand that owns the list and not in the default one; an
+  unknown handle setting no brand and not inheriting the previous request's;
+  the pre-1.6 files readable by the default brand and invisible to every other;
+  the migration losing nothing, refusing rather than overwriting, and being a
+  no-op the second time.
+
 ## 1.5.3 — 2026-07-28
 
 ### Fixed — the rest of the control panel still swallowed every rejection
