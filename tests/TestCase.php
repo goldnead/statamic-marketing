@@ -138,5 +138,50 @@ abstract class TestCase extends OrchestraTestCase
             ->group(__DIR__.'/../routes/cp.php');
 
         $router->middleware('web')->group(__DIR__.'/../routes/web.php');
+        $this->mountStandInSiblingRoutes($router);
     }
+
+    /**
+     * Stand-ins for the routes of a sibling addon installed next to this one.
+     *
+     * They belong to the bed rather than to the test that reads them because a
+     * sibling registers its routes the same way this addon does: at boot, and
+     * therefore ahead of Statamic's `{segments?}` frontend catch-all. A route
+     * added later — from inside a test body — is shadowed by that catch-all and
+     * answers 404 no matter what the bindings do, which would make the check
+     * pass for the wrong reason.
+     *
+     * Each one does nothing but echo its own parameter. If this addon ever
+     * binds a name they use, the echo stops happening: the binder resolves the
+     * value against a repository here first, finds nothing, and aborts 404 —
+     * precisely what LeadHub's delete button did.
+     *
+     * @see \Goldnead\\Marketing\\Tests\Feature\RouteParameterCollisionTest
+     */
+    protected function mountStandInSiblingRoutes($router): void
+    {
+        $router->middleware(\Illuminate\Routing\Middleware\SubstituteBindings::class)
+            ->group(function ($router) {
+                foreach (static::NAMES_A_SIBLING_MIGHT_USE as $name) {
+                    $router->get(
+                        'sibling-probe/'.$name.'/{'.$name.'}',
+                        fn ($value) => (string) $value
+                    );
+                }
+            });
+    }
+
+    /**
+     * Generic names a sibling addon could plausibly put in one of its own
+     * routes. None of them is bound by anything in this application today —
+     * `rule` and `template` were claimed by statamic-webhook-manager until its
+     * 1.7.0 and `automation` by statamic-automations until its 1.6.0. They are
+     * here because a sibling reaching for one is what the rule prevents.
+     *
+     * @var list<string>
+     */
+    public const NAMES_A_SIBLING_MIGHT_USE = [
+        'automation', 'rule', 'template', 'webhook', 'endpoint', 'handle', 'id', 'slug', 'record',
+    ];
+
 }
