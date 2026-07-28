@@ -15,6 +15,17 @@
             <directory suffix="Test.php">./tests/Feature</directory>
         </testsuite>
         <!--
+            The migration path itself, against tables that already hold rows.
+            Every other suite meets a database RefreshDatabase has migrated to
+            head; these install an earlier release, put data in and migrate
+            forward. Present in both configurations on purpose — the failure
+            that prompted them aborts with `duplicate column` on SQLite and
+            ERROR 1072 on MySQL, and neither engine rolls the half state back.
+        -->
+        <testsuite name="Migrations">
+            <directory suffix="Test.php">./tests/Migrations</directory>
+        </testsuite>
+        <!--
             Live integration with the optional sibling addons
             (statamic-automations, statamic-webhook-manager). These tests skip
             themselves when the addons are not installed, so they are a no-op

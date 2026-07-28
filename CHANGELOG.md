@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.6.4 — 2026-07-28
+
+### Fixed — updating from before 1.3.0 dropped the consent unique and did not replace it
+
+**Affected: installs created under 1.2.1 or earlier that updated to 1.6.1, 1.6.2 or 1.6.3. Nothing else.** An install that had already run `2026_07_24_100001` — anything on 1.3.0 or later — is untouched by this, because a migration that is recorded as run never runs again.
+
+**How to tell whether it happened to you.** Update to 1.6.4 and run:
+
+```
+php artisan marketing:consent-integrity
+```
+
+It reads the indexes that are on `marketing_subscriptions` right now and the rows that are in it, and says plainly whether one address on one list is still one consent record. It changes nothing.
+
+Three other fingerprints, in case the update is still in front of you rather than behind you:
+
+- `php artisan migrate` stopped with `SQLSTATE[42000] … 1072 Key column 'uniqueness_key' doesn't exist in table` (MySQL) or `SQLSTATE[23000] … UNIQUE constraint failed: index 'ms_brand_list_email_unique'` (SQLite);
+- running it a second time stopped with something else entirely — `1060 Duplicate column name 'brand_id'`, or `duplicate column name: brand_id` — which is the interrupted first step complaining, not the actual problem, and is the message most likely to send you looking in the wrong place;
+- `select * from migrations where migration like '%add_brand_id_to_marketing%'` returns nothing, while `marketing_subscriptions` already has a `brand_id` column.
+
+**What was wrong.** 1.6.1 added `uniqueness_key` to the create-table migration for `marketing_subscriptions` and, in the same commit, rewrote the already-published `2026_07_24_100001` to build the consent unique over that column. On a fresh install the column is there, because the create-table migration now makes it. On an install created before 1.3.0 the table predates the column, the create-table migration is recorded as run and never runs again, and `2026_07_28_000002` — the migration that adds the column to existing installs — sorts *after* the one that had already started using it.
+
+**What that cost.** Not the abort. The state it left behind. Neither engine rolls DDL back, and the statement that failed came *after* the one that dropped `(list_handle, email_normalized)`. So the update ended with `marketing_subscriptions` carrying no consent unique of any kind, and with the migration not recorded, so nothing in the install knew. The sign-up form kept working; it stopped refusing duplicates. The most expensive promise this addon makes — one address, one list, one consent record — was open, silently, until somebody happened to look.
+
+The two engines got there differently and it is worth writing down. MySQL refuses outright with ERROR 1072. SQLite reads a double-quoted identifier that resolves to no column as a *string literal*, so `create unique index … ("brand_id", "uniqueness_key")` quietly became a unique over `brand_id` and a constant — unique on the brand alone. On an empty table that is accepted and then corrected seconds later by `2026_07_28_000002` in the same `migrate` run, which is exactly why it was never seen here: the development hub and every test install are empty. On a table with rows the second row collides and the statement dies.
+
+**What changed.** `2026_07_24_100001` now decides which consent unique to build from the schema it actually finds. Where `uniqueness_key` exists it builds the hash index as before. Where it does not, it builds the brand-scoped natural tuple `(brand_id, list_handle, email_normalized)` — which is not a new invention but precisely the index 1.3.0 through 1.6.0 shipped, fits InnoDB at 2048 of 3072 bytes, and is converted to the hash form by `2026_07_28_000002` moments later in the same run.
+
+Correcting the order alone would have fixed the next install and left every install that already broke exactly as broken, so the whole migration is now re-runnable: it adds `brand_id` only where it is missing, drops only indexes that are actually present, does nothing at all where the wanted index is already in place, and stops with the offending values named rather than a bare integrity error where the rows cannot carry the index. Re-running it on a half-migrated install finishes the update and puts the consent unique back.
+
+**If duplicates were created in the meantime.** They are real sign-ups that a form accepted while the constraint was missing, so nothing here deletes them. `php artisan migrate` refuses and names the list/address pairs it found; `marketing:consent-integrity` prints every colliding row with its id, status, confirmation date and source. Which of them is *the* consent record — the one whose confirmation timestamp the install will stand behind if anybody asks — is a question about people, not about rows. Delete the others by hand, then migrate again. `marketing:consent-integrity --repair` rebuilds the index alone once nothing is in the way, and refuses while anything is.
+
+### Added — the migrations are finally tested against a database with data in it
+
+This is the actual finding. Not the wrong order — the fact that no migration path in this addon was ever run over anything but empty tables, so a defect that only exists when rows are present had nowhere to be caught. Three releases went out green.
+
+`tests/Migrations/` is a suite of its own, on a connection of its own, and it is in both `phpunit.xml` and `phpunit.mysql.xml`, because the failure behaves differently on each engine and one run cannot speak for the other.
+
+It does not name the two migrations that were broken. It walks `database/migrations/` and runs the files one at a time, seeding every marketing table that exists before each one — so every migration in the addon meets rows written by an older schema, including migrations added long after this was written. `tests/Fixtures/released-migrations/` holds the migration sets as published in 1.2.1, 1.6.0 and 1.6.3, and the suite installs each of them, puts data in and upgrades forward: twelve sign-ups across five lists, two addresses on two lists each, one differing from another only by case, and every lifecycle state the double opt-in flow can leave behind.
+
+The half-migrated install is not described from memory, it is produced: the suite runs the 1.6.3 migrations exactly as published, watches them die, confirms the consent unique is gone by writing a duplicate that the database accepts, and only then applies the current ones and requires the constraint back.
+
+**Every check is behavioural.** "The migration ran" and "the constraint is there" are not the same statement, and mistaking one for the other is the whole defect. So nothing here asserts that `migrate` exited zero, or that an index of a given name exists. It writes the row the constraint is supposed to refuse and requires the database to refuse it.
+
+Demonstrated rather than asserted: with the 1.6.3 file put back in place, four of the nine cases fail — on SQLite with the unique violation, on MySQL with ERROR 1072 and then the misleading `1060 Duplicate column name 'brand_id'` on the retry. The cases that keep passing are the fresh-install ones, which is exactly the coverage that existed before and exactly why none of this was found.
+
+### Changed — the MySQL key-length probe can read the schema it is measuring
+
+`tests/Unit/IndexKeyLengthTest.php` compiles the migrations through Laravel's MySQL grammar in pretend mode to measure index bytes without a server. Under `pretend()` a `select` returns nothing, so a migration that asks `Schema::hasColumn()` or `Schema::getIndexes()` before deciding what to build was being told the table is empty of everything — which, now that `2026_07_24_100001` branches on exactly those answers, would have had the probe measuring a schema no install ever holds.
+
+It now runs two connections interleaved: the probe compiles the DDL through MySQL's grammar, and a real SQLite database one file behind answers every question the migrations ask about the current schema. Same measurements, on the schema that actually results.
+
 ## 1.6.3 — 2026-07-28
 
 ### Changed — the route parameter guard checks the rule, not a snapshot of the siblings

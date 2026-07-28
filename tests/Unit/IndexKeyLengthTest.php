@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * What MySQL would make of this addon's migrations, measured without MySQL.
@@ -134,6 +135,29 @@ it('keeps list handles unique across all brands', function () {
  * opened, and returns the column definitions and index definitions MySQL would
  * see after the last migration.
  *
+ * Two connections, because a migration that branches on the schema needs both
+ * halves and no single connection can give them:
+ *
+ * - the **probe** compiles the DDL. Its grammar is MySQL's, `pretend()` stops
+ *   every statement before it reaches a driver, and the rendered SQL is what
+ *   gets measured. It has no server and no schema of its own — under
+ *   `pretend()` a `select` returns an empty array, so anything asked of it
+ *   about the current schema comes back as "nothing is there".
+ * - the **state** is a real SQLite database that the same migrations are run
+ *   against for real, one file behind. It is what `Schema::hasColumn()`,
+ *   `Schema::getIndexes()` and `Schema::getColumns()` are answered from.
+ *
+ * That split is not incidental. `2026_07_24_100001` asks whether
+ * `uniqueness_key` exists before deciding which consent unique to build, and
+ * `replaceUnique()` asks which indexes are present before dropping any — a
+ * probe that answers "nothing is there" to both would measure a schema no
+ * install ever has, and would have gone green on the 1.6.1 defect for the same
+ * reason every other test did.
+ *
+ * The two run interleaved, probe first: the DDL for migration N is compiled
+ * against the schema as it stood after N-1, which is exactly what the server
+ * sees.
+ *
  * @return array{columns: array<string, array<string, array{bytes: int, nullable: bool}>>, indexes: list<array{table: string, name: string, unique: bool, columns: list<string>}>}
  */
 function compileMigrationsForMysql(): array
@@ -150,8 +174,20 @@ function compileMigrationsForMysql(): array
         'prefix' => '',
     ]);
 
+    config()->set('database.connections.key_length_state', [
+        'driver' => 'sqlite',
+        'database' => ':memory:',
+        'prefix' => '',
+        'foreign_key_constraints' => false,
+    ]);
+
     $previous = DB::getDefaultConnection();
-    DB::setDefaultConnection('key_length_probe');
+
+    DB::purge('key_length_probe');
+    DB::purge('key_length_state');
+
+    $probe = DB::connection('key_length_probe');
+    $state = DB::connection('key_length_state');
 
     // pretend() renders every logged statement with its bindings substituted,
     // and substituting a *string* binding goes through PDO::quote. The brand
@@ -161,19 +197,53 @@ function compileMigrationsForMysql(): array
     // asked to run anything: pretending() short-circuits every statement
     // before it reaches the driver, and the grammar stays MySQL's, which is
     // the thing being measured.
-    DB::connection('key_length_probe')->setPdo(new PDO('sqlite::memory:'));
+    $probe->setPdo(new PDO('sqlite::memory:'));
+
+    // The brand every existing row is backfilled onto. brand-context creates
+    // this table; the state database only needs enough of it to answer the
+    // lookup.
+    $state->getSchemaBuilder()->create('brands', function ($table) {
+        $table->id();
+        $table->string('handle');
+        $table->boolean('is_default')->default(false);
+    });
+
+    $state->table('brands')->insert(['handle' => 'default', 'is_default' => true]);
+
+    // A connection resolves its schema grammar lazily, inside
+    // getSchemaBuilder(). The oracle is constructed directly, so it has to be
+    // asked for explicitly or every Blueprint the probe compiles gets a null
+    // grammar.
+    $probe->useDefaultSchemaGrammar();
+
+    $oracle = new ProbeSchemaBuilder($probe, $state);
+
+    $queries = [];
 
     try {
-        // pretend() short-circuits every statement before a PDO instance is
-        // needed, so this compiles the DDL without a server anywhere in sight.
-        $queries = DB::connection('key_length_probe')->pretend(function () {
-            foreach (glob(__DIR__.'/../../database/migrations/*.php') as $file) {
-                (require $file)->up();
-            }
-        });
+        foreach (glob(__DIR__.'/../../database/migrations/*.php') as $file) {
+            $migration = require $file;
+
+            // 1. What MySQL would be sent, decided on the schema as it stands.
+            DB::setDefaultConnection('key_length_probe');
+            app()->instance('db.schema', $oracle);
+            Schema::clearResolvedInstance('db.schema');
+
+            $queries = array_merge($queries, $probe->pretend(fn () => $migration->up()));
+
+            // 2. Advance the real schema, so the next file branches on truth.
+            DB::setDefaultConnection('key_length_state');
+            app()->forgetInstance('db.schema');
+            Schema::clearResolvedInstance('db.schema');
+
+            $migration->up();
+        }
     } finally {
         DB::setDefaultConnection($previous);
+        app()->forgetInstance('db.schema');
+        Schema::clearResolvedInstance('db.schema');
         DB::purge('key_length_probe');
+        DB::purge('key_length_state');
     }
 
     $columns = [];
@@ -223,6 +293,54 @@ function compileMigrationsForMysql(): array
     }
 
     return ['columns' => $columns, 'indexes' => array_values($indexes)];
+}
+
+/**
+ * Compiles against MySQL's grammar, answers questions from a real database.
+ *
+ * Everything that writes goes to the probe connection and is measured.
+ * Everything that reads is delegated, because the probe has nothing to read:
+ * it has no schema, and `pretend()` would answer "empty" to every question a
+ * migration asks about the one it is modifying.
+ */
+class ProbeSchemaBuilder extends \Illuminate\Database\Schema\MySqlBuilder
+{
+    public function __construct(
+        \Illuminate\Database\Connection $probe,
+        private \Illuminate\Database\Connection $state,
+    ) {
+        parent::__construct($probe);
+    }
+
+    public function hasTable($table)
+    {
+        return $this->state->getSchemaBuilder()->hasTable($table);
+    }
+
+    public function hasColumn($table, $column)
+    {
+        return $this->state->getSchemaBuilder()->hasColumn($table, $column);
+    }
+
+    public function hasColumns($table, $columns)
+    {
+        return $this->state->getSchemaBuilder()->hasColumns($table, $columns);
+    }
+
+    public function getTables($schema = null)
+    {
+        return $this->state->getSchemaBuilder()->getTables();
+    }
+
+    public function getColumns($table)
+    {
+        return $this->state->getSchemaBuilder()->getColumns($table);
+    }
+
+    public function getIndexes($table)
+    {
+        return $this->state->getSchemaBuilder()->getIndexes($table);
+    }
 }
 
 /** Splits a definition list on commas that are not inside parentheses. */

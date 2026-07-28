@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing;
 
+use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
@@ -48,6 +49,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $commands = [
         SendScheduledCampaignsCommand::class,
         MigrateFlatBrandsCommand::class,
+        ConsentIntegrityCommand::class,
     ];
 
     public function register(): void

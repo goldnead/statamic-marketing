@@ -106,6 +106,29 @@ php artisan marketing:migrate-flat-brands             # do them
 It only ever moves; it never overwrites, never deletes, and a second run is a
 no-op. `--brand=` picks a different target brand.
 
+### Checking the consent guarantee
+
+One address on one list is one consent record, and the database is what
+enforces it. `php artisan migrate` reporting success says the migrations ran;
+it does not say the constraints they were supposed to leave behind are there.
+This asks the second question directly:
+
+```bash
+php artisan marketing:consent-integrity            # report only, changes nothing
+php artisan marketing:consent-integrity --repair   # rebuild the index, if nothing is in the way
+```
+
+It reads the indexes on `marketing_subscriptions` as they are right now and the
+rows in it, names any list/address pair holding more than one subscription with
+each row's id, status and confirmation date, and exits non-zero if the
+guarantee is not in force. It never deletes a subscription: which of two
+sign-ups is *the* consent record is a decision about people, and `--repair`
+refuses to build the index while anything would have to go for it.
+
+Worth running once after any update that touched migrations, and in particular
+on an install that came from 1.2.1 or earlier through 1.6.1–1.6.3 — see the
+1.6.4 entry in `CHANGELOG.md`.
+
 **List handles are unique across all brands** in both drivers. The public
 subscribe endpoint derives the brand from the list handle the form names — no
 brand in the URL, no session, nothing for a visitor to get wrong — and that
