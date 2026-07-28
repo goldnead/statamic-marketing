@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.6.2 — 2026-07-28
+
+### Added — the suite can finally see route bindings
+
+No defect in this addon. What is fixed is that the suite could not have found one, for a whole class of failure.
+
+`Route::bind()` is registered on the router, not on a package. A binding one addon registers for `{rule}` or `{template}` applies to every route with that parameter name in every other addon installed beside it. `goldnead/statamic-leadhub` 1.8.0 shipped `/scoring/{rule}` while `goldnead/statamic-webhook-manager` binds `rule` to its own rule repository, and on the production hub, which has both, editing or deleting a scoring rule resolved against the wrong repository, returned 404, and reported nothing. A button that did nothing and said nothing, through a release.
+
+**Why a green suite would not have found the same thing here.** `tests/TestCase.php` mounted the CP routes without `SubstituteBindings`. That middleware is part of Statamic's real CP middleware group and is the thing that actually applies a route binding — without it, every `Route::bind()` in the process was inert in this bed, including any a sibling addon registers. The failure was not under-tested, it was unobservable: no test written in this suite could have exhibited it. The middleware is now part of the CP route group here. Nothing in this addon uses implicit model binding — every routed controller method takes `string $handle` — so it changes no other behaviour, and the 147 tests that were green before are green after.
+
+Demonstrated rather than asserted: with the middleware taken out again, the first case in the new `tests/Feature/RouteParameterCollisionTest.php` fails and everything else stays green.
+
+### Added — the route parameter names are checked against the rest of the family
+
+`tests/Feature/RouteParameterCollisionTest.php` reads this addon's own parameter names out of `routes/cp.php` and `routes/web.php` and checks them two ways.
+
+The first is exact: a hand-maintained list of the names that packages installed beside this one bind application-wide, read off the running hub — `automation` from statamic-automations, `webhook` / `endpoint` / `rule` / `template` from statamic-webhook-manager, and the ten CMS entity names from statamic/cms. Using one of those is a live defect, and the test names the package that would swallow the route. Renaming `/{handle}/preview` to `/{template}/preview` makes it fail with exactly that sentence.
+
+The second is a judgement call made explicit: `handle` and `token` are generic enough that a sibling could claim either tomorrow, so they are recorded in the test with their reason. A *new* generic parameter fails until somebody either renames it or writes down why it stays.
+
+**What this cannot do.** A collision only exists once two packages are installed together, and no package can see its siblings from inside its own suite. The reserved list is a snapshot maintained by hand; it will not catch an addon that starts binding a name nobody binds today, and `handle` — used here for lists, campaigns and templates alike — is precisely such a name. The hub remains the only place the real answer is measurable. What the test does buy is that the next `{rule}` fails in the addon that introduces it, before it reaches a hub.
+
+This addon's four parameters (`handle`, `subscription`, `token`, `uuid`) collide with nothing bound today.
+
 ## 1.6.1 — 2026-07-28
 
 ### Fixed — the consent unique was two thirds of the way to being unbuildable

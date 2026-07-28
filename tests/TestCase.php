@@ -116,11 +116,25 @@ abstract class TestCase extends OrchestraTestCase
     /**
      * Mount the addon's CP routes under the production `/cp` prefix and
      * `statamic.cp.` name prefix, plus the public web routes.
+     *
+     * SubstituteBindings is not decoration. It is part of Statamic's real CP
+     * middleware group, and it is the middleware that applies any
+     * `Route::bind()` a sibling addon has registered. Route-model bindings are
+     * application-wide, not per package: a binding another addon registers for
+     * `{template}` or `{rule}` applies to every route with that parameter name
+     * in every installed addon, including this one. Without this middleware
+     * here, every such binding was inert in the test bed — so a parameter name
+     * that collides with a sibling's binding passed the whole suite and then
+     * 404'd, silently, on any Hub that has both addons. That is exactly how
+     * goldnead/statamic-leadhub 1.8.0 shipped a delete button that did nothing.
+     *
+     * The web routes already get it via the `web` group.
      */
     protected function defineRoutes($router): void
     {
         $router->name('statamic.cp.')
             ->prefix('cp')
+            ->middleware(\Illuminate\Routing\Middleware\SubstituteBindings::class)
             ->group(__DIR__.'/../routes/cp.php');
 
         $router->middleware('web')->group(__DIR__.'/../routes/web.php');
