@@ -54,6 +54,12 @@ jobs:
         working-directory: statamic-marketing
         run: npm ci
 
+      # The node_modules this job already installed are all Vitest needs, so
+      # the component tests run here rather than in a job of their own.
+      - name: Run the Control Panel component tests
+        working-directory: statamic-marketing
+        run: npm test
+
       - name: Verify committed resources/dist is fresh
         working-directory: statamic-marketing
         run: npm run build:check

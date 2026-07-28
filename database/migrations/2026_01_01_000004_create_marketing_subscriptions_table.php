@@ -14,6 +14,14 @@ return new class extends Migration
             $table->string('list_handle')->index();
             $table->string('email');
             $table->string('email_normalized')->index();
+            // SHA-256 of (list_handle, normalized email); see
+            // Subscription::uniquenessKeyFor(). The consent unique is built on
+            // this fixed-width column instead of on the two wide varchars,
+            // which together cost 2040 of InnoDB's 3072 index bytes under
+            // utf8mb4. NOT NULL on purpose: a unique does not constrain NULL,
+            // so a nullable column here would be an index that enforces
+            // nothing for exactly the rows it exists for.
+            $table->string('uniqueness_key', 64);
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->uuid('contact_uuid')->nullable()->index();

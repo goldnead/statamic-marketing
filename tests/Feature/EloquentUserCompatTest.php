@@ -29,7 +29,10 @@ class EloquentUserCompatTest extends TestCase
         parent::defineEnvironment($app);
 
         $app['config']->set('statamic.users.repository', 'eloquent');
-        $app['config']->set('statamic.users.database', 'sqlite');
+        // The suite's own connection, whatever it is pointed at. Naming the
+        // driver here instead put Statamic's user tables on a second, empty
+        // in-memory database, and made the suite unable to run against MySQL.
+        $app['config']->set('statamic.users.database', 'testing');
         $app['config']->set('auth.providers.users.model', PlainAuthUser::class);
     }
 

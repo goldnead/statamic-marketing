@@ -142,6 +142,62 @@ CI note: `goldnead/statamic-leadhub` is a private sibling repo, so the GitHub
 Actions workflows need a `SIBLING_REPOS_TOKEN` repository secret (a PAT with
 read access to it) to check it out next to this package.
 
+### Against a real MySQL server
+
+```bash
+vendor/bin/pest -c phpunit.mysql.xml
+MARKETING_DRIVER=eloquent vendor/bin/pest -c phpunit.mysql.xml
+```
+
+Same tests, `DB_DRIVER=mysql`; point `DB_HOST` / `DB_PORT` / `DB_DATABASE` /
+`DB_USERNAME` / `DB_PASSWORD` at a throwaway database, which the suite migrates
+from scratch on every test.
+
+SQLite is not a substitute for it. It has no InnoDB key-length limit, stores no
+fixed column widths and has no per-character byte cost, so a green SQLite run
+says nothing about whether MySQL can build this schema at all — the blind spot
+that took `statamic-notifications` down on production. `tests/Unit/IndexKeyLengthTest.php`
+covers that class of defect without needing a server: it compiles the addon's
+own migration files through Laravel's MySQL grammar in pretend mode and measures
+every index the way InnoDB would, including whether a unique covers a column
+that may be NULL and therefore constrains nothing.
+
+### Component tests (Vitest)
+
+```bash
+npm install
+npm test               # or: npx vitest run   /   npx vitest  (watch)
+```
+
+The Control Panel is a Vue SPA, and until 1.6.1 nothing in this package could
+execute a line of it. PHPUnit reaches the controller and the props it hands
+over; `tests/Feature/CpValidationVisibilityTest.php` reads the .vue sources and
+proves the error wiring is present. Neither can say whether a rejected form
+actually shows the message — that sat between them, and a screenshot was the
+only evidence there was.
+
+Vitest closes that gap. It is deliberately narrow:
+
+- **What belongs here:** logic inside a component — computed fallbacks, which
+  operator a stored `false` or `0` has to survive, where an error is rendered,
+  what a component is handed.
+- **What does not:** navigation, saving, permissions end to end, anything
+  crossing into PHP. Those are feature tests.
+
+Setup notes, in case something fails at an import rather than at an assertion:
+
+- Vitest reads the same `vite.config.js`. Under `VITEST` the Statamic Vite
+  plugin is swapped for the plain Vue plugin, because the former rewrites
+  `vue` to `window.Vue` — correct for the CP bundle, fatal in a test process.
+- `@statamic/cms/ui` and `@statamic/cms/inertia` are re-export shims that
+  destructure a `__STATAMIC__` global the CP installs at runtime.
+  `tests/js/setup.js` installs it first and answers every requested name with
+  a stub component that mirrors its attributes into the DOM, so a test can
+  assert what a component was handed without pinning down CP markup that is
+  not ours. It also installs `__` as a real global, because a `<script setup>`
+  block calls the translator directly and Vue Test Utils' `mocks` only reach
+  templates.
+
 ## License
 
 MIT

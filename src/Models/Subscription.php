@@ -38,13 +38,46 @@ class Subscription extends Model
             $subscription->uuid ??= (string) Str::uuid();
             $subscription->token ??= Str::random(48);
             $subscription->email_normalized = EmailNormalizer::normalize((string) $subscription->email);
+            $subscription->uniqueness_key = static::uniquenessKeyFor(
+                (string) $subscription->list_handle,
+                (string) $subscription->email,
+            );
         });
 
         static::updating(function (self $subscription) {
             if ($subscription->isDirty('email')) {
                 $subscription->email_normalized = EmailNormalizer::normalize((string) $subscription->email);
             }
+
+            if ($subscription->isDirty(['email', 'list_handle'])) {
+                $subscription->uniqueness_key = static::uniquenessKeyFor(
+                    (string) $subscription->list_handle,
+                    (string) $subscription->email,
+                );
+            }
         });
+    }
+
+    /**
+     * The consent identity of a subscription: one address, on one list.
+     *
+     * The unique index is built on this rather than on the two columns it is
+     * derived from. `(brand_id, list_handle, email_normalized)` needed 2048 of
+     * InnoDB's 3072 bytes — two `varchar(255)` at four bytes per character
+     * under utf8mb4 — so the index MySQL would have built was two thirds spent
+     * before anything was added to it. A hash is 256 bytes and covers every
+     * character of both values; a prefix index would have fit just as well and
+     * would have declared two lists whose handles share a prefix to be one.
+     *
+     * `brand_id` deliberately stays out of the hash and remains a column of
+     * the index, so the tenant boundary is still legible in the schema.
+     */
+    public static function uniquenessKeyFor(string $listHandle, string $email): string
+    {
+        return hash('sha256', implode("\0", [
+            $listHandle,
+            EmailNormalizer::normalize($email),
+        ]));
     }
 
     public function messages()

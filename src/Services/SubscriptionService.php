@@ -3,7 +3,6 @@
 namespace Goldnead\Marketing\Services;
 
 use Goldnead\Leadhub\Facades\LeadHub;
-use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Events\MarketingSubscribed;
 use Goldnead\Marketing\Events\MarketingUnsubscribed;
@@ -31,9 +30,12 @@ class SubscriptionService
      */
     public function subscribe(MailingList $list, string $email, array $attributes = [], array $options = []): Subscription
     {
+        // Looked up by the same key the unique index is built on, so the check
+        // and the constraint cannot disagree about what "already subscribed"
+        // means. The brand comes from HasBrand's global scope, and stays a
+        // column of the index rather than part of the key.
         $subscription = Subscription::query()
-            ->forList($list->handle)
-            ->where('email_normalized', EmailNormalizer::normalize($email))
+            ->where('uniqueness_key', Subscription::uniquenessKeyFor($list->handle, $email))
             ->first();
 
         if ($subscription?->isSubscribed()) {

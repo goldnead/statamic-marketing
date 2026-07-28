@@ -1,5 +1,145 @@
 # Changelog
 
+## 1.6.1 — 2026-07-28
+
+### Fixed — the consent unique was two thirds of the way to being unbuildable
+
+`ms_brand_list_email_unique` spanned `(brand_id, list_handle, email_normalized)`.
+Under utf8mb4 every character costs four bytes, so each `varchar(255)` costs
+1020 and the index MySQL builds is **2048 of the 3072 InnoDB allows**. It
+worked. It was also the addon's most important constraint — one address, one
+list, one brand, one consent record — sitting one added column away from a
+migration that fails with SQLSTATE 1071 — which is what kept two
+`statamic-notifications` tables from ever being created on the production hub,
+through four releases.
+
+**Why a green suite did not find this.** The suite runs on in-memory SQLite,
+and every mechanism in that paragraph is a MySQL mechanism. SQLite has no index
+length limit, stores no fixed column widths (it accepts `varchar(255)` and
+ignores the 255), and has no per-character byte cost to multiply. The migration
+was not passing a test — there was no test for it to pass, because the
+constraint it approaches does not exist in the engine the tests use. 136 green
+tests and a schema whose limits were never once measured is not a contradiction;
+it is the same blind spot in every addon in this family.
+
+**Why the index was replaced rather than shortened.** A prefix index
+(`list_handle(64)`) would have fit and would have been the smaller diff. It
+would also have declared two lists whose handles share their first 64
+characters to be one list — swapping a migration that fails loudly for consent
+records that are quietly merged. Narrowing the columns themselves is worse
+still: a handle is generated from a name nobody caps, and an address is not
+ours to truncate.
+
+`marketing_subscriptions` now carries a `uniqueness_key` — a SHA-256 of
+`(list_handle, normalized email)`, maintained by the model on every save — and
+the unique is `(brand_id, uniqueness_key)`, **264 bytes**. Every character of
+both values is still covered, nothing is truncated, and `brand_id` stays a
+column of the index rather than an ingredient of the hash, so the tenant
+boundary remains legible in the schema and usable as a range. Two brands still
+hold fully independent consent for the same address on the same list, which is
+the guarantee the brand column exists for. `SubscriptionService::subscribe()`
+looks a subscription up by the same key the index is built on, so the check and
+the constraint can no longer disagree about what "already subscribed" means.
+
+**Every other unique was measured too.** The widest remaining are the three
+`(brand_id, handle)` uniques at 1028 bytes and the across-all-brands
+`marketing_lists.handle` at 1020 — all under half the limit, which is now the
+asserted rule rather than an accident. And none of them covers a nullable
+column: a SQL unique does not constrain NULL, so an index over a nullable column
+enforces nothing for exactly the rows it exists for. That is what let a whole
+recipient type in notifications never have a uniqueness guarantee at all. It was
+checked here and this addon does not have it — `uniqueness_key` is NOT NULL for
+the same reason.
+
+### Fixed — a rejected handle on an edit form was shown nowhere
+
+1.5.3 made every mask render what the server sent back, and split the work in
+two: keys with a field of their own are shown at that field, everything else in
+a summary above the form. `handle` was on the first list — correct while
+creating, where the handle input exists, and wrong on an update, where it is
+`v-if="isCreating"` and therefore absent. A rejected handle was filtered out of
+the summary as "already shown at its field" and had no field to be shown at. It
+was rendered nowhere, which is exactly the failure 1.5.3 set out to end.
+
+The campaign and template controllers validate `handle` through the same shared
+validator on store and on update, so this was one changed payload away from
+being reachable. The three edit pages now decide per key whether its field is
+actually on screen, and anything without one falls through to the summary.
+
+### Fixed — the last `Field` that sized itself with `flex-1`
+
+The subscriber filter row still had `<Field class="flex-1 sm:max-w-xs">` for the
+search box. That is the same trap 1.5.1 fixed one row above it: `flex-1` is
+`flex: 1 1 0%`, Statamic's `Field` brings its own `min-w-0`, and together they
+remove the floor that stops a column collapsing. `sm:max-w-xs` cannot help — a
+max-width is not a floor, which is why the 1.5.0 attempt failed. It has the
+explicit width the add-subscriber row uses.
+
+### Added — a JavaScript test layer
+
+`npm test` runs Vitest against the Control Panel components — **24 tests** over
+the pages this release touched. Adopted from `statamic-webhook-manager` 1.6.0,
+which established the shape: no second build chain, the existing `vite.config.js`
+swaps the Statamic Vite plugin for the plain Vue plugin under `VITEST`, and
+`tests/js/setup.js` installs the `__STATAMIC__` global the `@statamic/cms/*`
+shims destructure at import time.
+
+It is not backfilled coverage. It covers the classes of defect this round found:
+that a rejected form says so at the field or in the summary and not nowhere,
+that a `Field` never sizes itself with `flex-1`, and that the handful of places
+where a stored `false` or a `0` has to survive the round trip still do —
+`recipients: 0` reads as none rather than as unknown, and a list whose double
+opt-in is explicitly off is not read as "use the default". Each of those is a
+one-character edit away from being wrong and every existing test would have
+stayed green.
+
+Both fixes above were written against a failing test. Every guard was verified
+by breaking the thing it guards and watching it go red.
+
+### Added — the schema can be measured against MySQL, without MySQL
+
+`tests/Unit/IndexKeyLengthTest.php` compiles the addon's own migration files
+through Laravel's MySQL grammar in pretend mode — no server, no connection,
+nothing to install in CI — and measures every index the way InnoDB would: total
+key bytes, headroom against half the limit, and whether a unique covers a column
+that may be NULL. It reads the real migration files, so it cannot drift from
+them. Against the 1.6.0 schema it reports 2048 bytes and fails, which is the
+check that was missing.
+
+The whole suite can also be run against a real MySQL server:
+`vendor/bin/pest -c phpunit.mysql.xml`. Same tests, `DB_DRIVER=mysql`. Both are
+lifted from `statamic-notifications` 1.0.4.
+
+### Migration
+
+- `php artisan migrate`. The create-migrations are corrected too, so a new
+  install never builds the wide index in the first place; that reaches nobody
+  who already ran them, which is what the new migration is for.
+- `2026_07_28_000002_rebuild_subscription_uniqueness_keys` adds the column,
+  backfills it from the existing rows and swaps the index. It is idempotent and
+  a no-op on a fresh install.
+- No rows can be lost or merged. The new key is a pure function of the two
+  columns the old unique already covered, and neither of them is nullable, so
+  two rows cannot collide under the new index without having collided under the
+  old one.
+
+### Notes
+
+- Suite green on both drivers: flat **147 passed + 7 skipped**, eloquent
+  **146 passed + 8 skipped** (baseline 136 / 135). Plus **24** Vitest tests.
+- Verified against **MySQL 8.4** as well as SQLite, which is the point of the
+  exercise: `vendor/bin/pest -c phpunit.mysql.xml` — the same 147 passed and 7
+  skipped.
+- `tests/TestCase.php` now names its connection `testing` and honours
+  `DB_DRIVER`. `EloquentUserCompatTest` pointed Statamic's user tables at the
+  connection named `sqlite`, which was a second, empty in-memory database as
+  soon as the suite's own connection was renamed; it follows the suite now.
+- The first MySQL run turned up two test fixtures that only ever worked because
+  SQLite is lenient, which is the whole argument for having the run: one wrote a
+  41-character value into a `char(36)` column, and one attached a message to a
+  subscription id that did not exist, across a foreign key SQLite does not
+  enforce. Both are test-side; no production code was involved.
+
 ## 1.6.0 — 2026-07-28
 
 ### Added — the flat driver works under multi-brand

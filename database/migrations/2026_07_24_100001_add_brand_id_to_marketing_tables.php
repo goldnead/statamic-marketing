@@ -73,7 +73,13 @@ return new class extends Migration
             $blueprint->dropUnique(['list_handle', 'email_normalized']);
             // Explicit short name: the auto-generated one exceeds MySQL's
             // 64-char identifier limit.
-            $blueprint->unique(['brand_id', 'list_handle', 'email_normalized'], 'ms_brand_list_email_unique');
+            //
+            // Built on `uniqueness_key` rather than on (list_handle,
+            // email_normalized) directly. The natural tuple measured 2048 of
+            // InnoDB's 3072 index bytes; the hash measures 264 with brand_id.
+            // Installs that already ran this migration in its original shape
+            // are corrected by 2026_07_28_000002.
+            $blueprint->unique(['brand_id', 'uniqueness_key'], 'ms_brand_list_email_unique');
         });
 
         // 4. Now that all rows carry a brand, enforce NOT NULL.

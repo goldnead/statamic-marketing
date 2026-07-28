@@ -198,7 +198,13 @@ function destroy() {
             <Field :label="__('Status')">
                 <Select v-model="status" :options="statusOptions" @update:model-value="applyFilters" />
             </Field>
-            <Field :label="__('Search')" class="flex-1 sm:max-w-xs">
+            <!-- The last `flex-1` on a Field in this addon, and the same trap
+                 v1.5.1 fixed one row up: `flex-1` is `flex: 1 1 0%`, and
+                 Field's own recipe carries `min-w-0`, which removes the
+                 min-content floor that would otherwise stop the column
+                 collapsing. `sm:max-w-xs` cannot help — a max-width is not a
+                 floor. An explicit width is what the add-subscriber row uses. -->
+            <Field :label="__('Search')" class="w-full sm:w-72">
                 <Input v-model="search" :placeholder="__('marketing::subscribers.search_placeholder')" @keyup.enter="applyFilters" />
             </Field>
             <Button :text="__('Filter')" variant="default" @click="applyFilters" />

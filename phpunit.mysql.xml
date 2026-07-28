@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The same suite, against a real MySQL server.
+
+        vendor/bin/pest -c phpunit.mysql.xml
+        MARKETING_DRIVER=eloquent vendor/bin/pest -c phpunit.mysql.xml
+
+    Needed because the default SQLite run cannot see the class of defect that
+    took statamic-notifications' migrations down on production: InnoDB's
+    3072-byte index limit, utf8mb4's four bytes per character and fixed column
+    widths do not exist in SQLite. This addon carries the widest brand-scoped
+    unique in the family, so the same blind spot applied here.
+
+    tests/Unit/IndexKeyLengthTest.php measures that without a server and runs
+    everywhere. This file is the second opinion: point
+    DB_HOST/DB_PORT/DB_DATABASE/DB_USERNAME/DB_PASSWORD at a throwaway database
+    and the suite migrates it from scratch on every test.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false"
+         cacheDirectory=".phpunit.mysql.cache"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory suffix="Test.php">./tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory suffix="Test.php">./tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory suffix="Test.php">./tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>./src</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="DB_CONNECTION" value="testing"/>
+        <env name="DB_DRIVER" value="mysql"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="3306"/>
+        <env name="DB_DATABASE" value="marketing_test"/>
+        <env name="DB_USERNAME" value="root"/>
+        <env name="DB_PASSWORD" value=""/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+    </php>
+</phpunit>

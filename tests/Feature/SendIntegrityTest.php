@@ -29,9 +29,16 @@ it('refuses a campaign handle that already has delivery history', function (): v
     // campaign handle plus subscriber, so a new campaign on the same handle
     // inherits them, skips every recipient as "already sent", finishes at once
     // and reports success. Nobody receives anything.
+    // A real subscription, not a hardcoded id: `marketing_messages` carries a
+    // foreign key onto it, which SQLite does not enforce and MySQL does.
+    $recipient = app(SubscriptionService::class)->subscribe(
+        app(MailingListRepository::class)->find('newsletter'),
+        'someone@example.com',
+    );
+
     Message::create([
         'campaign_handle' => 'summer',
-        'subscription_id' => 1,
+        'subscription_id' => $recipient->id,
         'email' => 'someone@example.com',
         'status' => Message::STATUS_SENT,
     ]);

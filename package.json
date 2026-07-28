@@ -5,16 +5,20 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "build:check": "bash scripts/check-dist-fresh.sh"
+        "build:check": "bash scripts/check-dist-fresh.sh",
+        "test": "vitest run"
     },
     "dependencies": {
         "@statamic/cms": "file:./vendor/statamic/cms/resources/dist-package"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
+        "@vue/test-utils": "^2.4.11",
+        "jsdom": "^29.1.1",
         "laravel-vite-plugin": "^2.0.0 || ^3.0.0",
         "tailwindcss": "^4.0.0",
         "vite": "^7.0.0 || ^8.0.0",
+        "vitest": "^4.1.10",
         "vue": "^3.4.0"
     }
 }

@@ -159,8 +159,11 @@ it('never sends to an opted-out contact when the contact link is stale', functio
 
     LeadHub::optOut($subscription->fresh()->contact_uuid);
 
-    // The stored uuid resolves to nothing; only the email still identifies them.
-    $subscription->forceFill(['contact_uuid' => 'gone-'.Str::uuid()->toString()])->save();
+    // The stored uuid resolves to nothing; only the email still identifies
+    // them. It has to stay a well-formed uuid: the column is `char(36)`, and
+    // a 41-character `gone-…` was accepted only because SQLite ignores column
+    // widths. MySQL rejects it with SQLSTATE 22001.
+    $subscription->forceFill(['contact_uuid' => Str::uuid()->toString()])->save();
 
     app(CampaignSender::class)->queue($this->campaign);
 

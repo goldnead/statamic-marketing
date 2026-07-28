@@ -52,9 +52,18 @@ const formErrors = ref({});
 // and goes into the summary above the form, or it would be invisible again.
 const fieldKeys = ['name', 'handle', 'description', 'double_opt_in'];
 
+// Which of those keys actually has a field on screen right now. The handle
+// input is only rendered while creating (`v-if="isCreating"`), so on an update
+// a rejected handle has nowhere to sit — and being on the list above would
+// filter it out of the summary as "already shown at its field". It would then
+// be shown nowhere at all, which is the exact failure 1.5.3 set out to end.
+const keysWithAVisibleField = computed(() =>
+    fieldKeys.filter((key) => key !== 'handle' || isCreating.value)
+);
+
 const generalErrors = computed(() =>
     Object.entries(formErrors.value)
-        .filter(([key]) => ! fieldKeys.includes(key))
+        .filter(([key]) => ! keysWithAVisibleField.value.includes(key))
         .map(([, message]) => message)
 );
 
