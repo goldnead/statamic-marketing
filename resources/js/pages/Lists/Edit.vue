@@ -43,18 +43,41 @@ function payload() {
     };
 }
 
+// A rejected list used to look like a dead Save button: the response came back
+// with errors, nothing was written, and the screen did not change. Errors now
+// land on the field they belong to.
+const formErrors = ref({});
+
+// Keys rendered next to their own field. Anything else has no field to sit at
+// and goes into the summary above the form, or it would be invisible again.
+const fieldKeys = ['name', 'handle', 'description', 'double_opt_in'];
+
+const generalErrors = computed(() =>
+    Object.entries(formErrors.value)
+        .filter(([key]) => ! fieldKeys.includes(key))
+        .map(([, message]) => message)
+);
+
 function save() {
     if (! name.value.trim()) return;
 
+    const options = {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+    };
+
     if (isCreating.value) {
-        router.post(props.storeUrl, payload(), { preserveScroll: true });
+        router.post(props.storeUrl, payload(), options);
     } else {
-        router.patch(props.updateUrl, payload(), { preserveScroll: true });
+        router.patch(props.updateUrl, payload(), options);
     }
 }
 
 function destroy() {
-    router.delete(props.deleteUrl);
+    router.delete(props.deleteUrl, {
+        onError: (errors) => { formErrors.value = errors || {}; },
+    });
 }
 </script>
 
@@ -72,25 +95,31 @@ function destroy() {
             <Button :text="__('Save')" variant="primary" :disabled="!name.trim()" @click="save" />
         </Header>
 
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </div>
+        </Panel>
+
         <Panel :heading="__('Details')">
             <Card>
                 <div class="space-y-4">
-                    <Field :label="__('Name')">
+                    <Field :label="__('Name')" :error="formErrors.name">
                         <Input v-model="name" :placeholder="__('e.g. Newsletter')" />
                     </Field>
 
-                    <Field v-if="isCreating" :label="__('Handle')">
+                    <Field v-if="isCreating" :label="__('Handle')" :error="formErrors.handle">
                         <Input v-model="handle" placeholder="newsletter" />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             {{ __('Lowercase letters, numbers and underscores (snake_case). Leave empty to generate from the name.') }}
                         </p>
                     </Field>
 
-                    <Field :label="__('Description')">
+                    <Field :label="__('Description')" :error="formErrors.description">
                         <Textarea v-model="description" rows="3" :placeholder="__('Optional description for this list.')" />
                     </Field>
 
-                    <Field :label="__('Double opt-in')">
+                    <Field :label="__('Double opt-in')" :error="formErrors.double_opt_in">
                         <Select v-model="doubleOptIn" :options="doubleOptInOptions" />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             {{ __('Whether new subscribers must confirm their email address before being subscribed.') }}

@@ -89,6 +89,22 @@ function reloadPage() {
     router.reload({ preserveScroll: true });
 }
 
+// A rejected address used to look like a dead Add button: the response came
+// back with errors, no subscriber was written, and the screen did not change.
+// Errors now land on the field they belong to.
+const formErrors = ref({});
+
+// Keys rendered next to their own field. Anything else — a refused unsubscribe,
+// a refused delete — has no field to sit at and goes into the summary above the
+// add form, or it would be invisible again.
+const fieldKeys = ['email', 'first_name', 'last_name'];
+
+const generalErrors = computed(() =>
+    Object.entries(formErrors.value)
+        .filter(([key]) => ! fieldKeys.includes(key))
+        .map(([, message]) => message)
+);
+
 function addSubscriber() {
     if (! newEmail.value.trim()) return;
     router.post(props.addSubscriberUrl, {
@@ -97,7 +113,9 @@ function addSubscriber() {
         last_name: newLastName.value || null,
     }, {
         preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
         onSuccess: () => {
+            formErrors.value = {};
             newEmail.value = '';
             newFirstName.value = '';
             newLastName.value = '';
@@ -106,7 +124,11 @@ function addSubscriber() {
 }
 
 function unsubscribe(row) {
-    router.post(row.unsubscribe_url, {}, { preserveScroll: true });
+    router.post(row.unsubscribe_url, {}, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+    });
 }
 
 function confirmDelete(row) {
@@ -117,6 +139,8 @@ function destroy() {
     if (! subscriberToDelete.value) return;
     router.delete(subscriberToDelete.value.delete_url, {
         preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
         onFinish: () => { subscriberToDelete.value = null; },
     });
 }
@@ -143,6 +167,12 @@ function destroy() {
             {{ list.description }}
         </p>
 
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </div>
+        </Panel>
+
         <!-- Add subscriber -->
         <Panel v-if="canManageSubscribers" :heading="__('marketing::subscribers.add')" class="mb-4">
             <div class="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-end">
@@ -150,13 +180,13 @@ function destroy() {
                      brings its own `min-w-0`, so the column collapsed to zero
                      width and the next field sat on top of it. An explicit
                      width is what the two neighbours already use. -->
-                <Field :label="__('Email')" class="w-full sm:w-80">
+                <Field :label="__('Email')" class="w-full sm:w-80" :error="formErrors.email">
                     <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
                 </Field>
-                <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44">
+                <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44" :error="formErrors.first_name">
                     <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
-                <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44">
+                <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44" :error="formErrors.last_name">
                     <Input v-model="newLastName" :placeholder="__('marketing::subscribers.optional')" />
                 </Field>
                 <Button :text="__('marketing::subscribers.add')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />

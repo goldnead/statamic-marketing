@@ -1,8 +1,8 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Button, DropdownItem, ConfirmationModal,
+    Header, Listing, Panel, Button, DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -13,6 +13,13 @@ const props = defineProps([
 ]);
 
 const templateToDelete = ref(null);
+
+// A refused delete used to be silent here: the response came back with errors,
+// the row stayed, and nothing said why. There is no field on this page to hang
+// a message on, so everything that comes back is shown above the listing.
+const formErrors = ref({});
+
+const generalErrors = computed(() => Object.values(formErrors.value));
 
 function reloadPage() {
     router.reload({ preserveScroll: true });
@@ -26,6 +33,8 @@ function destroy() {
     if (! templateToDelete.value) return;
     router.delete(templateToDelete.value.delete_url, {
         preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
         onFinish: () => { templateToDelete.value = null; },
     });
 }
@@ -47,6 +56,12 @@ function destroy() {
         <p class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
             {{ __('Templates provide the HTML layout wrapped around campaign content.') }}
         </p>
+
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </div>
+        </Panel>
 
         <Listing
             :items="templates"

@@ -110,12 +110,28 @@ function payload() {
 // rejected campaign handle read as a dead Save button.
 const formErrors = ref({});
 
+// Every key below is rendered next to the field it belongs to. A key that is
+// not in this list has no field to sit at — it goes into the summary above the
+// form instead, otherwise it would be invisible again.
+const fieldKeys = [
+    'name', 'handle', 'subject', 'preheader', 'content',
+    'list', 'segment', 'template',
+    'from_name', 'from_email', 'reply_to',
+    'email', 'scheduled_at',
+];
+
+const generalErrors = computed(() =>
+    Object.entries(formErrors.value)
+        .filter(([key]) => ! fieldKeys.includes(key))
+        .map(([, message]) => message)
+);
+
 function save() {
     if (! name.value.trim()) return;
 
     const options = {
         preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors; },
+        onError: (errors) => { formErrors.value = errors || {}; },
         onSuccess: () => { formErrors.value = {}; },
     };
 
@@ -130,7 +146,8 @@ function sendTest() {
     if (! testEmail.value.trim()) return;
     router.post(props.testUrl, { email: testEmail.value }, {
         preserveScroll: true,
-        onSuccess: () => { testEmail.value = ''; },
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; testEmail.value = ''; },
     });
 }
 
@@ -138,21 +155,32 @@ function schedule() {
     if (! scheduledAt.value) return;
     router.post(props.scheduleUrl, { scheduled_at: scheduledAt.value }, {
         preserveScroll: true,
-        onSuccess: () => { scheduledAt.value = ''; },
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; scheduledAt.value = ''; },
     });
 }
 
 function unschedule() {
-    router.post(props.unscheduleUrl, {}, { preserveScroll: true });
+    router.post(props.unscheduleUrl, {}, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+    });
 }
 
 function sendNow() {
     showSendConfirm.value = false;
-    router.post(props.sendUrl, {}, { preserveScroll: true });
+    router.post(props.sendUrl, {}, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+    });
 }
 
 function destroy() {
-    router.delete(props.deleteUrl);
+    router.delete(props.deleteUrl, {
+        onError: (errors) => { formErrors.value = errors || {}; },
+    });
 }
 </script>
 
@@ -191,9 +219,9 @@ function destroy() {
             </div>
         </Panel>
 
-        <Panel v-if="Object.keys(formErrors).length" class="mb-4">
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
             <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, field) in formErrors" :key="field">{{ message }}</p>
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
             </div>
         </Panel>
 
@@ -204,22 +232,22 @@ function destroy() {
                     <Panel :heading="__('Campaign')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('Name')">
+                                <Field :label="__('Name')" :error="formErrors.name">
                                     <Input v-model="name" :placeholder="__('e.g. March newsletter')" />
                                 </Field>
 
-                                <Field v-if="isCreating" :label="__('Handle')">
+                                <Field v-if="isCreating" :label="__('Handle')" :error="formErrors.handle">
                                     <Input v-model="handle" placeholder="march_newsletter" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         {{ __('Lowercase letters, numbers and underscores (snake_case). Leave empty to generate from the name.') }}
                                     </p>
                                 </Field>
 
-                                <Field :label="__('Subject')">
+                                <Field :label="__('Subject')" :error="formErrors.subject">
                                     <Input v-model="subject" :placeholder="__('The email subject line')" />
                                 </Field>
 
-                                <Field :label="__('Preheader')">
+                                <Field :label="__('Preheader')" :error="formErrors.preheader">
                                     <Input v-model="preheader" :placeholder="__('Preview text shown after the subject in most inboxes')" />
                                 </Field>
                             </div>
@@ -228,12 +256,14 @@ function destroy() {
 
                     <Panel :heading="__('Content')">
                         <Card>
-                            <Textarea
-                                v-model="content"
-                                rows="18"
-                                class="font-mono text-sm"
-                                :placeholder="__('Write your email content...')"
-                            />
+                            <Field :error="formErrors.content">
+                                <Textarea
+                                    v-model="content"
+                                    rows="18"
+                                    class="font-mono text-sm"
+                                    :placeholder="__('Write your email content...')"
+                                />
+                            </Field>
                             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 {{ __('Antlers variables are available:') }}
                                 <code v-text="antlersHint"></code>
@@ -276,11 +306,11 @@ function destroy() {
                     <Panel :heading="__('Recipients')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('List')">
+                                <Field :label="__('List')" :error="formErrors.list">
                                     <Select v-model="list" :options="listOptions" />
                                 </Field>
 
-                                <Field v-if="hasSegments" :label="__('Segment')">
+                                <Field v-if="hasSegments" :label="__('Segment')" :error="formErrors.segment">
                                     <Select v-model="segment" :options="segmentOptions" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         <template v-if="segment && selectedSegmentCount !== null">
@@ -294,7 +324,7 @@ function destroy() {
                                     </p>
                                 </Field>
 
-                                <Field :label="__('Template')">
+                                <Field :label="__('Template')" :error="formErrors.template">
                                     <Select v-model="template" :options="templateOptions" />
                                 </Field>
                             </div>
@@ -304,15 +334,15 @@ function destroy() {
                     <Panel :heading="__('Sender')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('From name')">
+                                <Field :label="__('From name')" :error="formErrors.from_name">
                                     <Input v-model="fromName" :placeholder="__('Defaults to the site sender')" />
                                 </Field>
 
-                                <Field :label="__('From email')">
+                                <Field :label="__('From email')" :error="formErrors.from_email">
                                     <Input v-model="fromEmail" type="email" :placeholder="__('Defaults to the site sender')" />
                                 </Field>
 
-                                <Field :label="__('Reply-to')">
+                                <Field :label="__('Reply-to')" :error="formErrors.reply_to">
                                     <Input v-model="replyTo" type="email" :placeholder="__('Optional')" />
                                 </Field>
                             </div>
@@ -323,7 +353,7 @@ function destroy() {
                     <Panel v-if="testUrl && canSend" :heading="__('Send test')">
                         <Card>
                             <div class="space-y-2">
-                                <Field :label="__('Test recipient')">
+                                <Field :label="__('Test recipient')" :error="formErrors.email">
                                     <Input v-model="testEmail" type="email" placeholder="you@example.com" />
                                 </Field>
                                 <Button
@@ -351,7 +381,7 @@ function destroy() {
                                 </div>
 
                                 <div v-else class="space-y-2">
-                                    <Field :label="__('Schedule for later')">
+                                    <Field :label="__('Schedule for later')" :error="formErrors.scheduled_at">
                                         <Input v-model="scheduledAt" type="datetime-local" />
                                     </Field>
                                     <Button :text="__('Schedule')" variant="default" :disabled="!scheduledAt" @click="schedule" />

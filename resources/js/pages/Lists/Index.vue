@@ -1,8 +1,8 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Badge, Button, DropdownItem, ConfirmationModal,
+    Header, Listing, Panel, Badge, Button, DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -13,6 +13,13 @@ const props = defineProps([
 ]);
 
 const listToDelete = ref(null);
+
+// A refused delete used to be silent here: the response came back with errors,
+// the row stayed, and nothing said why. There is no field on this page to hang
+// a message on, so everything that comes back is shown above the listing.
+const formErrors = ref({});
+
+const generalErrors = computed(() => Object.values(formErrors.value));
 
 function reloadPage() {
     router.reload({ preserveScroll: true });
@@ -26,6 +33,8 @@ function destroy() {
     if (! listToDelete.value) return;
     router.delete(listToDelete.value.delete_url, {
         preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
         onFinish: () => { listToDelete.value = null; },
     });
 }
@@ -43,6 +52,12 @@ function destroy() {
                 variant="primary"
             />
         </Header>
+
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </div>
+        </Panel>
 
         <Listing
             :items="lists"
