@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.5 — 2026-07-30
+
+### Fixed — the scheduled send was registered twice
+
+`schedule:list` carried `marketing:send-scheduled` twice on every real install. The registration hung off `app->booted()`, and in a Statamic application those callbacks fire twice — something this package already knew, because `registerSiblingBridges()` says so in its own comment and leans on the bridges being idempotent. A schedule registration is not idempotent, and nothing had noticed.
+
+Measured rather than reasoned about: `registerSchedule()` is called once, the booted callback runs twice.
+
+**Nothing broke, and only by accident.** `onOneServer()` with a fixed name means the second copy loses the mutex and is skipped. That is luck, not design — the next command added here without `onOneServer()` would simply run twice. `callAfterResolving(Schedule::class)` binds to the Schedule singleton instead, so the callback runs once no matter how often the application announces that it has booted.
+
+### Added — a check that can actually go red
+
+The first version of the accompanying test passed against the unfixed provider, because Testbench fires the booted callbacks only once and never reproduced the condition. It now replays them, which is what a Statamic application does. That replay is the load-bearing part of the file: a check that cannot fail is not coverage.
+
+It counts whatever is registered rather than asserting against today's list, so a command added later is covered without anyone remembering to come back. It is scoped to this package's own commands — a sibling carrying the same defect is a finding to report there, not a reason to fail here.
+
 ## 1.6.4 — 2026-07-28
 
 ### Fixed — updating from before 1.3.0 dropped the consent unique and did not replace it

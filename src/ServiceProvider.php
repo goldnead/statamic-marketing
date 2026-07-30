@@ -145,11 +145,28 @@ class ServiceProvider extends AddonServiceProvider
         });
     }
 
+    /**
+     * Registers the scheduled send exactly once.
+     *
+     * Not `app->booted()`: in a Statamic application those callbacks fire
+     * twice, which this package already knew — `registerSiblingBridges()` above
+     * says so and leans on the bridges being idempotent. A schedule
+     * registration is not. Measured on a real install: `registerSchedule()` is
+     * called once and the booted callback runs twice, so `schedule:list`
+     * carried this command twice.
+     *
+     * It caused no damage, and only by accident: `onOneServer()` with a fixed
+     * name means the second copy loses the mutex and is skipped. That is luck,
+     * not design — the next entry added without `onOneServer()` would simply
+     * run twice, and for a digest that is two mails to the same person.
+     *
+     * `callAfterResolving()` binds to the Schedule singleton instead, so the
+     * callback runs when it is resolved, once, no matter how often the
+     * application announces that it has booted.
+     */
     protected function registerSchedule(): self
     {
-        $this->app->booted(function () {
-            $schedule = $this->app->make(\Illuminate\Console\Scheduling\Schedule::class);
-
+        $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class, function ($schedule) {
             $schedule->command('marketing:send-scheduled')
                 ->everyMinute()
                 ->onOneServer()
