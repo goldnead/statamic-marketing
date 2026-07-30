@@ -3,6 +3,7 @@
     "description": "Email marketing and newsletters directly inside your Statamic Control Panel — lists, double opt-in, campaigns, sending, and tracking built on LeadHub contacts.",
     "type": "statamic-addon",
     "license": "MIT",
+    "homepage": "https://github.com/goldnead/statamic-marketing",
     "keywords": [
         "statamic",
         "statamic-addon",
