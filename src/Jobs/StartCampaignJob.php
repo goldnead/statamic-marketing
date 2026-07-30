@@ -11,6 +11,8 @@ use Goldnead\Marketing\Events\CampaignSending;
 use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,7 +31,7 @@ class StartCampaignJob implements ShouldQueue
     {
     }
 
-    public function handle(CampaignRepository $campaigns, ContactRepository $contacts): void
+    public function handle(CampaignRepository $campaigns, ContactRepository $contacts, SuppressionGate $gate): void
     {
         $campaign = $campaigns->find($this->campaignHandle);
 
@@ -49,48 +51,85 @@ class StartCampaignJob implements ShouldQueue
         // LeadHub contact UUIDs. `null` = no segment filter (whole list).
         $segmentMemberIds = $this->resolveSegmentMemberIds($campaign);
 
-        Subscription::query()
-            ->forList((string) $campaign->listHandle)
-            ->subscribed()
-            ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $queue, $perMinute, $segmentMemberIds, &$index) {
-                foreach ($subscriptions as $subscription) {
-                    if ($this->contactOptedOut($contacts, $subscription)) {
-                        continue;
+        try {
+            Subscription::query()
+                ->forList((string) $campaign->listHandle)
+                ->subscribed()
+                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $queue, $perMinute, $segmentMemberIds, &$index) {
+                    // One question per chunk rather than one per subscriber.
+                    // The addresses this returns never become Message rows at
+                    // all — a blocked address must not enter a send, not merely
+                    // fail to leave one.
+                    $suppressed = $gate->suppressedAmong($subscriptions->pluck('email'));
+
+                    foreach ($subscriptions as $subscription) {
+                        if (isset($suppressed[(string) $subscription->email_normalized])) {
+                            continue;
+                        }
+
+                        if ($this->contactOptedOut($contacts, $subscription)) {
+                            continue;
+                        }
+
+                        // Segment narrows the list. A subscribed member with no
+                        // linked contact, or a contact outside the segment, is
+                        // excluded — but consent is never granted by the segment.
+                        if ($segmentMemberIds !== null
+                            && ! isset($segmentMemberIds[(string) $subscription->contact_uuid])) {
+                            continue;
+                        }
+
+                        // Idempotent: a retried job never double-creates messages.
+                        $message = Message::query()->firstOrCreate(
+                            [
+                                'campaign_handle' => $campaign->handle,
+                                'subscription_id' => $subscription->id,
+                            ],
+                            [
+                                'email' => $subscription->email,
+                                'status' => Message::STATUS_PENDING,
+                            ],
+                        );
+
+                        if ($message->status !== Message::STATUS_PENDING) {
+                            continue;
+                        }
+
+                        $job = SendMessageJob::dispatch($message->id)->onQueue($queue);
+
+                        if ($perMinute > 0) {
+                            $job->delay(now()->addMinutes(intdiv($index, $perMinute)));
+                        }
+
+                        $index++;
                     }
+                });
+        } catch (SuppressionCheckFailed $e) {
+            // The gate could not answer, so the campaign stops.
+            //
+            // Note the deliberate contrast with resolveSegmentMemberIds() a few
+            // lines up, which fails OPEN: a segment it cannot resolve is ignored
+            // and the campaign goes to the whole list. That is correct there and
+            // wrong here, and the difference is not a style inconsistency. A
+            // segment *narrows* an audience — it never grants consent, so losing
+            // it can only send to more people who already said yes. Suppression
+            // is the opposite kind of check: it is the only thing standing
+            // between the send and an address that said no, so losing it must
+            // stop everything.
+            //
+            // Anyone tempted to make these two behave alike should read that
+            // paragraph before touching either.
+            $campaign->status = Campaign::STATUS_DRAFT;
+            $campaigns->save($campaign);
 
-                    // Segment narrows the list. A subscribed member with no
-                    // linked contact, or a contact outside the segment, is
-                    // excluded — but consent is never granted by the segment.
-                    if ($segmentMemberIds !== null
-                        && ! isset($segmentMemberIds[(string) $subscription->contact_uuid])) {
-                        continue;
-                    }
+            Log::error(
+                "Marketing aborted campaign [{$campaign->handle}] before sending: the suppression gate "
+                .'could not be queried, so it is not known which recipients are blocked. The campaign was '
+                .'returned to draft rather than sent to everyone. Reason: '.$e->getMessage()
+            );
 
-                    // Idempotent: a retried job never double-creates messages.
-                    $message = Message::query()->firstOrCreate(
-                        [
-                            'campaign_handle' => $campaign->handle,
-                            'subscription_id' => $subscription->id,
-                        ],
-                        [
-                            'email' => $subscription->email,
-                            'status' => Message::STATUS_PENDING,
-                        ],
-                    );
-
-                    if ($message->status !== Message::STATUS_PENDING) {
-                        continue;
-                    }
-
-                    $job = SendMessageJob::dispatch($message->id)->onQueue($queue);
-
-                    if ($perMinute > 0) {
-                        $job->delay(now()->addMinutes(intdiv($index, $perMinute)));
-                    }
-
-                    $index++;
-                }
-            });
+            throw $e;
+        }
 
         // Empty audience: nothing will ever finalize the campaign, so do it here.
         if ($index === 0 && Message::forCampaign($campaign->handle)->pending()->count() === 0) {

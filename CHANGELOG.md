@@ -1,5 +1,93 @@
 # Changelog
 
+## 1.8.0 — 2026-07-30
+
+### Added — every send path asks one question, and it is not this addon's question any more
+
+This addon could put a mail on the wire from four places. One of them checked whether the address was
+allowed to receive it, in its own way; the other three did not check at all.
+
+- `StartCampaignJob` asked LeadHub's `do_not_contact`, and failed closed when it could not resolve a
+  contact — good, and the only one.
+- `SendMessageJob` checked `isSubscribed()` and nothing else, so an address blocked *during* a long
+  campaign was mailed by a queue that had stopped listening.
+- `SubscriptionService::sendConfirmationMail()` sent a double opt-in mail to whatever a public form
+  had been given. A blocked address that typed itself back in got mail from us.
+- `CampaignSender::sendTest()` sent to any address an editor typed.
+
+All four now go through `goldnead/statamic-suppression`, a new dependency at `^1.0`.
+
+### Changed — the suppression list is a package, not a folder here
+
+**1.7.0's changelog said, in bold, that the preference page reads the state this addon already keeps
+"and not a suppression list of its own … there is no second list to drift out of step with the
+first."** That sentence was right about the danger and this release does not walk it back — but it is
+worth saying plainly what changed, because the shape does now include a list.
+
+What made a second list the wrong answer *inside this addon* is what makes it the right answer
+underneath it. A hard bounce is a property of the **mailbox**. It bounces identically whoever sends,
+and it damages a sending reputation shared by everything in the application. If the list lived here,
+`statamic-notifications` would still write to that mailbox with its immediate mail and its weekly
+digest — same application, same reputation, same dead address — and the block would depend on which
+addon happened to be sending. That is not one list drifting from another; it is one addon knowing
+something and the rest of the install not being told.
+
+So the layer sits underneath, beside `statamic-brand-context` and `statamic-identity-contracts`, and
+this addon is a consumer of it rather than its owner. `do_not_contact` stays exactly where it was and
+is still read: the gate is an additional signal, not a replacement, and nothing about LeadHub's
+opt-out changed.
+
+What did *not* move: the ESP ingress and the Control Panel surface. Those have one feeder and no
+second consumer, so relocating them would have bought nothing and cost a dependency.
+
+### Added — fail-closed at the audience, and the reason it is not the segment resolver's rule
+
+`StartCampaignJob` asks once per chunk rather than once per subscriber, and a suppressed address never
+becomes a `Message` row at all — a blocked address must not enter a send, not merely fail to leave
+one. That also removes the N+1 the old per-subscriber contact lookup carried.
+
+When the gate cannot answer, the campaign is returned to draft and the exception is re-raised. It does
+not fall through to "nobody is suppressed".
+
+Twelve lines above it, `resolveSegmentMemberIds()` does the exact opposite: a segment it cannot
+resolve is ignored and the campaign goes to the whole list. Both are correct, and the reason is in a
+comment beside the catch so the next person to read them does not tidy one into the other. A segment
+*narrows* an audience — losing it can only send to more people who already said yes. Suppression is
+the only thing standing between the send and an address that said no.
+
+`SendMessageJob` fails a single message rather than the run, because one unreachable read must not
+abort a campaign that is already half delivered. `sendTest()` is the one gate that speaks: it throws a
+validation error naming the address, because an editor waiting at the screen for a test mail that
+silently never arrives learns that the button is broken.
+
+### Added — the backfill, while there is nothing to backfill
+
+`2026_07_30_000001_backfill_suppressions_from_marketing_state` moves what this addon already knew into
+the table that can be asked about it: `status = bounced` → `hard_bounce`, global; `status = complained`
+→ `complaint`, that row's own brand; `leadhub_contacts.do_not_contact` → `manual`, brand-scoped.
+
+`status = unsubscribed` is **left alone**, and that is the decision in this migration rather than an
+omission from it. A per-list unsubscribe is a scoped withdrawal of consent for that list, and
+`marketing.unsubscribe.global_opt_out` already defaults to `false` — somebody decided deliberately
+that a list unsubscribe is not a global opt-out. Promoting those rows would reverse that decision
+inside a migration nobody reads, and destroy legitimate subscriptions on the brand's other lists.
+
+It is idempotent, it never overrules a suppression somebody already released (a released row carries a
+name, a date and a stated reason; a backfill does not get to overturn that), and its `down()` removes
+only the rows it wrote. It runs today against zero rows, which is the whole argument for writing it
+now instead of after a second brand's mail is flowing through the same system.
+
+### Notes
+
+- Suite: **196 passed (726 assertions)** on the flat driver, **195 passed (724)** on eloquent,
+  including 11 new gate cases and 4 new migration cases.
+- The new migration is guarded: an install without the suppression tables meets a no-op rather than a
+  crash. A migration that dies halfway leaves the addon half-installed, which is worse than a backfill
+  that does nothing.
+- `SendMessageJob::handle()` and `StartCampaignJob::handle()` take one more injected argument. Both are
+  resolved by the container in every real code path; only a test calling `handle()` by hand needs
+  updating.
+
 ## 1.7.1 — 2026-07-30
 
 ### Fixed — 1.7.0 shipped a control-panel bundle that did not match its source

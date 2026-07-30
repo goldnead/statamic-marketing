@@ -86,6 +86,7 @@ it('skips subscribers who unsubscribed between snapshot and delivery', function 
         app(CampaignRepository::class),
         app(MailingListRepository::class),
         app(\Goldnead\Marketing\Services\CampaignRenderer::class),
+        app(\Goldnead\Suppression\Contracts\Gate::class),
     );
 
     expect($message->fresh()->status)->toBe(Message::STATUS_SKIPPED);

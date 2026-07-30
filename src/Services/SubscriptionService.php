@@ -10,6 +10,9 @@ use Goldnead\Marketing\Events\SubscriptionPending;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class SubscriptionService
@@ -144,8 +147,38 @@ class SubscriptionService
         return $subscription;
     }
 
+    /**
+     * The double opt-in confirmation.
+     *
+     * Gated like every other send path, and the reason is the trivial bypass it
+     * would otherwise be: a hard-bounced or complaint-blocked address that fills
+     * in the sign-up form again would receive mail from us, having gone through
+     * a public form that anybody can type any address into. A confirmation mail
+     * is still a mail to a mailbox that said no.
+     *
+     * The subscription row is still written. Someone re-subscribing has said
+     * something, and recording it is right; sending to them is not. If the
+     * suppression is later released, the pending row is there and the ordinary
+     * flow resumes.
+     */
     public function sendConfirmationMail(MailingList $list, Subscription $subscription): void
     {
+        try {
+            if (app(SuppressionGate::class)->isSuppressed((string) $subscription->email)) {
+                Log::info(
+                    'Marketing withheld the confirmation mail for a suppressed address on list ['
+                    .$list->handle.']; the pending subscription was kept.'
+                );
+
+                return;
+            }
+        } catch (SuppressionCheckFailed $e) {
+            // Not knowing is not permission — the mail is withheld, not sent.
+            report($e);
+
+            return;
+        }
+
         Mail::mailer(config('marketing.sending.mailer'))
             ->to($subscription->email)
             ->send(new ConfirmSubscriptionMail($list, $subscription));

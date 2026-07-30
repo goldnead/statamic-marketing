@@ -11,6 +11,8 @@ use Goldnead\Marketing\Events\MessageSent;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,6 +32,7 @@ class SendMessageJob implements ShouldQueue
         CampaignRepository $campaigns,
         MailingListRepository $lists,
         CampaignRenderer $renderer,
+        SuppressionGate $gate,
     ): void {
         $message = Message::query()->with('subscription')->find($this->messageId);
 
@@ -53,6 +56,33 @@ class SendMessageJob implements ShouldQueue
         if (! $subscription->isSubscribed()) {
             $message->update(['status' => Message::STATUS_SKIPPED]);
             $this->maybeFinalize($campaigns, $campaign->handle);
+
+            return;
+        }
+
+        // Defence in depth, and not redundant: StartCampaignJob asked this
+        // question when it built the audience, and a campaign snapshotting
+        // 20,000 recipients can still be running hours later. Every complaint
+        // that arrives in between would otherwise be answered by a queue that
+        // stopped listening.
+        try {
+            if ($gate->isSuppressed($subscription->email)) {
+                $message->update([
+                    'status' => Message::STATUS_SKIPPED,
+                    'error' => 'Suppressed: this address is blocked from every send path.',
+                ]);
+                $this->maybeFinalize($campaigns, $campaign->handle);
+
+                return;
+            }
+        } catch (SuppressionCheckFailed $e) {
+            // Not knowing is not permission. One message fails; the campaign
+            // carries on, because a single unreachable read must not abort a
+            // run that is already half delivered.
+            $message->update(['status' => Message::STATUS_FAILED, 'error' => $e->getMessage()]);
+            $this->maybeFinalize($campaigns, $campaign->handle);
+
+            report($e);
 
             return;
         }

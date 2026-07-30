@@ -9,6 +9,8 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
 
@@ -68,13 +70,37 @@ class CampaignSender
         return $campaign;
     }
 
-    /** Send a rendered test to one address without touching messages/stats. */
+    /**
+     * Send a rendered test to one address without touching messages/stats.
+     *
+     * Gated like the real thing, but it says so out loud instead of skipping
+     * quietly. A campaign send drops a blocked recipient silently because there
+     * are thousands of them and the editor is not watching; a test send has an
+     * audience of one, standing at the screen, waiting for a mail that will
+     * never arrive. Failing silently there teaches the editor that the test
+     * button is broken.
+     */
     public function sendTest(Campaign $campaign, string $email): void
     {
         $list = $campaign->listHandle ? $this->lists->find($campaign->listHandle) : null;
 
         if (! $list) {
             throw new InvalidArgumentException("Campaign [{$campaign->handle}] has no valid mailing list.");
+        }
+
+        try {
+            if (app(SuppressionGate::class)->isSuppressed($email)) {
+                throw new InvalidArgumentException(
+                    "[{$email}] is on the suppression list and cannot be mailed, not even as a test. ".
+                    'Release the suppression first if this address should receive mail again.'
+                );
+            }
+        } catch (SuppressionCheckFailed $e) {
+            throw new InvalidArgumentException(
+                'The suppression list could not be checked, so no test was sent. '.$e->getMessage(),
+                0,
+                $e
+            );
         }
 
         // An unsaved subscription gives the renderer realistic variables and

@@ -122,6 +122,14 @@ abstract class MigrationPathTestCase extends TestCase
         DB::purge(self::CONNECTION);
 
         $this->migratePath(__DIR__.'/../vendor/goldnead/statamic-brand-context/database/migrations');
+
+        // The suppression tables are a precondition of the backfill, exactly as
+        // `brands` is a precondition of the brand-scoping migration. Installed
+        // here rather than inside the stepwise walk because they belong to
+        // another package: an install where they are absent is a real state,
+        // and the backfill's own guard is what covers it — see
+        // MigrationsWithExistingDataTest, which runs that case on purpose.
+        $this->migratePath(__DIR__.'/../vendor/goldnead/statamic-suppression/database/migrations');
     }
 
     protected function dropIsolatedSqliteFile(): void

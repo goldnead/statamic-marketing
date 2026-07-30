@@ -31,14 +31,19 @@
         {
             "type": "vcs",
             "url": "https://github.com/goldnead/statamic-leadhub.git"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/goldnead/statamic-suppression.git"
         }
     ],
     "require": {
-        "php": "^8.2",
         "goldnead/statamic-brand-context": "^1.4",
         "goldnead/statamic-leadhub": "^1.4",
+        "goldnead/statamic-suppression": "^1.0",
         "inertiajs/inertia-laravel": "^1.0|^2.0",
         "laravel/framework": "^11.0|^12.0|^13.0",
+        "php": "^8.2",
         "statamic/cms": "^6.0",
         "symfony/yaml": "^6.0|^7.0"
     },
