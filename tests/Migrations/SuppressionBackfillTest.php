@@ -121,14 +121,29 @@ it('does not overrule a decision somebody already made', function (): void {
 
 it('installs without the suppression package present, rather than dying', function (): void {
     // A host can have this addon and not that one — the dependency is declared,
-    // but a partially migrated install is a real state. A migration that
-    // crashes here leaves the whole addon half-installed, which is a worse
-    // outcome than a backfill that does nothing.
+    // but a partially migrated install is a real state, and so is one where the
+    // suppression migrations simply have not run yet.
+    //
+    // The rows matter: with an empty subscriptions table nothing would be
+    // written and the guard would never be reached, so the test would pass on
+    // an unguarded migration and prove nothing. This one seeds the bounces and
+    // complaints first, then takes the destination away.
+    $this->migratePath($this->currentMigrations());
+
+    (new MarketingDataFixture($this->isolated()))->seed(0);
+
     $this->isolatedSchema()->drop('suppression_events');
     $this->isolatedSchema()->drop('suppressions');
 
+    $this->isolated()->table('migrations')
+        ->where('migration', '2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->delete();
+
+    // A migration that crashes here leaves the whole addon half-installed,
+    // which is a worse outcome than a backfill that does nothing.
     $this->migratePath($this->currentMigrations());
 
     expect($this->ranMigrations())
-        ->toContain('2026_07_30_000001_backfill_suppressions_from_marketing_state');
+        ->toContain('2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->and($this->isolatedSchema()->hasTable('suppressions'))->toBeFalse();
 });
