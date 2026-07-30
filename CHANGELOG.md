@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.1 — 2026-07-30
+
+### Fixed — 1.7.0 shipped a control-panel bundle that did not match its source
+
+No behaviour changed and nothing in `src/` was touched. `resources/dist/build` is rebuilt and re-committed, because 1.7.0's copy was already stale on the day it was tagged.
+
+**How a page with no JavaScript on it moved the CP bundle.** `resources/css/cp.css` declares `@source "../views/**/*.blade.php"`, so Tailwind scans every Blade file in the addon for class-name candidates — including the new public preference partial, which has nothing to do with the control panel. That partial contains `<input type="hidden" name="action" …>`, the scanner reads the bare word `hidden` as a candidate, and the compiled stylesheet gains `.hidden{display:none}`. One utility, twenty-one bytes, nothing in the CP uses it.
+
+The size of the change is not the point. **A template edit is enough to change the committed bundle**, and the assumption behind "I did not touch Vue, so I do not need to rebuild" is simply false in this package. `scripts/check-dist-fresh.sh` exists because webhook-manager once shipped a rebuilt source with an un-rebuilt bundle and browsers answered `vue is not defined`; it did its job here and reported `STALE` on a tree that was otherwise fully green across both drivers and Vitest.
+
+Recorded so the next release does not re-learn it: **run `npm run build:check` after any change under `resources/views/`, not only after touching `resources/js/`.**
+
 ## 1.7.0 — 2026-07-30
 
 ### Added — a preference page, so an unsubscribe link is a choice instead of a door
