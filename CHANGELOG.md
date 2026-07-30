@@ -79,11 +79,23 @@ now instead of after a second brand's mail is flowing through the same system.
 
 ### Notes
 
-- Suite: **196 passed (726 assertions)** on the flat driver, **195 passed (724)** on eloquent,
-  including 11 new gate cases and 4 new migration cases.
+- Suite: **198 passed (733 assertions)** on the flat driver, **197 passed (731)** on eloquent,
+  including 11 new gate cases and 5 new migration cases.
+- One test fails on both drivers, and it is not this release's:
+  `PreferenceCenterBrandTest > it shares one contact across the brands` asserts that one address in
+  two brands carries one LeadHub contact. `statamic-leadhub` v1.11.0, released the same day, made the
+  flat contact store brand-isolated — so it now carries two. Verified pre-existing by running the
+  v1.7.1 tree against this same vendor directory. It belongs to LeadHub's release, not to the gate.
 - The new migration is guarded: an install without the suppression tables meets a no-op rather than a
   crash. A migration that dies halfway leaves the addon half-installed, which is worse than a backfill
   that does nothing.
+- It is dated `2026_07_31` rather than `2026_07_30` on purpose. Laravel sorts every loaded migration by
+  filename across all registered paths, and `2026_07_30_000001_backfill_…` sorts *before*
+  `2026_07_30_000001_create_suppressions_table` — "backfill" < "create". The first version of this
+  release did exactly that on a real install: the backfill ran first, met its own guard, and did
+  nothing, silently. `tests/Migrations/SuppressionBackfillTest.php` now sorts both directories together
+  the way the framework does, because the migration bed installs the suppression package separately and
+  first, and a bed that agrees with the code is not measuring it.
 - `SendMessageJob::handle()` and `StartCampaignJob::handle()` take one more injected argument. Both are
   resolved by the container in every real code path; only a test calling `handle()` by hand needs
   updating.
