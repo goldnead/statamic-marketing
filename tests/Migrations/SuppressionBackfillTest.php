@@ -15,6 +15,46 @@ use Illuminate\Support\Str;
  * `unsubscribed` row, so the three cases are read off real seed data rather than
  * off rows written for the assertion.
  */
+/**
+ * The ordering, measured the way a host meets it.
+ *
+ * Laravel sorts every loaded migration by filename across all registered paths,
+ * so the backfill and the tables it writes into are interleaved by name rather
+ * than by package. The first version of this migration was dated
+ * `2026_07_30_000001_backfill_…`, which sorts *before*
+ * `2026_07_30_000001_create_suppressions_table` — "backfill" < "create" — so on
+ * a real install it ran against tables that did not exist yet, hit its own
+ * guard, and did nothing at all. Silently: the guard is what stops a crash, and
+ * a crash is the only thing that would have said so.
+ *
+ * The rest of this file could not catch it, because MigrationPathTestCase
+ * installs the suppression package's migrations separately and first — a bed
+ * that agrees with the code instead of measuring it. This case sorts the two
+ * directories together, exactly as the framework does.
+ */
+it('runs after the tables it writes into', function (): void {
+    $files = array_merge(
+        glob($this->currentMigrations().'/*.php') ?: [],
+        glob(__DIR__.'/../../vendor/goldnead/statamic-suppression/database/migrations/*.php') ?: [],
+    );
+
+    $names = array_map(fn ($file) => basename($file, '.php'), $files);
+    sort($names);
+
+    $backfill = array_search('2026_07_31_000001_backfill_suppressions_from_marketing_state', $names, true);
+    $create = array_search('2026_07_30_000001_create_suppressions_table', $names, true);
+    $events = array_search('2026_07_30_000002_create_suppression_events_table', $names, true);
+
+    expect($backfill)->not->toBeFalse()
+        ->and($create)->not->toBeFalse('the suppression package must be installed for this to mean anything')
+        ->and($backfill)->toBeGreaterThan(
+            $create,
+            'the backfill sorts before the table it writes into, so on a fresh install it runs against '.
+            'nothing and its guard turns that into silence'
+        )
+        ->and($backfill)->toBeGreaterThan($events);
+});
+
 it('moves the deliverability facts across and leaves consent alone', function (): void {
     $this->migratePath($this->currentMigrations());
 
@@ -26,7 +66,7 @@ it('moves the deliverability facts across and leaves consent alone', function ()
     // case: an install that migrated first and filled up afterwards is not the
     // one the migration meets on a live site.
     $this->isolated()->table('migrations')
-        ->where('migration', '2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->where('migration', '2026_07_31_000001_backfill_suppressions_from_marketing_state')
         ->delete();
 
     $this->migratePath($this->currentMigrations());
@@ -69,7 +109,7 @@ it('is idempotent, so a second run changes nothing', function (): void {
 
     $run = function (): void {
         $this->isolated()->table('migrations')
-            ->where('migration', '2026_07_30_000001_backfill_suppressions_from_marketing_state')
+            ->where('migration', '2026_07_31_000001_backfill_suppressions_from_marketing_state')
             ->delete();
         $this->migratePath($this->currentMigrations());
     };
@@ -106,7 +146,7 @@ it('does not overrule a decision somebody already made', function (): void {
     ]);
 
     $this->isolated()->table('migrations')
-        ->where('migration', '2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->where('migration', '2026_07_31_000001_backfill_suppressions_from_marketing_state')
         ->delete();
 
     $this->migratePath($this->currentMigrations());
@@ -136,7 +176,7 @@ it('installs without the suppression package present, rather than dying', functi
     $this->isolatedSchema()->drop('suppressions');
 
     $this->isolated()->table('migrations')
-        ->where('migration', '2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->where('migration', '2026_07_31_000001_backfill_suppressions_from_marketing_state')
         ->delete();
 
     // A migration that crashes here leaves the whole addon half-installed,
@@ -144,6 +184,6 @@ it('installs without the suppression package present, rather than dying', functi
     $this->migratePath($this->currentMigrations());
 
     expect($this->ranMigrations())
-        ->toContain('2026_07_30_000001_backfill_suppressions_from_marketing_state')
+        ->toContain('2026_07_31_000001_backfill_suppressions_from_marketing_state')
         ->and($this->isolatedSchema()->hasTable('suppressions'))->toBeFalse();
 });

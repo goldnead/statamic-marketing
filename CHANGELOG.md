@@ -62,7 +62,7 @@ silently never arrives learns that the button is broken.
 
 ### Added — the backfill, while there is nothing to backfill
 
-`2026_07_30_000001_backfill_suppressions_from_marketing_state` moves what this addon already knew into
+`2026_07_31_000001_backfill_suppressions_from_marketing_state` moves what this addon already knew into
 the table that can be asked about it: `status = bounced` → `hard_bounce`, global; `status = complained`
 → `complaint`, that row's own brand; `leadhub_contacts.do_not_contact` → `manual`, brand-scoped.
 
