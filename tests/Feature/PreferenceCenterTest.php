@@ -7,6 +7,8 @@ use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Reasons;
+use Goldnead\Suppression\SuppressionService;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -192,6 +194,77 @@ it('cannot be used to lift a block on the contact — the security rule', functi
     // suggestion, so the refusal is enforced by the service above, not here.
     expect($response->getContent())->toContain('disabled');
     $response->assertSee(__('marketing::public.preferences_blocked'));
+});
+
+it('cannot be used to lift a block that exists only in the suppression list', function (): void {
+    // The same rule, met at the source the four send paths were pointed at in
+    // 1.8.0. Nothing is written to the contact here — a provider event lands in
+    // the `suppressions` table and nowhere else — so a page that asks LeadHub
+    // alone sees an ordinary subscriber and offers every list back.
+    app(SuppressionService::class)->suppress('jane@example.com', Reasons::COMPLAINT);
+
+    expect((bool) Contact::query()->where('email', 'jane@example.com')->value('do_not_contact'))
+        ->toBeFalse();
+
+    // The manipulated request: the browser's `disabled` is a suggestion, and
+    // this is what a POST looks like once somebody has removed it.
+    $this->followingRedirects()
+        ->post(route('marketing.preferences.update', $this->token), [
+            'lists' => ['newsletter', 'events', 'offers'],
+        ])
+        ->assertOk()
+        ->assertSee(__('marketing::public.preferences_error_blocked'));
+
+    expect(Subscription::query()->where('list_handle', 'offers')->exists())->toBeFalse();
+
+    $response = $this->get(route('marketing.preferences', $this->token))->assertOk();
+
+    expect(renderedStates($response->getContent()))->toBe([
+        'offers' => 'blocked',
+        'chorleitung' => 'blocked',
+        'events' => 'blocked',
+        'newsletter' => 'blocked',
+        'saenger' => 'blocked',
+    ]);
+
+    expect($response->getContent())->toContain('disabled');
+});
+
+it('asks about the address each row would actually be mailed at', function (): void {
+    // One person, two mailboxes, tied together by the `contact_uuid` this page
+    // uses as its identity. The rows on one page therefore do not all carry the
+    // same address, and a single question asked for the token's address would
+    // answer for the wrong mailbox on every other row.
+    $saenger = $this->subscriptions->subscribe(
+        app(MailingListRepository::class)->find('saenger'),
+        'jane.alt@example.com',
+    );
+
+    $saenger->update(['contact_uuid' => $this->newsletter->fresh()->contact_uuid]);
+
+    expect($saenger->fresh()->contact_uuid)->not->toBeNull();
+
+    // The second mailbox is gone; the first one is fine.
+    app(SuppressionService::class)->suppress('jane.alt@example.com', Reasons::HARD_BOUNCE);
+
+    $response = $this->get(route('marketing.preferences', $this->token))->assertOk();
+
+    expect(renderedStates($response->getContent()))->toBe([
+        'offers' => 'inactive',
+        'chorleitung' => 'inactive',
+        'events' => 'active',
+        'newsletter' => 'active',
+        'saenger' => 'blocked',
+    ]);
+
+    // And the rows that are not blocked still work, which is the half of this
+    // a blanket answer would also have got wrong.
+    $this->post(route('marketing.preferences.update', $this->token), [
+        'lists' => ['newsletter', 'events', 'offers'],
+    ])->assertRedirect();
+
+    expect(currentStatus('offers'))->toBe(Subscription::STATUS_SUBSCRIBED)
+        ->and(currentStatus('saenger', 'jane.alt@example.com'))->toBe(Subscription::STATUS_PENDING);
 });
 
 it('says out loud that a blocked list was not switched on', function (): void {

@@ -1,5 +1,107 @@
 # Changelog
 
+## 1.8.1 — 2026-07-30
+
+### Fixed — the one page that could hand back what the gate had just taken away
+
+1.8.0 put `goldnead/statamic-suppression` in front of every path that puts a mail on the wire. The
+preference page is not one of those paths, which is why it was not in the list, and the reasoning was
+sound as far as it went. It is also the only surface in this addon that **writes consent back** — and
+it was still asking the older, narrower question: `do_not_contact` on the LeadHub contact, and the
+subscription's own `bounced`/`complained` status. Nothing asked the table the gate reads.
+
+**What was possible while that was true.** Take an address that hard-bounces or files a spam complaint
+after 1.8.0. The provider event is recorded in `suppressions` and nowhere else: it does not set
+`do_not_contact`, and it does not rewrite this addon's subscription row unless the addon's own ESP
+ingress happened to see the same event. The unsubscribe token in every mail that address was ever sent
+still resolved. Opening it produced a page with every row switchable, ticking them all was accepted,
+and the addon wrote fresh consent records — `reason: preference_center`,
+`consent_proof: unsubscribe_token`, into the LeadHub timeline — for an address that was blocked at the
+time it did so. A subscription that had been ended came back as `subscribed`; a list the person had
+never been on could be created outright.
+
+Measured on the QA hub against v1.8.0 before this release was written, not reasoned about: an address
+carrying one active `complaint` row in `suppressions` (brand-scoped, `do_not_contact = false`, both
+subscription rows still `subscribed`) opened its preference page and got **13 lists, none of them
+disabled**. Removing nothing and simply ticking every box returned **13 subscriptions where there had
+been 2** — eleven of them to lists the address had never been on — with no refusal and not one error
+message on the page.
+
+No mail went out. The gate held at all four send paths, so the block did its job at the door. What was
+damaged is the record and what happens after it: a complainant carries a consent trail dated *after*
+their complaint, and the day somebody legitimately releases a suppression — a mailbox restored, a
+bounce that turned out to be an outage — that address is subscribed to lists it never asked for and
+starts receiving them. And the token is not a private thing. It is repeated in every mail this brand
+sends and has passed through mail clients, forwarding rules, scanners and link checkers. "Only the
+person could have done it" was never the claim.
+
+The rule this violated is the one 1.7.0 wrote down as the difference between a feature and a hole:
+**the token may end consent, and may restore consent the person themselves ended, but may never lift a
+block.** For one release that sentence was untrue whenever the block lived only in the suppression
+table — which, since 1.8.0, is where provider events go.
+
+### Changed — the page asks what the send paths ask, per row and in one brand
+
+`SubscriptionPreferences` now reads **both** signals and treats either one as a block: `do_not_contact`
+on the contact, and `Goldnead\Suppression\Contracts\Gate`. Neither replaces the other. An editor's
+opt-out in the CRM still lands only on the contact; a provider bounce lands only in the table.
+
+Two details that are not incidental:
+
+**One question per row, not one for the page.** The rows of a preference centre do not all carry the
+same mailbox. A person who holds a second list under a second address is found through the same
+`contact_uuid`, and that row would be mailed at *its* address — so a single question asked for the
+token's address would answer for the wrong mailbox on every other row. It is still one query;
+`suppressedAmong()` takes the batch.
+
+**One brand, and it is the page's own.** No brand is passed, so the gate resolves the current one,
+which `SetBrandFromRouteValue` derived from this very token — the same brand whose lists are on
+screen. That is what makes decision D1 land per row rather than as a blanket: a hard bounce is stored
+globally and blocks here, because the mailbox is gone for everyone; a complaint stays in the brand
+that received it and must not shut a page belonging to a brand the person never objected to. Asking
+"blocked anywhere" would leak one brand's relationship into another; asking only this addon's own
+state is what shipped in 1.8.0.
+
+**A gate that cannot answer blocks everything.** "The query failed" and "nobody is suppressed" are not
+the same statement. Catching `SuppressionCheckFailed` here is not carrying on — it *is* the closed
+answer, drawn as a page whose rows are all un-switchable. It costs an unsubscribe during the outage,
+which is the cheap side of the trade: every send path fails closed on the same fault, so there is
+nothing going out to unsubscribe from.
+
+The refusal stays in the service and not in the template, for the reason it always was: a disabled
+checkbox is a suggestion, and a crafted POST is not. The test that removes `disabled` in the browser
+and submits now runs against a block that exists **only** in the suppression table.
+
+### Fixed — a test whose premise leadhub 1.11.0 retired
+
+`PreferenceCenterBrandTest > it shares one contact across the brands` was red on both drivers when
+1.8.0 was tagged, and it was not the gate's doing. It asserted that one address in two brands is one
+LeadHub contact, so that the identity reached across brands on its own and the brand scope was the
+only thing holding it. `statamic-leadhub` v1.11.0 made the flat contact store brand-isolated; it is
+now two contacts. The premise is gone, and its going is an improvement.
+
+Rewritten to the case that still proves something. The subscriptions have not changed: both brands
+hold a row carrying the same address, and `subscriptionsOfThePerson()` matches on `email_normalized`
+as well as on the contact, so `marketing_subscriptions` remains a second route to the person that does
+not pass through LeadHub at all. What stops it surfacing is that the person's rows are keyed by list
+handle, and **a list handle has exactly one owner across the whole install** — the flat store refuses
+a handle another brand holds, and `2026_07_28_000001_restore_global_unique_on_list_handles` enforces
+the same thing in the schema. Brand B's membership has no row of brand A's to land on, whatever the
+identity match returns. The test now pins that, so the day handles become unique per brand instead, it
+fails here and names this page as the consequence to re-check.
+
+### Notes
+
+- Suite: **202 passed, 7 skipped (756 assertions)** on the flat driver, **201 passed, 8 skipped (754)**
+  on eloquent, plus **24** Vitest. Green on both drivers, and 1.8.0's known red is gone: +3 new cases
+  and +1 that used to fail. The skips are the two sibling-integration files (those addons are not
+  installed in this bed) and one flat-only repository case; they are unchanged from 1.8.0.
+- Nothing under `resources/views/` changed, so the committed CP bundle is untouched. `npm run build`
+  and `npm run build:check` were run anyway and report `FRESH` — the 1.7.0 lesson was that a Blade
+  edit is enough to move it, not that a PHP edit is safe to assume about.
+- `SubscriptionPreferences::__construct()` takes one more argument. It is container-resolved in every
+  code path; only a test building it by hand needs updating.
+
 ## 1.8.0 — 2026-07-30
 
 ### Added — every send path asks one question, and it is not this addon's question any more

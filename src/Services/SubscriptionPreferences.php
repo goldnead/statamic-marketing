@@ -8,6 +8,9 @@ use Goldnead\Marketing\Data\ListPreference;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Data\PreferenceCenter;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
+use Goldnead\Suppression\Support\EmailNormalizer;
 use Illuminate\Support\Collection;
 
 /**
@@ -30,6 +33,14 @@ use Illuminate\Support\Collection;
  * one mail, and a click in a mail client must not be able to undo them. That
  * is `$suppressed` below, and it is enforced here rather than in the template,
  * because a disabled checkbox is a suggestion and a crafted POST is not.
+ *
+ * **Where "blocked" is read from — two sources, and both of them bind.** This
+ * page must ask what the send paths ask, or the rule above is a decoration. It
+ * therefore reads `do_not_contact` on the LeadHub contact *and* the suppression
+ * gate that 1.8.0 put in front of all four send paths, and a block from either
+ * one is a block. One source is not enough in either direction: a provider
+ * bounce or complaint now lands only in `suppressions`, and an editor's opt-out
+ * in the CRM still lands only on the contact.
  */
 class SubscriptionPreferences
 {
@@ -37,6 +48,7 @@ class SubscriptionPreferences
         protected MailingListRepository $lists,
         protected SubscriptionService $subscriptions,
         protected ContactRepository $contacts,
+        protected SuppressionGate $gate,
     ) {
     }
 
@@ -60,17 +72,27 @@ class SubscriptionPreferences
     {
         $contactSuppressed = $this->contactIsSuppressed($subscription);
         $mine = $this->subscriptionsOfThePerson($subscription);
+        $gate = $this->gateVerdict($subscription, $mine);
 
-        $rows = $this->lists->all()->map(function (MailingList $list) use ($mine, $subscription, $contactSuppressed) {
+        $rows = $this->lists->all()->map(function (MailingList $list) use ($mine, $subscription, $contactSuppressed, $gate) {
             $row = $mine->get($list->handle);
             $rowSuppressed = $row ? $this->statusIsSuppression($row->status) : false;
+
+            // The address this row would actually be mailed at: its own, if the
+            // person holds this list under a second mailbox tied to the same
+            // contact, and otherwise the one the token was delivered to.
+            $gateSuppressed = $gate['unavailable'] || isset($gate['blocked'][
+                (string) EmailNormalizer::normalize((string) ($row->email ?? $subscription->email))
+            ]);
 
             return new ListPreference(
                 list: $list,
                 subscription: $row,
                 active: (bool) $row?->isSubscribed(),
-                suppressed: $contactSuppressed || $rowSuppressed,
+                suppressed: $contactSuppressed || $rowSuppressed || $gateSuppressed,
                 suppressionReason: match (true) {
+                    $gate['unavailable'] => 'suppression_unavailable',
+                    $gateSuppressed => 'suppression_list',
                     $contactSuppressed => 'contact',
                     $rowSuppressed => (string) $row->status,
                     default => null,
@@ -227,15 +249,60 @@ class SubscriptionPreferences
     }
 
     /**
+     * The suppression gate's answer for every address this page can act on.
+     *
+     * **One question per row, not one for the page.** The rows of a preference
+     * centre do not all carry the same mailbox: a person who holds a second
+     * list under a second address is found through the same `contact_uuid`, and
+     * that row would be mailed at *its* address. Asking once for the token's
+     * address would answer for the wrong mailbox on every row but one. It is
+     * still a single query — `suppressedAmong()` takes the batch.
+     *
+     * **And one brand, deliberately.** No brand is passed, so the gate resolves
+     * the current one, which the route middleware derived from this very token
+     * — the same brand whose lists the page is showing. That is what makes
+     * decision D1 land correctly on each row: a hard bounce is stored globally
+     * and blocks here because the mailbox is gone for everyone, while a
+     * complaint stays in the brand that received it and must not shut a page
+     * belonging to a brand the person never objected to. Asking "blocked
+     * anywhere" would leak the second brand's relationship into this one;
+     * asking only this addon's own state would keep offering a dead mailbox.
+     *
+     * **A gate that cannot answer blocks everything.** "The query failed" and
+     * "nobody is suppressed" are not the same statement — the rule the gate
+     * contract is built on. Catching here is not carrying on: it *is* the
+     * closed answer, rendered as a page whose rows are all un-switchable. It
+     * costs an unsubscribe during the outage, which is the cheap side of the
+     * trade, because every send path fails closed on the same fault and nothing
+     * is going out to unsubscribe from.
+     *
+     * @param  Collection<string, Subscription>  $mine
+     * @return array{blocked: array<string, true>, unavailable: bool}
+     */
+    protected function gateVerdict(Subscription $subscription, Collection $mine): array
+    {
+        $addresses = $mine
+            ->map(fn (Subscription $row) => (string) $row->email)
+            ->push((string) $subscription->email)
+            ->all();
+
+        try {
+            return ['blocked' => $this->gate->suppressedAmong($addresses), 'unavailable' => false];
+        } catch (SuppressionCheckFailed) {
+            return ['blocked' => [], 'unavailable' => true];
+        }
+    }
+
+    /**
      * Is the contact behind this token blocked from all sending?
      *
-     * Read off the state the addon already keeps rather than off a suppression
-     * list of its own. `do_not_contact` on the LeadHub contact is what a hard
-     * bounce sets (`leadhub.hard_bounce_opt_out`), what a spam complaint sets
-     * (`leadhub.complaint_opt_out`), what an unsubscribe sets where
+     * The second of the two sources, and the one that is not the gate.
+     * `do_not_contact` on the LeadHub contact is what an unsubscribe sets where
      * `marketing.unsubscribe.global_opt_out` is on, and what an editor sets by
-     * hand in the CRM. One question, every source — and no second list that
-     * can drift out of step with the first.
+     * hand in the CRM. It is read *as well as* the suppression table rather
+     * than instead of it: since 1.8.0 a provider bounce or complaint is written
+     * to `suppressions` and may never touch this flag, so a page that asked
+     * only here would hand the token back its blocked lists.
      */
     protected function contactIsSuppressed(Subscription $subscription): bool
     {

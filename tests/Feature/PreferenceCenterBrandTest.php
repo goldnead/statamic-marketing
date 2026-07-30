@@ -8,6 +8,8 @@ use Goldnead\Marketing\Models\MailingListRecord;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Reasons;
+use Goldnead\Suppression\SuppressionService;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -20,10 +22,16 @@ use Illuminate\Support\Facades\Mail;
  * brand on the install and let them be changed from there.
  *
  * The same address is deliberately used in both brands, which is the ordinary
- * case rather than a contrivance: LeadHub keeps one contact per address, so
- * both subscriptions carry the *same* `contact_uuid`. The identity that finds
- * the person's other subscriptions therefore matches across brands on its own,
- * and only the brand scope stops it. That is exactly the thing worth pinning.
+ * case rather than a contrivance. Until leadhub 1.11.0 that meant one contact
+ * for both, so the identity reached across brands on its own and the brand
+ * scope was the only thing holding it. 1.11.0 isolated the flat contact store
+ * per brand, so it is now two contacts and that particular door is shut a
+ * second time.
+ *
+ * The address itself still crosses: `subscriptionsOfThePerson()` matches on
+ * `email_normalized` as well as on the contact, and both brands hold a
+ * subscription row carrying it. `marketing_subscriptions` is therefore the path
+ * the brand scope still has to hold shut, and it is what these tests pin.
  */
 beforeEach(function (): void {
     Mail::fake();
@@ -68,6 +76,20 @@ function statusIn(Brand $brand, string $listHandle): ?string
         ->value('status'));
 }
 
+/** Every row the page rendered for a token, handle => state, by handle. */
+function pageStates(string $token): array
+{
+    $html = test()->get('/!/marketing/preferences/'.$token)->assertOk()->getContent();
+
+    preg_match_all('/data-list="([^"]+)"\s+data-state="([^"]+)"/', $html, $matches, PREG_SET_ORDER);
+
+    $states = collect($matches)->mapWithKeys(fn ($m) => [$m[1] => $m[2]])->all();
+
+    ksort($states);
+
+    return $states;
+}
+
 it('shows a token only the lists of its own brand', function (): void {
     $content = $this->get('/!/marketing/preferences/'.$this->aNews->token)->assertOk()->getContent();
 
@@ -78,14 +100,83 @@ it('shows a token only the lists of its own brand', function (): void {
         ->and($content)->not->toContain('B Newsletter');
 });
 
-it('shares one contact across the brands and still shows only one brand of it', function (): void {
-    // Both subscriptions really are the same person by the identity this page
-    // uses. If the brand scope were the only thing keeping them apart and it
-    // were removed, this expectation would be what breaks.
+it('has no handle another brand\'s subscription could be drawn onto', function (): void {
+    // What this test used to say: one contact spans both brands, so the identity
+    // reaches across on its own and only the brand scope holds it. leadhub
+    // 1.11.0 isolated the flat contact store per brand, so that is no longer
+    // true — and its going is an improvement, not a regression.
     $a = BrandContext::runFor($this->brandA, fn () => Subscription::query()->where('list_handle', 'a_news')->first());
     $b = BrandContext::runFor($this->brandB, fn () => Subscription::query()->where('list_handle', 'b_news')->first());
 
-    expect($a->contact_uuid)->not->toBeNull()->and($a->contact_uuid)->toBe($b->contact_uuid);
+    expect($a->contact_uuid)->not->toBeNull()
+        ->and($b->contact_uuid)->not->toBeNull()
+        ->and($a->contact_uuid)->not->toBe($b->contact_uuid);
+
+    // What is still true, and is the sharper question: the *subscriptions* carry
+    // the same address in both brands, and `subscriptionsOfThePerson()` matches
+    // on `email_normalized` as well as on the contact. They are a second route
+    // to the person that does not go through LeadHub at all.
+    $handles = BrandContext::withoutBrandScope(fn () => Subscription::query()
+        ->where('email_normalized', 'jane@example.com')
+        ->pluck('list_handle')
+        ->sort()
+        ->values()
+        ->all());
+
+    expect($handles)->toBe(['a_events', 'a_news', 'b_news']);
+
+    // And here is why that route shows nothing: the page builds one row per list
+    // of *this* brand and keys the person's subscriptions onto it by handle — and
+    // a list handle has exactly one owner across the whole install, enforced by
+    // the flat store and by a global unique index. Brand B's membership has no
+    // row of brand A's to land on, whatever the identity match returns.
+    //
+    // If a later change ever made handles unique per brand instead, this fails
+    // and says so here, because that is the day the brand scope on the
+    // subscription query becomes the only thing left holding this page.
+    $collision = null;
+
+    try {
+        BrandContext::runFor($this->brandB, fn () => app(MailingListRepository::class)
+            ->save(new MailingList(handle: 'a_news', name: 'B under A\'s handle', doubleOptIn: false)));
+    } catch (Throwable $e) {
+        $collision = $e;
+    }
+
+    expect($collision)->not->toBeNull()
+        ->and(BrandContext::runFor($this->brandB,
+            fn () => app(MailingListRepository::class)->all()->pluck('handle')->sort()->values()->all()
+        ))->toBe(['b_news']);
+
+    // So: one address in two brands, and one brand on the page.
+    expect(pageStates($this->aNews->token))->toBe([
+        'a_events' => 'active',
+        'a_news' => 'active',
+    ]);
+});
+
+it('asks the suppression question in the brand whose lists it is showing', function (): void {
+    // D1: a hard bounce is a fact about the mailbox and is recorded once for
+    // every brand; a complaint is a fact about one relationship and stays in the
+    // brand that received it. This page shows exactly one brand's lists, so each
+    // row has to be asked "blocked *here*" — not "blocked anywhere", which would
+    // let brand B's complaint shut brand A's page, and not "blocked in this
+    // brand's own rows only", which would let a dead mailbox keep being offered.
+    BrandContext::runFor($this->brandB, fn () => app(SuppressionService::class)
+        ->suppress('jane@example.com', Reasons::COMPLAINT));
+
+    expect(pageStates($this->aNews->token))->toBe([
+        'a_events' => 'active',
+        'a_news' => 'active',
+    ]);
+
+    BrandContext::runFor($this->brandB, fn () => app(SuppressionService::class)
+        ->suppress('jane@example.com', Reasons::HARD_BOUNCE));
+
+    expect(pageStates($this->aNews->token))->toBe([
+        'a_events' => 'blocked',
+        'a_news' => 'blocked',
+    ]);
 });
 
 it('refuses to change another brand\'s list from this brand\'s token', function (): void {

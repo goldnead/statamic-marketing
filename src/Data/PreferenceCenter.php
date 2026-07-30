@@ -25,9 +25,14 @@ class PreferenceCenter
         /** @var Collection<int, ListPreference> every list of this brand */
         public Collection $rows,
         /**
-         * The contact is blocked from all sending — a hard bounce, a spam
-         * complaint, or an opt-out recorded by hand. Every row is then
+         * The LeadHub contact carries `do_not_contact` — an opt-out recorded by
+         * hand in the CRM, or a global unsubscribe. Every row is then
          * un-switchable, whatever its own state.
+         *
+         * This is one of the two sources a row's `suppressed` is built from,
+         * not the whole answer: since 1.8.0 a provider bounce or complaint is
+         * recorded in the suppression table and never reaches this flag. Read
+         * `ListPreference::$suppressed` to ask whether a row is blocked.
          */
         public bool $contactSuppressed = false,
     ) {
