@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.7.0 — 2026-07-30
+
+### Added — a preference page, so an unsubscribe link is a choice instead of a door
+
+**What was already right and has not been touched.** The unsubscribe token identifies one *subscription* — one address on one list — so the link has always been per list. Somebody who leaves the newsletter stays on the events. That is the correct model and it is unchanged.
+
+What was missing was everything after it. `unsubscribed.blade.php` was six lines: "you have been removed from X", full stop. It never mentioned that the same brand runs four other lists, and it offered no way to change any of them. On adriangoldner.com, which runs five (`newsletter`, `chorleitung`, `saenger`, `events`, `offers`), a reader who only wanted the events had to wait for four more mails and click four more links to get there. The realistic thing for them to do instead is press the spam button, and that costs the sending domain far more than the four subscriptions were worth.
+
+**The page.** `GET /!/marketing/preferences/{token}` — the same token the unsubscribe link carries, in the same route group, with the same brand derivation 1.5.0 built (`SetBrandFromRouteValue` on `Subscription.token`). It lists every list of that brand with its current state and lets each one be switched on or off. `POST` to the same URL applies a selection or, as a separate and deliberately separated action, ends everything.
+
+**No login, and that is a decision rather than an omission.** Almost no subscriber has an account on the site that mails them, and a registration form standing between a person and their unsubscribe is a dark pattern with a password field on it. The token is the credential. There is also no session to read the brand from — this page is opened by a stranger's browser, exactly like the unsubscribe link, which is why the derivation has to come from the token and not from context.
+
+**The unsubscribe page is now the entry rather than the end.** The unsubscribe still happens on arrival, unchanged; the page then shows what is still running and the controls to change it. That is the one moment the reader is certain to be looking.
+
+**"Unsubscribe from everything" means every list of this brand.** Not the CRM-wide opt-out. Somebody who is done with this brand's mailings has said nothing about another brand's, and nothing at all about transactional mail, which does not rest on consent in the first place. Where an install has switched on `marketing.unsubscribe.global_opt_out`, that setting still applies, through the ordinary unsubscribe path as everywhere else, rather than through a second rule here.
+
+**Switching a list back on does not ask for a second double opt-in.** The token was delivered to the address it belongs to, which is the same proof a confirmation mail collects: send something to the mailbox and see it come back. Asking twice would re-establish a fact the click has already established, and would mean the only way back is to wait for a mail that, by definition, is no longer being sent. The restored consent is written to the LeadHub timeline with `reason: preference_center` and `consent_proof: unsubscribe_token`, so the record says *how* it was given and not merely that it exists. `markSubscribed()` takes that metadata now; called without it, it behaves exactly as before.
+
+### Added — the rule that decides whether this page is a feature or a hole
+
+The token is in **every** mail this brand sends. It has been through mail clients, forwarding rules, corporate scanners and link checkers. So it may end consent, and it may restore consent *the person themselves* ended. It may never lift a **block**.
+
+A hard bounce, a spam complaint, and an opt-out an editor recorded by hand are decisions made *about* an address, not by whoever is holding one mail from it. A click must not undo them. On the page the row still appears and is not switchable, with one sentence that says sending to this address is blocked and nothing more: the reason is known internally and is deliberately not rendered, because the page cannot know who is reading it.
+
+**The check is bound to the state the addon already keeps, not to a suppression list of its own.** `do_not_contact` on the LeadHub contact is what `leadhub.hard_bounce_opt_out` sets, what `leadhub.complaint_opt_out` sets, what `marketing.unsubscribe.global_opt_out` sets, and what the CRM sets by hand. One question covers all four sources, and there is no second list to drift out of step with the first. Row-level blocks — a subscription sitting at `bounced` or `complained` — are read off the row.
+
+Blocked rows are left alone in **both** directions. Saving the form without a blocked row's checkbox does not rewrite it to `unsubscribed`: that status is the reason the sending path stopped, and overwriting it as a side effect of somebody adjusting a different list would lose it.
+
+**The enforcement is in the service, not the template.** A disabled checkbox is a suggestion; a crafted POST is not. `SubscriptionPreferences::apply()` refuses regardless of what arrives, and the test that matters most in this release posts the full list of handles for a blocked contact and requires that nothing is created and nothing is changed.
+
+### Added — what the token discloses, written down on purpose
+
+The page shows the address the token belongs to and which of this brand's lists it is on. That is a deliberate trade, recorded in `PreferenceCenter`'s own docblock rather than left implicit: the token was delivered to that mailbox and is repeated in every mail the brand sends, so whoever holds it can already read the mail those memberships are visible in. It grants nothing that was not already there, and without it the page cannot do its job.
+
+What the token must not do is widen. It never reaches past its own brand, and a handle belonging to another brand is answered exactly as a handle nobody has — telling a stranger which handles exist elsewhere on the install is telling them which brands exist.
+
+### Changed — the public pages can show what the server refused
+
+1.5.3 took "the button did nothing and said nothing" out of the control panel. The same failure out here is worse, because a reader who cannot see why a change was refused does not file a ticket, they report the mail as spam. Errors that belong to a row are rendered under that row; anything else lands in a block above the form. Nothing the server says can fall through the floor.
+
+### Unchanged — the RFC 8058 one-click path
+
+`POST /!/marketing/unsubscribe/{token}` still answers `204` with an empty body and no page, and is still exempted from the forgery check. That endpoint is for Gmail and Outlook, not for people; giving it a body would break deliverability. A test now pins the empty body as well as the status, so the preference work cannot leak into it later.
+
+### Added — twenty checks, and a demonstration of which rule each one holds
+
+`tests/Feature/PreferenceCenterTest.php` (14) covers the page itself; `tests/Feature/PreferenceCenterBrandTest.php` (6) covers it under multi-brand. The suite is 183 on the flat driver and 182 on eloquent, from 163 and 162.
+
+**Demonstrated rather than asserted.** With `src/`, `routes/` and `resources/` stashed and the two test files left in place, 18 of the 20 fail and the 163 that were green before stay green. The two that pass are meant to: one pins that the RFC 8058 endpoint is unchanged, the other pins the premise the multi-brand file rests on.
+
+Two narrower demonstrations name what each group actually holds:
+
+- With the block check neutralised so it always answers "not blocked", exactly two cases fail, and the first thing they report is a *new subscription created for a contact the sending is blocked for*. Nothing else in the file moves.
+- With the brand derivation removed from the two new routes, five of the six multi-brand cases fail. The sixth passes, correctly: it asserts that both brands' subscriptions carry the **same** `contact_uuid`, because LeadHub keeps one contact per address. That is the premise — the identity that finds a person's other subscriptions matches across brands on its own, and only the brand scope stops it. It is used as the same address in both brands throughout that file for exactly this reason.
+
+### Added — German and English text for the page
+
+`resources/lang/{de,en}/public.php`. Somebody reading this page came to leave, so the tone is the same plain register the rest of the public pages use: no exclamation marks, no persuasion, no offer to reconsider. The one sentence about blocked rows says that sending is blocked and stops there.
+
 ## 1.6.5 — 2026-07-30
 
 ### Fixed — the scheduled send was registered twice

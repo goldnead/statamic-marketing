@@ -67,7 +67,7 @@ class SubscriptionService
             return $subscription;
         }
 
-        return $this->markSubscribed($subscription);
+        return $this->markSubscribed($subscription, (array) ($options['meta'] ?? []));
     }
 
     public function confirmByToken(string $token): ?Subscription
@@ -85,7 +85,13 @@ class SubscriptionService
         return $this->markSubscribed($subscription);
     }
 
-    public function markSubscribed(Subscription $subscription): Subscription
+    /**
+     * @param  array{reason?:string,consent_proof?:string}  $metadata  how this
+     *         consent was established, written to the contact timeline. A
+     *         consent record that says only *that* it exists cannot be
+     *         defended later; one that says how it was given can.
+     */
+    public function markSubscribed(Subscription $subscription, array $metadata = []): Subscription
     {
         $subscription->fill([
             'status' => Subscription::STATUS_SUBSCRIBED,
@@ -94,7 +100,7 @@ class SubscriptionService
         ]);
         $subscription->save();
 
-        $this->syncContactOnSubscribe($subscription);
+        $this->syncContactOnSubscribe($subscription, $metadata);
 
         event(new MarketingSubscribed($subscription));
 
@@ -149,7 +155,7 @@ class SubscriptionService
      * Upsert the LeadHub contact, leave a timeline entry, and optionally tag
      * the contact with the list handle.
      */
-    protected function syncContactOnSubscribe(Subscription $subscription): void
+    protected function syncContactOnSubscribe(Subscription $subscription, array $metadata = []): void
     {
         LeadHub::ingest([
             'email' => $subscription->email,
@@ -163,9 +169,7 @@ class SubscriptionService
                 'last_name' => $subscription->last_name,
             ]),
             'source' => $subscription->source ?? 'marketing',
-            'payload' => [
-                'list' => $subscription->list_handle,
-            ],
+            'payload' => array_merge(['list' => $subscription->list_handle], $metadata),
         ]);
 
         $contact = LeadHub::findByEmail($subscription->email);

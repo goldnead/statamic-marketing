@@ -2,6 +2,7 @@
 
 use Goldnead\BrandContext\Http\Middleware\SetBrandFromRouteValue;
 use Goldnead\Marketing\Http\Controllers\ConfirmController;
+use Goldnead\Marketing\Http\Controllers\PreferencesController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
@@ -38,6 +39,18 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
 
     Route::get('/unsubscribe/{token}', [UnsubscribeController::class, 'show'])
         ->name('marketing.unsubscribe')
+        ->middleware($brandFrom(Subscription::class, 'token', 'token'));
+
+    // The preference centre. Same token, same derivation, no session and no
+    // login: a subscriber has neither. The token identifies one subscription,
+    // and through its contact the person's other subscriptions *within that
+    // one brand* — the derivation is what keeps it inside those walls.
+    Route::get('/preferences/{token}', [PreferencesController::class, 'show'])
+        ->name('marketing.preferences')
+        ->middleware($brandFrom(Subscription::class, 'token', 'token'));
+
+    Route::post('/preferences/{token}', [PreferencesController::class, 'update'])
+        ->name('marketing.preferences.update')
         ->middleware($brandFrom(Subscription::class, 'token', 'token'));
 
     // RFC 8058 one-click unsubscribe (List-Unsubscribe-Post). Mail providers

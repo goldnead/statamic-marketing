@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Http\Controllers;
 
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Services\SubscriptionPreferences;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Routing\Controller;
 
@@ -12,14 +13,19 @@ class UnsubscribeController extends Controller
         string $token,
         SubscriptionService $subscriptions,
         MailingListRepository $lists,
+        SubscriptionPreferences $preferences,
     ) {
         $subscription = $subscriptions->unsubscribeByToken($token, ['reason' => 'link']);
 
         abort_unless($subscription, 404);
 
+        // The preference centre is built *after* the unsubscribe, so the page
+        // shows the state the reader is actually in rather than the one they
+        // were in a moment ago.
         return response()->view('marketing::unsubscribed', [
             'subscription' => $subscription,
             'list' => $lists->find($subscription->list_handle),
+            'center' => $preferences->forSubscription($subscription->fresh()),
         ]);
     }
 

@@ -33,6 +33,13 @@ Think Mailcoach, but native to Statamic and built on top of
 - **Unsubscribes** via tokenized link plus RFC 8058 one-click
   (`List-Unsubscribe` / `List-Unsubscribe-Post` headers), optional global
   opt-out to LeadHub's `do_not_contact`.
+- **Preference page** at `/!/marketing/preferences/{token}`, addressed by the
+  same unsubscribe token and needing no login: every list of the token's brand
+  with its current state, each switchable on or off, plus a separate
+  "unsubscribe from everything" (that brand's lists — not the CRM opt-out). The
+  page a tokenized unsubscribe link lands on carries the same controls. A
+  contact that is blocked (hard bounce, complaint, `do_not_contact`) can be
+  switched off there but never back on.
 - **LeadHub native**: subscribing upserts the contact, records timeline events
   (`marketing.subscribed` / `marketing.unsubscribed`), and tags contacts with
   `list:{handle}`. Hard bounces and complaints opt the contact out.
