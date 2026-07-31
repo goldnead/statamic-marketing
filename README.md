@@ -152,7 +152,27 @@ refused with a message naming the brand that holds it.
 | `subscriptions.double_opt_in` | `true` | Default for new lists (per-list override) |
 | `unsubscribe.global_opt_out` | `false` | Also set LeadHub `do_not_contact` on unsubscribe |
 | `tracking.opens` / `tracking.clicks` | `true` | Toggle tracking |
+| `delivery.mail_headers` | `[]` | Per-message headers asking the provider not to rewrite links |
+| `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
+
+### Sending through a provider that counts clicks
+
+Brevo, Mailgun, Mailchimp and most others rewrite every `href` in the HTML part
+onto a counter of their own and forward the reader with an extra parameter
+attached. The click redirect this addon signs does not survive that on its own:
+Laravel signs the whole query string, so one appended parameter is a 403 — the
+reader never arrives and the click is not counted either.
+
+`delivery.ignored_query_parameters` names the parameters that may be appended
+without invalidating the signature. It ships with the eleven that real providers
+add, and it will not ignore `url`, `expires` or `signature` however it is edited:
+this route carries its destination in the query, so an ignorable `url` would be
+an open redirect on your own domain rather than merely a weaker signature.
+
+`delivery.mail_headers` is the other half — the per-message header that switches
+the provider's own counter off, which most of them offer and Brevo does not. It
+is empty by default; `config/marketing.php` has the verified table of names.
 
 ## Testing
 

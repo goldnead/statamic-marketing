@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Mail;
 
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Support\DeliveryHeaders;
 use Goldnead\Marketing\Support\RenderedMail;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
@@ -38,6 +39,13 @@ class CampaignMail extends Mailable
         if ($this->campaign->replyTo) {
             $mail->replyTo($this->campaign->replyTo);
         }
+
+        // Ask the sending platform not to rewrite the links in this message.
+        // Set here rather than in a `headers()` method because the value is a
+        // configured map of arbitrary vendor names, and `Headers` only carries
+        // the three Laravel knows about. See `delivery.mail_headers` for the
+        // table of providers, and for the one that has no such header at all.
+        $mail->withSymfonyMessage(fn (Email $message) => DeliveryHeaders::applyTo($message));
 
         $unsubscribeUrl = $this->rendered->unsubscribeUrl;
 

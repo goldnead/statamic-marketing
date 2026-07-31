@@ -115,6 +115,106 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Delivery — surviving a provider that rewrites the links
+    |--------------------------------------------------------------------------
+    |
+    | Most sending platforms count clicks by rewriting every `href` in the HTML
+    | part onto a counter of their own, then forwarding the reader with an extra
+    | parameter attached. The click-tracking redirect this addon signs does not
+    | survive that: Laravel signs the whole query string, so one appended
+    | parameter is a 403 — measured, not assumed. Brevo's counter turned a
+    | working link into `403 …/c/{uuid}?_se=…&url=…&signature=…`, and the click
+    | went uncounted with it. Confirmation and unsubscribe links are untouched;
+    | their token is in the path and nothing about them is signed.
+    |
+    | Two answers, and a host wants both.
+    |
+    |
+    | `mail_headers` — stop the rewriting at the source.
+    |
+    | Most providers take a per-message header that turns click tracking off for
+    | that one message. Anything listed here is added verbatim to the outgoing
+    | campaign and double-opt-in message, so this addon needs no provider of its
+    | own. Empty by default — an addon that guessed your provider and changed
+    | how it behaves would be worse than one that asks. Note that this addon
+    | counts clicks itself, so switching the provider's own counter off costs
+    | nothing but the provider's dashboard.
+    |
+    | Verified against each vendor's own documentation, July 2026:
+    |
+    |   Mailgun        'X-Mailgun-Track-Clicks' => 'no'
+    |   Postmark       'X-PM-TrackLinks' => 'None'
+    |   SparkPost      'X-MSYS-API' => '{"options":{"click_tracking":false}}'
+    |   SendGrid       'X-SMTPAPI' => '{"filters":{"clicktrack":{"settings":{"enable":0}}}}'
+    |   Mailjet        'X-Mailjet-TrackClick' => '0'
+    |   Mandrill       'X-MC-Track' => 'opens'   (an allow-list: anything not
+    |                                             named is switched off)
+    |   Elastic Email  'trackclicks' => 'false'
+    |
+    |   Amazon SES     no header. SES rewrites links only when the configuration
+    |                  set named in `X-SES-CONFIGURATION-SET` publishes click
+    |                  events, so sending without that header is already the off
+    |                  position. Per link: `<a ses:no-track href="…">`.
+    |   Resend         no header; tracking is off by default, per domain.
+    |   Brevo          no header, and none is coming. `X-Mailin-custom`,
+    |                  `X-Sib-Sandbox` and `X-SIB-API` are the documented ones
+    |                  and none of them touches tracking. On Brevo the ignore
+    |                  list below is not defence in depth — it is the only thing
+    |                  that works.
+    |
+    |
+    | `ignored_query_parameters` — survive the rewriting when it happens.
+    |
+    | These names are left out of the signature check. That is a real cost and
+    | it is bounded, but the bound is tighter here than for a magic link: this
+    | route carries its destination in the query, as `?url=https://…`. A `url`
+    | on this list would be an open redirect on your own domain, not merely a
+    | weaker signature. `Support\TrackingParameters` therefore refuses to ignore
+    | `url`, `expires` or `signature` however this list is edited. Every name
+    | below is a parameter a mail provider adds to somebody else's URL. Names
+    | that only an ad network or a referrer adds — `gclid`, `fbclid` — are
+    | deliberately absent: they do not appear on the path from a mail to this
+    | route, and a list that grows by association is how one ends up ignoring
+    | the wrong thing.
+    |
+    */
+
+    'delivery' => [
+
+        'mail_headers' => [
+            // 'X-Mailgun-Track-Clicks' => 'no',
+        ],
+
+        'ignored_query_parameters' => [
+            // Brevo (Sendinblue): the recipient address, base64, appended by the
+            // click redirector. This is the one that was measured.
+            '_se',
+
+            // Brevo's "Google Analytics tagging", and the same switch in
+            // Mailchimp, Mailjet, Postmark and Klaviyo: five parameters appended
+            // to every link in the message.
+            'utm_source',
+            'utm_medium',
+            'utm_campaign',
+            'utm_term',
+            'utm_content',
+
+            // Mailchimp: campaign id and recipient id.
+            'mc_cid',
+            'mc_eid',
+
+            // HubSpot: the encrypted recipient token and the message id.
+            '_hsenc',
+            '_hsmi',
+
+            // Marketo (Adobe): the recipient token.
+            'mkt_tok',
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Public routes
     |--------------------------------------------------------------------------
     |

@@ -138,6 +138,14 @@ class CampaignRenderer
     /**
      * Rewrite every absolute http(s) link to a signed tracking redirect. The
      * unsubscribe link and anchors/mailto/tel are left untouched.
+     *
+     * So are the confirmation and preference-centre links, and for the same
+     * reason: all three carry their token in the path and are the routes a
+     * reader has to be able to reach even when everything else has failed.
+     * Sending them through the signed redirect would hand a sending platform
+     * the chance to break them too — a rewritten link plus an appended
+     * parameter is a 403, which would leave someone unable to unsubscribe or
+     * to change what they receive.
      */
     protected function rewriteLinks(string $html, Message $message): string
     {
@@ -146,7 +154,9 @@ class CampaignRenderer
             function (array $matches) use ($message) {
                 $url = html_entity_decode($matches[1]);
 
-                if (str_contains($url, '/unsubscribe/') || str_contains($url, '/confirm/')) {
+                if (str_contains($url, '/unsubscribe/')
+                    || str_contains($url, '/confirm/')
+                    || str_contains($url, '/preferences/')) {
                     return $matches[0];
                 }
 
