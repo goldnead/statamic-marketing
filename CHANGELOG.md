@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.9.1 — 2026-08-01
+### Fixed — CI only; nothing in the installed package changes
+
+No file that ships in the Composer tarball is touched by this release. `src/`, `config/`, `routes/`,
+`resources/views/`, `lang/` and `resources/dist/` are byte-for-byte 1.9.0.
+
+- **The cross-addon integration job ran no tests at all.** `scripts/test-siblings.sh` staged its
+  throwaway copy with `git archive HEAD`, and `git archive` applies `.gitattributes` `export-ignore`
+  — which since the packaging sweep earlier today holds `/tests`, `/phpunit.xml` and `/scripts`. The
+  staged copy therefore had no test suite and no PHPUnit config, and Pest aborted with `The test
+  directory [%s] does not exist.` Staging now goes through `git read-tree` into a scratch index plus
+  `git checkout-index`, which is the same HEAD content without the export filter. The
+  `export-ignore` list is correct for what a site downloads and is unchanged.
+- **A skipped integration run no longer passes for green.** All seven tests in `tests/Integration`
+  call `markTestSkipped()` when their sibling class is missing, so a run where the siblings failed to
+  install or their bridges failed to boot exited 0 and read as a pass — the state these tests were in
+  for their entire existence. The script now asserts against the JUnit report that tests ran and none
+  skipped. (`--fail-on-skipped` is not enough: Pest 3 accepts the flag and exits 0 anyway.)
+- **The optional siblings come from Packagist.** `goldnead/statamic-automations` and
+  `goldnead/statamic-webhook-manager` were published today, so the script requires the newest stable
+  release of each instead of writing VCS repository entries and pinning `*@dev` — which tested
+  unreleased sibling branches against a released addon. Only their `src/`, `routes/`, `config/` and
+  `database/migrations/` are needed, none of which is export-ignored, so a dist install is correct
+  and `--prefer-source` is not. Local checkouts via `AUTOMATIONS_PATH`/`WEBHOOK_MANAGER_PATH`/
+  `LEADHUB_PATH` still work, and are now resolved to absolute paths before the script changes
+  directory — the documented relative form pointed at nothing.
+- **`Show what actually resolved` failed on every matrix cell.** `composer show` takes one package,
+  and it was handed four: `Too many arguments to "show" command`. It is `composer show --direct` now,
+  and the `--prefer-lowest` job prints the same table.
+- **`composer validate` is strict.** `--no-check-publish` existed only to hide "this package is not
+  publishable" while the siblings were private. They are public, so the flag is gone and `--strict`
+  replaces it.
+
 ## 1.9.0 — 2026-08-01
 ### Security — the campaign preview ran in the Control Panel's own origin
 
