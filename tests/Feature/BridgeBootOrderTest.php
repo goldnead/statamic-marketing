@@ -1,5 +1,6 @@
 <?php
 
+use Goldnead\Marketing\Events\MarketingSubscribed;
 use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\ServiceProvider;
@@ -104,7 +105,7 @@ it('does not mark the webhook-manager bridge booted while the binding is absent,
     // ran bootAddon()), a retry proceeds into the registration loop. Each
     // attempt fails here (facade class missing) and logs a warning — one per
     // trigger plus one for the ESP inbound action.
-    app()->instance('webhook-manager', new stdClass());
+    app()->instance('webhook-manager', new stdClass);
     $bridge->boot($events);
     Log::shouldHaveReceived('warning')->times(count(WebhookManagerBridge::TRIGGERS) + 1);
 });
@@ -112,7 +113,7 @@ it('does not mark the webhook-manager bridge booted while the binding is absent,
 it('boots the webhook-manager bridge idempotently: a second boot never re-registers', function (): void {
     Log::spy();
 
-    app()->instance('webhook-manager', new stdClass());
+    app()->instance('webhook-manager', new stdClass);
 
     $bridge = new class extends WebhookManagerBridge
     {
@@ -130,7 +131,7 @@ it('boots the webhook-manager bridge idempotently: a second boot never re-regist
     // The warnings are a precise probe for registration attempts: a second
     // boot must add zero new ones.
     Log::shouldHaveReceived('warning')->times(count(WebhookManagerBridge::TRIGGERS) + 1);
-    expect($events->hasListeners(\Goldnead\Marketing\Events\MarketingSubscribed::class))->toBeFalse();
+    expect($events->hasListeners(MarketingSubscribed::class))->toBeFalse();
 });
 
 it('does not mark the automations bridge booted while the binding is absent, so a retry can succeed', function (): void {
@@ -152,7 +153,7 @@ it('does not mark the automations bridge booted while the binding is absent, so 
 
     // Binding appears → the retry proceeds into template registration, which
     // fails here (facade class missing) and logs exactly one warning.
-    app()->instance('automations', new stdClass());
+    app()->instance('automations', new stdClass);
     $bridge->boot($events);
     Log::shouldHaveReceived('warning')->once();
 });
@@ -160,7 +161,7 @@ it('does not mark the automations bridge booted while the binding is absent, so 
 it('boots the automations bridge idempotently: a second boot never re-registers templates', function (): void {
     Log::spy();
 
-    app()->instance('automations', new stdClass());
+    app()->instance('automations', new stdClass);
 
     $bridge = new class extends AutomationsBridge
     {

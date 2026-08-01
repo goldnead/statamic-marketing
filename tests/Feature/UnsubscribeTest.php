@@ -1,6 +1,7 @@
 <?php
 
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Subscription;
@@ -37,7 +38,7 @@ it('unsubscribes via the tokenized link', function (): void {
 
     expect($contact['tags'])->not->toContain('list:newsletter');
 
-    $model = \Goldnead\Leadhub\Models\Contact::query()->where('uuid', $contact['uuid'])->first();
+    $model = Contact::query()->where('uuid', $contact['uuid'])->first();
     expect((bool) $model->do_not_contact)->toBeFalse();
 });
 
@@ -54,7 +55,7 @@ it('opts the contact out globally when configured', function (): void {
     $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
 
     $contact = LeadHub::findByEmail('jane@example.com');
-    $model = \Goldnead\Leadhub\Models\Contact::query()->where('uuid', $contact['uuid'])->first();
+    $model = Contact::query()->where('uuid', $contact['uuid'])->first();
 
     expect((bool) $model->do_not_contact)->toBeTrue();
 });

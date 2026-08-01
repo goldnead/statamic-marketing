@@ -216,7 +216,7 @@ return new class extends Migration
      * name, with the offending values — rather than letting the driver fail
      * with a bare integrity error if the rows cannot carry the new index.
      *
-     * @param  list<string>  $drop     indexes superseded by this one
+     * @param  list<string>  $drop  indexes superseded by this one
      * @param  list<string>  $columns  the new index
      */
     private function replaceUnique(string $table, array $drop, array $columns, string $name): void

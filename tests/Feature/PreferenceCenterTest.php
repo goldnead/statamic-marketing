@@ -9,6 +9,7 @@ use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionPreferences;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Marketing\Support\PreferenceLink;
 use Goldnead\Suppression\Reasons;
 use Goldnead\Suppression\SuppressionService;
 use Illuminate\Support\Facades\Mail;
@@ -327,7 +328,7 @@ it('offers no preference page of its own when no preference centre is installed'
 
     expect($content)->not->toContain('preference-center')
         ->and($content)->not->toContain('data-list=')
-        ->and(app(\Goldnead\Marketing\Support\PreferenceLink::class)->centerAvailable())->toBeFalse();
+        ->and(app(PreferenceLink::class)->centerAvailable())->toBeFalse();
 });
 
 it('leaves the RFC 8058 one-click path exactly as it was', function (): void {

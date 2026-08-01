@@ -14,9 +14,7 @@ use Statamic\Support\Str;
 
 class ListController extends Controller
 {
-    public function __construct(protected MailingListRepository $lists)
-    {
-    }
+    public function __construct(protected MailingListRepository $lists) {}
 
     public function index(Request $request, CampaignStats $stats)
     {

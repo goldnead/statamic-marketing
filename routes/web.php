@@ -8,6 +8,8 @@ use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
 use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -69,8 +71,8 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->name('marketing.unsubscribe.post')
         ->middleware($brandFrom(Subscription::class, 'token', 'token'))
         ->withoutMiddleware([
-            \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
-            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+            PreventRequestForgery::class,
+            ValidateCsrfToken::class,
             'App\Http\Middleware\VerifyCsrfToken',
         ]);
 

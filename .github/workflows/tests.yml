@@ -1,5 +1,24 @@
 name: tests
 
+# What this matrix has to prove, and what it used to prove instead.
+#
+# `composer.json` promises Laravel ^12|^13 and PHP ^8.2. Until now CI varied
+# only PHP and pinned nothing else, so the Laravel range was a claim nobody had
+# checked — and it said `^11.0`, a line every release of which is withdrawn
+# behind security advisories, which no green badge would ever have caught.
+#
+# It also checked out exactly one of the three required siblings, called it a
+# "path repo" (it has been a VCS repo for several releases) and gave Composer
+# no credentials of its own — `actions/checkout` scopes its token to the
+# checkout it performed, not to clones Composer makes later. So the sibling
+# resolution here was either failing or being served from a cache.
+# `COMPOSER_AUTH` is set once, at workflow level, and the checkout is gone.
+#
+# Every cell below was resolved with `composer update --dry-run` before being
+# committed. PHP 8.2 with Laravel 13 is the one combination that does not
+# resolve — Laravel 13 requires PHP ^8.3 — and it is excluded rather than left
+# to fail.
+
 on:
   push:
     branches: [main]
@@ -7,33 +26,33 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  # Composer clones the three private siblings itself. It needs its own
+  # credentials to do that; the checkout token does not reach it.
+  COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.SIBLING_REPOS_TOKEN || github.token }}"}}'
+
 jobs:
   pest:
-    name: PHP ${{ matrix.php }} · Statamic ${{ matrix.statamic }} · ${{ matrix.driver }}
+    name: PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }} · ${{ matrix.driver }}
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
         php: ['8.2', '8.3', '8.4']
-        statamic: ['6.*']
+        laravel: ['^12.0', '^13.0']
         driver: ['flat', 'eloquent']
+        exclude:
+          # Laravel 13 requires PHP ^8.3. Verified by dry run, not assumed.
+          - php: '8.2'
+            laravel: '^13.0'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: statamic-marketing
-
-      # LeadHub is a hard dependency resolved via the ../statamic-leadhub path
-      # repository. The repo is private, so a PAT with read access must be
-      # configured as the SIBLING_REPOS_TOKEN secret.
-      - name: Checkout goldnead/statamic-leadhub (sibling path repo)
-        uses: actions/checkout@v4
-        with:
-          repository: goldnead/statamic-leadhub
-          path: statamic-leadhub
-          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -45,34 +64,138 @@ jobs:
 
       - name: Determine Composer cache directory
         id: composer-cache
-        working-directory: statamic-marketing
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
 
       - name: Cache Composer packages
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: composer-${{ matrix.php }}-${{ matrix.statamic }}-${{ hashFiles('statamic-marketing/composer.json') }}
+          key: composer-${{ matrix.php }}-${{ matrix.laravel }}-${{ hashFiles('composer.json') }}
           restore-keys: |
-            composer-${{ matrix.php }}-${{ matrix.statamic }}-
+            composer-${{ matrix.php }}-${{ matrix.laravel }}-
             composer-${{ matrix.php }}-
 
-      - name: Pin Statamic version for this matrix cell
-        working-directory: statamic-marketing
-        run: composer require "statamic/cms:${{ matrix.statamic }}" --no-update --no-interaction
+      - name: Pin Laravel and Statamic for this cell
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" "statamic/cms:^6.0" \
+            --no-update --no-interaction
 
       - name: Install dependencies
-        working-directory: statamic-marketing
-        run: composer update --prefer-dist --no-progress --no-interaction
+        run: composer update --prefer-stable --prefer-dist --no-progress --no-interaction
 
-      - name: Show installed Statamic / Laravel versions
-        working-directory: statamic-marketing
-        run: |
-          composer show statamic/cms | grep -E '^(name|versions)'
-          composer show laravel/framework | grep -E '^(name|versions)' || true
+      - name: Show what actually resolved
+        run: composer show laravel/framework statamic/cms pestphp/pest orchestra/testbench
 
-      - name: Run Pest test suite (${{ matrix.driver }} driver)
-        working-directory: statamic-marketing
+      - name: Run Pest (${{ matrix.driver }} driver)
         env:
           MARKETING_DRIVER: ${{ matrix.driver }}
         run: vendor/bin/pest --colors=always
+
+  lowest:
+    # The floor of every declared range, which is what a user with an older
+    # lock actually gets. Highest-only CI never sees it.
+    name: prefer-lowest · PHP ${{ matrix.php }} · Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.2'
+            laravel: '^12.0'
+          - php: '8.3'
+            laravel: '^13.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_sqlite, sqlite3, intl, fileinfo, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Pin Laravel for this cell
+        run: composer require "laravel/framework:${{ matrix.laravel }}" --no-update --no-interaction
+
+      - name: Install the lowest resolvable set
+        run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-progress --no-interaction
+
+      - name: Run Pest
+        run: vendor/bin/pest --colors=always
+
+  mysql:
+    # `phpunit.mysql.xml` has been in this repo since the InnoDB key-length
+    # failure SQLite could not reproduce, and no workflow ever ran it. An index
+    # the suite cannot build on MySQL is a migration that breaks on the first
+    # real install.
+    name: MySQL (index limits SQLite cannot see)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: marketing_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_mysql, mysqli, intl, fileinfo, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer update --prefer-stable --prefer-dist --no-progress --no-interaction
+
+      - name: Run Pest against MySQL
+        env:
+          DB_DRIVER: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_DATABASE: marketing_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+        run: vendor/bin/pest --configuration=phpunit.mysql.xml --colors=always
+
+  siblings:
+    # The optional peers. `scripts/test-siblings.sh` has been in the repo the
+    # whole time and no workflow ran it, so the seven Integration tests covering
+    # the automations and webhook-manager bridges have only ever been skipped in
+    # CI — which is indistinguishable from passing in the run summary.
+    name: Cross-addon integration (optional siblings)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The script stages the repo through `git archive HEAD`, so it needs
+          # a commit rather than a detached export.
+          fetch-depth: 1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, pdo_sqlite, sqlite3, intl, fileinfo, gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Run the Integration suite with the siblings installed
+        run: bash scripts/test-siblings.sh

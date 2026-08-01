@@ -8,6 +8,8 @@ use Goldnead\Marketing\Events\MarketingUnsubscribed;
 use Goldnead\Marketing\Events\MessageBounced;
 use Goldnead\Marketing\Events\MessageComplained;
 use Goldnead\Marketing\Events\SubscriptionPending;
+use Goldnead\WebhookManager\Events\TriggerDetected;
+use Goldnead\WebhookManager\Facades\WebhookManager;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Log;
 
@@ -42,7 +44,7 @@ class WebhookManagerBridge
     public static function available(): bool
     {
         return (bool) config('marketing.integrations.webhook_manager', true)
-            && class_exists(\Goldnead\WebhookManager\Facades\WebhookManager::class);
+            && class_exists(WebhookManager::class);
     }
 
     public function boot(Dispatcher $events): void
@@ -61,7 +63,7 @@ class WebhookManagerBridge
 
         foreach (static::TRIGGERS as $eventClass => [$handle, $label]) {
             try {
-                \Goldnead\WebhookManager\Facades\WebhookManager::registerTrigger(
+                WebhookManager::registerTrigger(
                     new MarketingTrigger($handle, $label)
                 );
             } catch (\Throwable $e) {
@@ -76,7 +78,7 @@ class WebhookManagerBridge
         }
 
         try {
-            \Goldnead\WebhookManager\Facades\WebhookManager::registerInboundActionHandler(
+            WebhookManager::registerInboundActionHandler(
                 app(ProcessEspEventHandler::class)
             );
         } catch (\Throwable $e) {
@@ -88,13 +90,13 @@ class WebhookManagerBridge
     protected function dispatch(string $handle, object $event): void
     {
         try {
-            $trigger = \Goldnead\WebhookManager\Facades\WebhookManager::triggers()->get($handle);
+            $trigger = WebhookManager::triggers()->get($handle);
 
             if (! $trigger) {
                 return;
             }
 
-            event(new \Goldnead\WebhookManager\Events\TriggerDetected(
+            event(new TriggerDetected(
                 $trigger->build($event)
             ));
         } catch (\Throwable $e) {

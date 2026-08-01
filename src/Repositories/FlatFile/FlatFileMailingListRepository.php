@@ -8,9 +8,7 @@ use Illuminate\Support\Collection;
 
 class FlatFileMailingListRepository implements MailingListRepository
 {
-    public function __construct(protected YamlStore $store)
-    {
-    }
+    public function __construct(protected YamlStore $store) {}
 
     public function all(): Collection
     {

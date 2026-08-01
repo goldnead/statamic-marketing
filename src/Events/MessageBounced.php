@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class MessageBounced extends MessageEventBase
-{
-}
+class MessageBounced extends MessageEventBase {}

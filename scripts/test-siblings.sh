@@ -43,20 +43,17 @@ echo "==> Staging a throwaway copy of the addon in $WORKDIR"
 git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$WORKDIR"
 cd "$WORKDIR"
 
-# LeadHub is a hard dependency declared as a RELATIVE path repository in
-# composer.json — rewrite it to an absolute path so it resolves from the
-# throwaway location.
-LEADHUB_ABS="$(cd "${LEADHUB_PATH:-$REPO_ROOT/../statamic-leadhub}" && pwd)"
-php -r '
-    $file = "composer.json";
-    $data = json_decode(file_get_contents($file), true);
-    foreach ($data["repositories"] ?? [] as $i => $repo) {
-        if (($repo["type"] ?? null) === "path" && str_contains($repo["url"], "statamic-leadhub")) {
-            $data["repositories"][$i]["url"] = $argv[1];
-        }
-    }
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-' "$LEADHUB_ABS"
+# The three hard siblings (brand-context, leadhub, suppression) are declared as
+# VCS repositories in composer.json and resolve from GitHub on their own. This
+# script used to rewrite a relative *path* repository for leadhub into an
+# absolute one; that repository stopped existing several releases ago, so the
+# rewrite silently matched nothing while the `cd` in front of it could still
+# abort the whole run under `set -e` when ../statamic-leadhub was absent.
+#
+# LEADHUB_PATH is still honoured, for working against an uncommitted checkout.
+if [[ -n "$LEADHUB_PATH" ]]; then
+    composer config repositories.leadhub path "$(cd "$LEADHUB_PATH" && pwd)"
+fi
 
 echo "==> Registering the sibling addons as Composer dev dependencies"
 if [[ -n "$AUTOMATIONS_PATH" ]]; then

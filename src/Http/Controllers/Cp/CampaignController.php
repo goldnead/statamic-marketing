@@ -3,6 +3,9 @@
 namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Carbon\CarbonImmutable;
+use Goldnead\EmailTemplates\Facades\EmailTemplates;
+use Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager;
+use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -16,6 +19,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use InvalidArgumentException;
 use Statamic\CP\Column;
+use Statamic\Facades\Entry;
 use Statamic\Support\Str;
 
 class CampaignController extends Controller
@@ -24,8 +28,7 @@ class CampaignController extends Controller
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
         protected EmailTemplateRepository $templates,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request, CampaignStats $stats)
     {
@@ -417,8 +420,8 @@ class CampaignController extends Controller
      */
     protected function emailTemplateEntryOptions(): array
     {
-        if (! class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)
-            || ! class_exists(\Statamic\Facades\Entry::class)) {
+        if (! class_exists(EmailTemplates::class)
+            || ! class_exists(Entry::class)) {
             return [];
         }
 
@@ -426,9 +429,9 @@ class CampaignController extends Controller
             // Handle comes from the addon itself (single source of truth); the
             // addon owns `et_templates` to avoid colliding with any unrelated
             // host-app `email_templates` collection.
-            $handle = \Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager::HANDLE;
+            $handle = EmailTemplateCollectionManager::HANDLE;
 
-            return collect(\Statamic\Facades\Entry::query()->where('collection', $handle)->get())
+            return collect(Entry::query()->where('collection', $handle)->get())
                 ->map(fn ($entry) => [
                     'value' => (string) $entry->slug(),
                     'label' => (string) ($entry->value('title') ?? $entry->slug()),
@@ -452,13 +455,13 @@ class CampaignController extends Controller
      */
     protected function segmentOptions(): array
     {
-        $root = \Goldnead\Leadhub\Facades\LeadHub::getFacadeRoot();
+        $root = LeadHub::getFacadeRoot();
 
         if (! $root || ! method_exists($root, 'segments')) {
             return [];
         }
 
-        return collect(\Goldnead\Leadhub\Facades\LeadHub::segments())
+        return collect(LeadHub::segments())
             ->filter(fn ($segment) => $segment['is_active'] ?? true)
             ->map(fn ($segment) => [
                 'value' => (string) $segment['handle'],

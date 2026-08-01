@@ -7,6 +7,8 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\MailingListRecord;
+use Goldnead\Marketing\Repositories\Eloquent\EloquentMailingListRepository;
 
 /**
  * Driver-agnostic contract tests: run against whichever driver
@@ -107,10 +109,10 @@ it('serves the same contract through the eloquent driver', function (): void {
 
     $repo = app(MailingListRepository::class);
 
-    expect($repo)->toBeInstanceOf(\Goldnead\Marketing\Repositories\Eloquent\EloquentMailingListRepository::class);
+    expect($repo)->toBeInstanceOf(EloquentMailingListRepository::class);
 
     $repo->save(new MailingList(handle: 'db_list', name: 'DB List'));
 
     expect($repo->find('db_list')->name)->toBe('DB List')
-        ->and(\Goldnead\Marketing\Models\MailingListRecord::query()->where('handle', 'db_list')->exists())->toBeTrue();
+        ->and(MailingListRecord::query()->where('handle', 'db_list')->exists())->toBeTrue();
 });

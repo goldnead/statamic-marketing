@@ -12,9 +12,7 @@ use Statamic\Support\Str;
 
 class TemplateController extends Controller
 {
-    public function __construct(protected EmailTemplateRepository $templates)
-    {
-    }
+    public function __construct(protected EmailTemplateRepository $templates) {}
 
     public function index(Request $request)
     {

@@ -7,6 +7,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  # Composer clones the three private siblings itself; the checkout
+  # token is scoped to the checkout and never reaches it.
+  COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.SIBLING_REPOS_TOKEN || github.token }}"}}'
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -16,15 +24,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: statamic-marketing
 
-      - name: Checkout goldnead/statamic-leadhub (sibling path repo)
-        uses: actions/checkout@v4
-        with:
-          repository: goldnead/statamic-leadhub
-          path: statamic-leadhub
-          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -36,7 +36,6 @@ jobs:
       # The Statamic 6 Vite convention pulls @statamic/cms from the installed
       # Composer package (a `file:` npm dependency), so Composer must run first.
       - name: Install Composer dependencies
-        working-directory: statamic-marketing
         run: composer install --prefer-dist --no-progress --no-interaction
 
       - name: Setup Node
@@ -48,20 +47,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('statamic-marketing/package.json') }}
+          key: npm-${{ runner.os }}-${{ hashFiles('package.json') }}
           restore-keys: |
             npm-${{ runner.os }}-
 
       - name: Install Node dependencies
-        working-directory: statamic-marketing
         run: npm install --no-audit --no-fund
 
       - name: Build production bundle
-        working-directory: statamic-marketing
         run: npm run build
 
       - name: Verify build output
-        working-directory: statamic-marketing
         run: |
           test -f resources/dist/build/manifest.json
           echo "✓ manifest present:"
@@ -72,6 +68,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cp-assets-${{ github.sha }}
-          path: statamic-marketing/resources/dist/build/
+          path: resources/dist/build/
           retention-days: 14
           if-no-files-found: error

@@ -13,8 +13,7 @@ abstract class SubscriptionEvent
     public function __construct(
         public Subscription $subscription,
         public array $metadata = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Normalized payload for automation triggers and outbound webhooks.

@@ -12,8 +12,7 @@ abstract class CampaignEvent
     public function __construct(
         public Campaign $campaign,
         public array $metadata = [],
-    ) {
-    }
+    ) {}
 
     public function toPayload(): array
     {

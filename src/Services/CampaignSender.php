@@ -20,8 +20,7 @@ class CampaignSender
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
         protected CampaignRenderer $renderer,
-    ) {
-    }
+    ) {}
 
     /** Queue a campaign for immediate delivery. */
     public function queue(Campaign $campaign): Campaign

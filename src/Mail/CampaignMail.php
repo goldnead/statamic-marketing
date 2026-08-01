@@ -16,8 +16,7 @@ class CampaignMail extends Mailable
     public function __construct(
         public Campaign $campaign,
         public RenderedMail $rendered,
-    ) {
-    }
+    ) {}
 
     public function build(): self
     {

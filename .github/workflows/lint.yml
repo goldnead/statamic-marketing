@@ -7,10 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  # Composer clones the three private siblings itself; the checkout token is
+  # scoped to the checkout and never reaches it.
+  COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.SIBLING_REPOS_TOKEN || github.token }}"}}'
+
 jobs:
-  php-syntax:
+  pint:
     runs-on: ubuntu-latest
-    name: PHP syntax check
+    name: Code style (Pint)
 
     steps:
       - name: Checkout
@@ -20,15 +28,41 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          tools: composer:v2
           coverage: none
 
-      - name: Lint every PHP file
-        run: |
-          # Fail if any file has a parse error.
-          set -e
-          find src tests config database routes -type f -name '*.php' \
-            | xargs -n1 -P4 php -l > /dev/null
-          echo "✓ no syntax errors"
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      # Check, never fix. Auto-committing style onto a branch rewrites somebody
+      # else's work without asking.
+      - name: Check formatting
+        run: vendor/bin/pint --test
+
+  phpstan:
+    runs-on: ubuntu-latest
+    name: Static analysis (Larastan)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      # A baseline is committed, so this is a ratchet on new code rather than a
+      # rewrite of what is already here. `php -l` used to stand in for it; a
+      # syntax check is not static analysis on 5,800 lines of consent and send
+      # paths.
+      - name: Analyse
+        run: vendor/bin/phpstan analyse --no-progress
 
   composer-validate:
     runs-on: ubuntu-latest
@@ -44,8 +78,12 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
 
-      # Not --strict: goldnead/statamic-leadhub is an unpublished sibling
-      # resolved via a path repository, so its constraint is deliberately the
-      # unbound "*@dev" — which --strict rejects as a warning.
+      # `--no-check-publish` stays only while the three siblings are private:
+      # it is precisely the flag that hides "this package is not publishable",
+      # which is the true state of affairs until they reach Packagist. The
+      # comment it used to carry cited a `*@dev` path constraint that has not
+      # existed for several releases.
+      #
+      # When the siblings are published, drop the flag and add `--strict`.
       - name: Validate composer.json
         run: composer validate --no-check-publish

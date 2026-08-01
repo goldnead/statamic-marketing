@@ -5,6 +5,7 @@ use Goldnead\BrandContext\Models\Brand;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\MailingListRecord;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Statamic\Facades\User;
 
 /**
@@ -47,7 +48,7 @@ it('holds the list handle unique across brands in the database', function (): vo
     expect(fn () => BrandContext::runFor($this->brandB, fn () => MailingListRecord::create([
         'handle' => 'newsletter',
         'name' => 'B Newsletter',
-    ])))->toThrow(Illuminate\Database\UniqueConstraintViolationException::class);
+    ])))->toThrow(UniqueConstraintViolationException::class);
 });
 
 it('tells an editor which brand already holds the handle instead of crashing', function (string $driver): void {

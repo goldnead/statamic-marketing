@@ -2,7 +2,9 @@
 
 namespace Goldnead\Marketing\Tests;
 
+use Goldnead\Leadhub\ServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
 use Statamic\Providers\StatamicServiceProvider;
 
@@ -21,7 +23,7 @@ abstract class TestCase extends OrchestraTestCase
         // Statamic runs bootAddon() inside Statamic::booted callbacks that
         // orchestra/testbench never fires — force them so Nav, permissions,
         // views, and migrations register (see LeadHub's TestCase).
-        $this->app->getProvider(\Goldnead\Leadhub\ServiceProvider::class)?->bootAddon();
+        $this->app->getProvider(ServiceProvider::class)?->bootAddon();
         $this->app->getProvider(\Goldnead\Marketing\ServiceProvider::class)?->bootAddon();
     }
 
@@ -31,7 +33,7 @@ abstract class TestCase extends OrchestraTestCase
             StatamicServiceProvider::class,
             \Goldnead\BrandContext\ServiceProvider::class,
             \Goldnead\Suppression\ServiceProvider::class,
-            \Goldnead\Leadhub\ServiceProvider::class,
+            ServiceProvider::class,
             \Goldnead\Marketing\ServiceProvider::class,
         ];
     }
@@ -135,7 +137,7 @@ abstract class TestCase extends OrchestraTestCase
     {
         $router->name('statamic.cp.')
             ->prefix('cp')
-            ->middleware(\Illuminate\Routing\Middleware\SubstituteBindings::class)
+            ->middleware(SubstituteBindings::class)
             ->group(__DIR__.'/../routes/cp.php');
 
         $router->middleware('web')->group(__DIR__.'/../routes/web.php');
@@ -161,7 +163,7 @@ abstract class TestCase extends OrchestraTestCase
      */
     protected function mountStandInSiblingRoutes($router): void
     {
-        $router->middleware(\Illuminate\Routing\Middleware\SubstituteBindings::class)
+        $router->middleware(SubstituteBindings::class)
             ->group(function ($router) {
                 foreach (static::NAMES_A_SIBLING_MIGHT_USE as $name) {
                     $router->get(
@@ -184,5 +186,4 @@ abstract class TestCase extends OrchestraTestCase
     public const NAMES_A_SIBLING_MIGHT_USE = [
         'automation', 'rule', 'template', 'webhook', 'endpoint', 'handle', 'id', 'slug', 'record',
     ];
-
 }

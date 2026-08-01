@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Services;
 
+use Goldnead\EmailTemplates\Facades\EmailTemplates;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
@@ -23,8 +24,7 @@ class CampaignRenderer
     public function __construct(
         protected EmailTemplateRepository $templates,
         protected PreferenceLink $links,
-    ) {
-    }
+    ) {}
 
     /**
      * @param  Subscription|null  $subscription  null renders a preview with sample data.
@@ -79,8 +79,8 @@ class CampaignRenderer
     protected function resolveTemplateHtml(?string $handle): string
     {
         if ($handle !== null && $handle !== ''
-            && class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)) {
-            $resolved = \Goldnead\EmailTemplates\Facades\EmailTemplates::resolve(
+            && class_exists(EmailTemplates::class)) {
+            $resolved = EmailTemplates::resolve(
                 $handle,
                 function (string $slug): ?array {
                     $template = $this->templates->find($slug);

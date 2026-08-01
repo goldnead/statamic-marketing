@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class MarketingUnsubscribed extends SubscriptionEvent
-{
-}
+class MarketingUnsubscribed extends SubscriptionEvent {}

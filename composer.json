@@ -42,15 +42,17 @@
         "goldnead/statamic-leadhub": "^1.4",
         "goldnead/statamic-suppression": "^1.0",
         "inertiajs/inertia-laravel": "^1.0|^2.0",
-        "laravel/framework": "^11.0|^12.0|^13.0",
+        "laravel/framework": "^12.0|^13.0",
         "php": "^8.2",
         "statamic/cms": "^6.0",
         "symfony/yaml": "^6.0|^7.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
-        "pestphp/pest": "^2.0|^3.0",
-        "pestphp/pest-plugin-laravel": "^2.0|^3.0"
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^2.0|^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^2.0|^3.0|^4.0"
     },
     "suggest": {
         "goldnead/statamic-automations": "Build drip sequences and welcome flows from marketing triggers/actions in the visual workflow builder",
@@ -68,8 +70,12 @@
     },
     "extra": {
         "statamic": {
+            "slug": "marketing",
             "name": "Marketing",
             "description": "Email marketing and newsletters directly inside your Statamic Control Panel.",
+            "url": "https://github.com/goldnead/statamic-marketing",
+            "developer": "Adrian Goldner",
+            "developer-url": "https://gldnr.studio",
             "vite": {
                 "input": [
                     "resources/js/cp.js",
@@ -87,6 +93,15 @@
     "scripts": {
         "test": [
             "@php vendor/bin/pest"
+        ],
+        "lint": [
+            "@php vendor/bin/pint --test"
+        ],
+        "fix": [
+            "@php vendor/bin/pint"
+        ],
+        "analyse": [
+            "@php vendor/bin/phpstan analyse --no-progress"
         ]
     },
     "config": {

@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class MessageComplained extends MessageEventBase
-{
-}
+class MessageComplained extends MessageEventBase {}

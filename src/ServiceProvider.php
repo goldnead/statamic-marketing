@@ -17,6 +17,8 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileCampaignRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
+use Goldnead\Marketing\Tags\Marketing;
+use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -43,7 +45,7 @@ class ServiceProvider extends AddonServiceProvider
     ];
 
     protected $tags = [
-        \Goldnead\Marketing\Tags\Marketing::class,
+        Marketing::class,
     ];
 
     protected $commands = [
@@ -175,7 +177,7 @@ class ServiceProvider extends AddonServiceProvider
      */
     protected function registerSchedule(): self
     {
-        $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class, function ($schedule) {
+        $this->callAfterResolving(Schedule::class, function ($schedule) {
             $schedule->command('marketing:send-scheduled')
                 ->everyMinute()
                 ->onOneServer()

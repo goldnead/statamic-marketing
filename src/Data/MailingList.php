@@ -13,8 +13,7 @@ class MailingList
         public string $name,
         public ?string $description = null,
         public ?bool $doubleOptIn = null,
-    ) {
-    }
+    ) {}
 
     /** Effective double-opt-in setting, falling back to the config default. */
     public function usesDoubleOptIn(): bool

@@ -35,8 +35,7 @@ class Campaign
         public string $status = self::STATUS_DRAFT,
         public ?CarbonImmutable $scheduledAt = null,
         public ?CarbonImmutable $sentAt = null,
-    ) {
-    }
+    ) {}
 
     public function isDraft(): bool
     {
