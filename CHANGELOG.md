@@ -1,5 +1,95 @@
 # Changelog
 
+## Unreleased
+
+### Security — the campaign preview ran in the Control Panel's own origin
+
+`GET marketing/campaigns/{handle}/preview` returns HTML a Control Panel user wrote: the campaign body
+and the e-mail template wrapped around it. It was served from a Control Panel route into a
+same-origin `<iframe>` with no `sandbox` attribute and no Content-Security-Policy. So a holder of
+`manage marketing templates` could put a `<script>` in a template and have it execute with the
+session of whichever super user previewed a campaign using it. Not cross-site — the script was
+already inside the site, one permission tier below the account it reached.
+
+The barrier is two-sided, because either side alone is a single point of failure on a
+privilege-escalation path. The response now carries `Content-Security-Policy: sandbox; default-src
+'none'`, which puts the document in a unique opaque origin with scripts off and holds even when the
+HTML is opened straight into a tab — which the "open in new tab" link invites. Images and inline
+styles are handed back explicitly, because an e-mail preview without them is not a preview; scripts
+never are. The iframe carries `sandbox` with neither `allow-scripts` nor `allow-same-origin`, which
+holds when the header does not reach the parser. `tests/Feature/CampaignPreviewIsolationTest.php` and
+`tests/js/preview-sandbox.test.js`.
+
+### Changed — the preference page belongs to the preference centre now
+
+**Breaking for anyone linking to `/!/marketing/preferences/{token}` by hand.**
+
+`goldnead/statamic-preference-center` serves one page over marketing's lists, notification types and
+the suppression state. Marketing shipped its own copy of that page — the same `data-*` contract, the
+same error split, the same class names — and kept linking to it, so installing the preference centre
+changed nothing a reader could see: the footer link still landed on the single-list page.
+
+- `resources/views/partials/preferences.blade.php`, `resources/views/preferences.blade.php`,
+  `PreferencesController` and the `marketing.preferences` routes are removed.
+- Marketing keeps exactly one unsubscribe path — the tokenized landing page and the RFC 8058
+  one-click endpoint — and it works with no optional package installed. Stopping mail is a legal
+  obligation and may not depend on someone having chosen to install something.
+- `src/Support/PreferenceLink.php` is the single place that decides where a link goes: the preference
+  centre where it is installed, marketing's own unsubscribe otherwise. Detection is `class_exists()`
+  plus the route registry — the centre registers its token route conditionally, so class-present and
+  route-absent is a real state. Never `method_exists()` on a facade class; that is `__callStatic`
+  and it is false for every proxied method, which is how automations 1.0.3 disabled every LeadHub
+  action node on real installs.
+- The `List-Unsubscribe` header stays on marketing unconditionally. A provider POSTs it expecting an
+  unsubscribe, not a form.
+- `MarketingSubscribed` / `MarketingUnsubscribed` keep their payload contract: `unsubscribe_url` still
+  means marketing's own endpoint. `preferences_url` is added beside it.
+
+`SubscriptionPreferences` is untouched — it is the consent logic, and the preference centre reads it
+rather than reimplementing it. Its two test files now drive it at the service layer instead of
+through the removed page, with the same assertions.
+
+### Fixed — a German Control Panel showed an English addon
+
+The Vue layer calls `__()` with the English sentence as the key, which resolves through the JSON
+loader rather than the `marketing::` namespace the PHP lang files serve. There was no JSON file and
+no registered JSON path, so nav and flash messages came out German from the PHP files and the entire
+screen behind them stayed English. `resources/lang/de.json` covers all 102 strings; `en.json` is the
+identity map so the set is diffable. `tests/Feature/CpTranslationCoverageTest.php` reads the sources
+rather than a list, so a new `__('…')` fails on the day it is written.
+
+Also: `CampaignController::preview()`'s 422 message was a hardcoded English string on an error path
+while every other message in the file went through `__()`.
+
+### Fixed — CI was checking one of three siblings and one axis of two
+
+- `composer.json` declared `laravel/framework: ^11.0|^12.0|^13.0`. Every 11.x release is withdrawn
+  behind security advisories, so that line was not untested but uninstallable. Narrowed to
+  `^12.0|^13.0`, with `orchestra/testbench` and `pestphp/pest` widened to match — Laravel 13 does not
+  resolve otherwise.
+- The test matrix now varies PHP **and** Laravel, adds a `prefer-lowest` run, a MySQL run against the
+  `phpunit.mysql.xml` that had been in the repo unused since the InnoDB key-length incident, and a
+  run of `scripts/test-siblings.sh`, which had also never run in CI — so the seven cross-addon
+  Integration tests had only ever been skipped, which reads as passing in a run summary. Every cell
+  was resolved with `composer update --dry-run` first; PHP 8.2 with Laravel 13 is excluded because it
+  cannot resolve.
+- The workflows checked out one of three required siblings, described it as a path repo (it has been
+  a VCS repo for several releases) and gave Composer no credentials of its own — `actions/checkout`
+  scopes its token to its own checkout. Replaced with `COMPOSER_AUTH`.
+- `scripts/test-siblings.sh` rewrote a path repository that no longer exists, and could abort on the
+  `cd` in front of it under `set -e`.
+
+### Changed — Control Panel polish and release hygiene
+
+- The dashboard hand-built two tables and two empty states; both are native components now.
+- `text-gray-700`, `bg-white` and `max-w-5xl` do not follow the CP theme or the width toggle.
+- `icon="email"` and `icon="template"` are not filenames in the Statamic icon set.
+- Primary actions on the dashboard are in the command palette.
+- Pint, Larastan (level 5 with a baseline), `.gitattributes`, and `extra.statamic` gaining `slug`,
+  `url`, `developer` and `developer-url` — without them the manifest carried four nulls and the CP
+  addon card had no developer link.
+- The README install command could not work for anyone and omitted two of three hard dependencies.
+
 ## 1.8.1 — 2026-07-30
 
 ### Fixed — the one page that could hand back what the gate had just taken away
