@@ -76,7 +76,7 @@ function reloadPage() {
     <Head :title="[campaign.name, __('Campaigns'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="campaign.name" icon="email">
+        <Header :title="campaign.name" icon="mail">
             <Badge :color="campaignStatusColor(campaign.status)" :text="campaign.status" />
             <Button v-if="editable" :href="editUrl" :text="__('Edit')" variant="default" />
         </Header>

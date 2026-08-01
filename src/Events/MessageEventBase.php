@@ -12,8 +12,7 @@ abstract class MessageEventBase
     public function __construct(
         public Message $message,
         public array $metadata = [],
-    ) {
-    }
+    ) {}
 
     public function toPayload(): array
     {

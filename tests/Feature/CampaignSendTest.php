@@ -4,13 +4,18 @@ use Carbon\CarbonImmutable;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
+use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Jobs\SendMessageJob;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Contracts\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -82,11 +87,11 @@ it('skips subscribers who unsubscribed between snapshot and delivery', function 
     $this->campaign->status = Campaign::STATUS_SENDING;
     app(CampaignRepository::class)->save($this->campaign);
 
-    (new \Goldnead\Marketing\Jobs\SendMessageJob($message->id))->handle(
+    (new SendMessageJob($message->id))->handle(
         app(CampaignRepository::class),
         app(MailingListRepository::class),
-        app(\Goldnead\Marketing\Services\CampaignRenderer::class),
-        app(\Goldnead\Suppression\Contracts\Gate::class),
+        app(CampaignRenderer::class),
+        app(Gate::class),
     );
 
     expect($message->fresh()->status)->toBe(Message::STATUS_SKIPPED);
@@ -186,8 +191,8 @@ it('skips a subscriber whose identity cannot be resolved against the opt-out sou
 });
 
 it('wraps content in the referenced template layout', function (): void {
-    app(\Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository::class)->save(
-        new \Goldnead\Marketing\Data\EmailTemplate(
+    app(EmailTemplateRepository::class)->save(
+        new EmailTemplate(
             handle: 'branded',
             name: 'Branded',
             html: '<html><body><header>BRAND</header>{{ content }}<a href="{{ unsubscribe_url }}">bye</a></body></html>',

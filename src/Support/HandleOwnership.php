@@ -47,9 +47,7 @@ class HandleOwnership
         self::TEMPLATES => EmailTemplateRecord::class,
     ];
 
-    public function __construct(protected YamlStore $store)
-    {
-    }
+    public function __construct(protected YamlStore $store) {}
 
     /**
      * The brand that owns this handle, or null when nobody does.

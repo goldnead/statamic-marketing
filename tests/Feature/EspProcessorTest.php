@@ -1,6 +1,7 @@
 <?php
 
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Message;
@@ -46,7 +47,7 @@ it('marks the subscription bounced and opts the contact out on a hard bounce', f
         ->and($this->message->fresh()->status)->toBe(Message::STATUS_BOUNCED);
 
     $contact = LeadHub::findByEmail('jane@example.com');
-    $model = \Goldnead\Leadhub\Models\Contact::query()->where('uuid', $contact['uuid'])->first();
+    $model = Contact::query()->where('uuid', $contact['uuid'])->first();
 
     expect((bool) $model->do_not_contact)->toBeTrue();
 });
@@ -108,7 +109,7 @@ function expectStillSubscribed(): void
 
     $contact = LeadHub::findByEmail('jane@example.com');
 
-    expect((bool) \Goldnead\Leadhub\Models\Contact::query()->where('uuid', $contact['uuid'])->first()->do_not_contact)
+    expect((bool) Contact::query()->where('uuid', $contact['uuid'])->first()->do_not_contact)
         ->toBeFalse();
 }
 

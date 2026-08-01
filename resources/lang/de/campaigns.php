@@ -21,6 +21,9 @@ return [
     'open_rate' => 'Öffnungsrate',
     'click_rate' => 'Klickrate',
     'create' => 'Kampagne erstellen',
+    'errors' => [
+        'no_list' => 'Diese Kampagne hat keine gültige Mailingliste.',
+    ],
     'flashes' => [
         'created' => 'Kampagne erstellt.',
         'updated' => 'Kampagne aktualisiert.',

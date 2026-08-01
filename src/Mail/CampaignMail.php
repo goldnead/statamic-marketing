@@ -16,8 +16,7 @@ class CampaignMail extends Mailable
     public function __construct(
         public Campaign $campaign,
         public RenderedMail $rendered,
-    ) {
-    }
+    ) {}
 
     public function build(): self
     {
@@ -39,7 +38,10 @@ class CampaignMail extends Mailable
             $mail->replyTo($this->campaign->replyTo);
         }
 
-        $unsubscribeUrl = $this->rendered->unsubscribeUrl;
+        // Deliberately not the footer link. RFC 8058 says a provider may POST
+        // this URL with no session and expect the unsubscribe to have
+        // happened; a preference page would answer that POST with a form.
+        $unsubscribeUrl = $this->rendered->oneClickUnsubscribeUrl;
 
         if ($unsubscribeUrl && $unsubscribeUrl !== '#') {
             $mail->withSymfonyMessage(function (Email $message) use ($unsubscribeUrl) {

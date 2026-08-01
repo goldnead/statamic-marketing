@@ -2,7 +2,11 @@
 
 namespace Goldnead\Marketing\Tests\Integration;
 
+use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
+use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\Tests\TestCase;
+use Goldnead\StatamicAutomations\ServiceProvider;
+use Goldnead\WebhookManager\WebhookManagerServiceProvider;
 
 /**
  * Base for the live sibling-addon integration suite. The siblings are
@@ -16,34 +20,34 @@ abstract class SiblingsTestCase extends TestCase
     {
         parent::setUp();
 
-        if (class_exists(\Goldnead\StatamicAutomations\ServiceProvider::class)) {
+        if (class_exists(ServiceProvider::class)) {
             $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-automations/database/migrations');
-            $this->app->getProvider(\Goldnead\StatamicAutomations\ServiceProvider::class)?->bootAddon();
+            $this->app->getProvider(ServiceProvider::class)?->bootAddon();
         }
 
-        if (class_exists(\Goldnead\WebhookManager\WebhookManagerServiceProvider::class)) {
+        if (class_exists(WebhookManagerServiceProvider::class)) {
             $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-webhook-manager/database/migrations');
-            $this->app->getProvider(\Goldnead\WebhookManager\WebhookManagerServiceProvider::class)?->bootAddon();
+            $this->app->getProvider(WebhookManagerServiceProvider::class)?->bootAddon();
         }
 
         // The sibling bridges boot via app->booted() callbacks that already
         // fired during app creation — before the providers' bootAddon() calls
         // above. Re-run them now that everything is registered; their guards
         // make repeat invocations safe.
-        app(\Goldnead\Marketing\Integrations\Automations\AutomationsBridge::class)->boot(app('events'));
-        app(\Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge::class)->boot(app('events'));
+        app(AutomationsBridge::class)->boot(app('events'));
+        app(WebhookManagerBridge::class)->boot(app('events'));
     }
 
     protected function getPackageProviders($app): array
     {
         $providers = parent::getPackageProviders($app);
 
-        if (class_exists(\Goldnead\StatamicAutomations\ServiceProvider::class)) {
-            $providers[] = \Goldnead\StatamicAutomations\ServiceProvider::class;
+        if (class_exists(ServiceProvider::class)) {
+            $providers[] = ServiceProvider::class;
         }
 
-        if (class_exists(\Goldnead\WebhookManager\WebhookManagerServiceProvider::class)) {
-            $providers[] = \Goldnead\WebhookManager\WebhookManagerServiceProvider::class;
+        if (class_exists(WebhookManagerServiceProvider::class)) {
+            $providers[] = WebhookManagerServiceProvider::class;
         }
 
         return $providers;

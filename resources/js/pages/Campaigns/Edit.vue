@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
     Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea,
-    ConfirmationModal,
+    ConfirmationModal, Text, CommandPaletteItem,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -199,8 +199,8 @@ function destroy() {
 <template>
     <Head :title="[isCreating ? __('Create campaign') : campaign.name, __('Campaigns'), __('Marketing')]" />
 
-    <div class="max-w-5xl 3xl:max-w-6xl mx-auto" data-max-width-wrapper>
-        <Header :title="isCreating ? __('Create campaign') : name" icon="email">
+    <div class="max-w-page mx-auto" data-max-width-wrapper>
+        <Header :title="isCreating ? __('Create campaign') : name" icon="mail">
             <Badge
                 v-if="campaign"
                 :color="statusColor(campaign.status)"
@@ -223,8 +223,10 @@ function destroy() {
 
         <!-- Locked campaigns can no longer be edited -->
         <Panel v-if="!isEditable" class="mb-4">
-            <div class="p-4 text-sm text-gray-700 dark:text-gray-300">
+            <div class="p-4">
+                <Text size="sm">
                 {{ __('This campaign has been sent or is currently sending and can no longer be edited.') }}
+                </Text>
                 <Link :href="showUrl" class="font-medium hover:underline">
                     {{ __('View the report') }} →
                 </Link>
@@ -311,10 +313,23 @@ function destroy() {
                             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 {{ __('The preview reflects the last saved version. Save your changes first.') }}
                             </p>
+                            <!--
+                                The frame shows HTML a Control Panel user wrote,
+                                from a Control Panel route. `sandbox` with no
+                                tokens puts it in a unique opaque origin with
+                                scripts off; adding `allow-scripts` or
+                                `allow-same-origin` back would hand an editor
+                                who can write a template the session of every
+                                super user who previews it. The response carries
+                                the matching Content-Security-Policy. Held by
+                                tests/js/preview-sandbox.test.js.
+                            -->
                             <iframe
                                 v-if="showPreview"
                                 :src="previewUrl"
-                                class="mt-3 w-full h-[600px] rounded border border-content-border bg-white"
+                                :title="__('Email preview')"
+                                sandbox=""
+                                class="mt-3 w-full h-[600px] rounded border border-content-border bg-content-bg"
                             ></iframe>
                         </Card>
                     </Panel>
@@ -392,9 +407,9 @@ function destroy() {
                                 <div v-if="campaign.status === 'scheduled'" class="space-y-2">
                                     <div class="text-sm">
                                         <Badge color="purple" :text="__('Scheduled')" />
-                                        <span class="ms-2 text-gray-700 dark:text-gray-300">
+                                        <Text size="sm" class="ms-2 inline">
                                             {{ formatDate(campaign.scheduled_at) }}
-                                        </span>
+                                        </Text>
                                     </div>
                                     <Button :text="__('Unschedule')" variant="default" @click="unschedule" />
                                 </div>

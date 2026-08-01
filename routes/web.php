@@ -2,13 +2,14 @@
 
 use Goldnead\BrandContext\Http\Middleware\SetBrandFromRouteValue;
 use Goldnead\Marketing\Http\Controllers\ConfirmController;
-use Goldnead\Marketing\Http\Controllers\PreferencesController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
 use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -41,17 +42,23 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->name('marketing.unsubscribe')
         ->middleware($brandFrom(Subscription::class, 'token', 'token'));
 
-    // The preference centre. Same token, same derivation, no session and no
-    // login: a subscriber has neither. The token identifies one subscription,
-    // and through its contact the person's other subscriptions *within that
-    // one brand* — the derivation is what keeps it inside those walls.
-    Route::get('/preferences/{token}', [PreferencesController::class, 'show'])
-        ->name('marketing.preferences')
-        ->middleware($brandFrom(Subscription::class, 'token', 'token'));
-
-    Route::post('/preferences/{token}', [PreferencesController::class, 'update'])
-        ->name('marketing.preferences.update')
-        ->middleware($brandFrom(Subscription::class, 'token', 'token'));
+    /*
+     * There is no preference route here any more.
+     *
+     * Marketing used to serve a multi-list preference centre of its own, and
+     * `goldnead/statamic-preference-center` serves the same page over
+     * marketing, notifications and suppression together. Two addons rendering
+     * one page is not redundancy, it is a fork: marketing kept linking to its
+     * own, so installing the preference centre left every footer link on the
+     * single-list page. The page now belongs to that addon alone.
+     *
+     * What stays here is the one thing that may not depend on an optional
+     * package: unsubscribing. `GET /unsubscribe/{token}` ends the subscription
+     * and says so, `POST` does the same for a provider's one-click button.
+     * Where to send a reader who wants more than that is answered in one
+     * place, `Support\PreferenceLink`, which points at the preference centre
+     * when it is installed and here when it is not.
+     */
 
     // RFC 8058 one-click unsubscribe (List-Unsubscribe-Post). Mail providers
     // POST here themselves, with no session and no CSRF token, so the forgery
@@ -64,8 +71,8 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->name('marketing.unsubscribe.post')
         ->middleware($brandFrom(Subscription::class, 'token', 'token'))
         ->withoutMiddleware([
-            \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
-            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+            PreventRequestForgery::class,
+            ValidateCsrfToken::class,
             'App\Http\Middleware\VerifyCsrfToken',
         ]);
 

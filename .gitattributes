@@ -1,0 +1,36 @@
+# Drop into an addon at .gitattributes
+#
+# Without this, every site that installs the addon downloads its tests, CI config,
+# build sources and node tooling. Runway, Mailchimp and Advanced SEO all export-ignore.
+
+/.github            export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/.editorconfig      export-ignore
+/phpunit.xml        export-ignore
+/phpunit.xml.dist   export-ignore
+/pint.json          export-ignore
+/package.json       export-ignore
+/package-lock.json  export-ignore
+/vite.config.js     export-ignore
+/addon-lint.json    export-ignore
+/resources/js       export-ignore
+/resources/css      export-ignore
+
+# Keep: /dist (the built bundle consumers actually load), /config, /lang,
+# /resources/views, /routes, /src, README.md, CHANGELOG.md, LICENSE.md.
+
+# Repo-specific. `docs/` holds internal planning notes (PLAN.md, recipes.md,
+# suppression-plan.md), not user documentation — one of them describes intent
+# that was never shipped, which reads badly to a buyer inspecting vendor/.
+# `scripts/` and `screenshots/` are development and listing assets.
+/docs               export-ignore
+/scripts            export-ignore
+/screenshots        export-ignore
+/art                export-ignore
+/phpunit.mysql.xml  export-ignore
+/MARKETPLACE.md     export-ignore
+/.phpstan           export-ignore
+/phpstan.neon       export-ignore
+/phpstan-baseline.neon export-ignore

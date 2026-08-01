@@ -2,12 +2,14 @@
 
 namespace Goldnead\Marketing\Services;
 
+use Goldnead\EmailTemplates\Facades\EmailTemplates;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Support\PreferenceLink;
 use Goldnead\Marketing\Support\RenderedMail;
 use Illuminate\Support\Facades\URL;
 use Statamic\Facades\Antlers;
@@ -19,9 +21,10 @@ use Statamic\Facades\Antlers;
  */
 class CampaignRenderer
 {
-    public function __construct(protected EmailTemplateRepository $templates)
-    {
-    }
+    public function __construct(
+        protected EmailTemplateRepository $templates,
+        protected PreferenceLink $links,
+    ) {}
 
     /**
      * @param  Subscription|null  $subscription  null renders a preview with sample data.
@@ -63,6 +66,7 @@ class CampaignRenderer
             html: $html,
             text: $this->toText($content, $variables['unsubscribe_url']),
             unsubscribeUrl: $variables['unsubscribe_url'],
+            oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
     }
 
@@ -80,8 +84,8 @@ class CampaignRenderer
     protected function resolveTemplateHtml(?string $handle): string
     {
         if ($handle !== null && $handle !== ''
-            && class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)) {
-            $resolved = \Goldnead\EmailTemplates\Facades\EmailTemplates::resolve(
+            && class_exists(EmailTemplates::class)) {
+            $resolved = EmailTemplates::resolve(
                 $handle,
                 function (string $slug): ?array {
                     $template = $this->templates->find($slug);
@@ -101,15 +105,13 @@ class CampaignRenderer
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    /**
      * @param  string|null  $subjectTemplate  the subject this particular
      *                                        recipient is getting, which for an
      *                                        A/B campaign is not necessarily
      *                                        `$campaign->subject`. Optional so
      *                                        existing callers of this public
      *                                        method keep their meaning.
+     * @return array<string, mixed>
      */
     public function variables(
         Campaign $campaign,
@@ -117,9 +119,14 @@ class CampaignRenderer
         ?Subscription $subscription,
         ?string $subjectTemplate = null,
     ): array {
-        $unsubscribeUrl = $subscription
-            ? route('marketing.unsubscribe', ['token' => $subscription->token])
-            : '#';
+        // Two links, one resolver. `unsubscribe_url` is what a person clicks,
+        // so it goes wherever the preference page currently lives — the
+        // preference-centre addon when installed, marketing's own unsubscribe
+        // otherwise. The one-click URL is what a mail provider POSTs for the
+        // RFC 8058 header and stays on marketing unconditionally. See
+        // Support/PreferenceLink.
+        $unsubscribeUrl = $subscription ? $this->links->manage($subscription->token) : '#';
+        $oneClickUrl = $subscription ? $this->links->oneClick($subscription->token) : '#';
 
         $firstName = $subscription?->first_name;
         $lastName = $subscription?->last_name;
@@ -130,6 +137,7 @@ class CampaignRenderer
             'last_name' => $lastName ?? '',
             'name' => trim(($firstName ?? '').' '.($lastName ?? '')) ?: ($subscription?->email ?? ''),
             'unsubscribe_url' => $unsubscribeUrl,
+            'one_click_unsubscribe_url' => $oneClickUrl,
             'subject' => $subjectTemplate ?? $campaign->subject,
             'preheader' => $campaign->preheader ?? '',
             'campaign' => [

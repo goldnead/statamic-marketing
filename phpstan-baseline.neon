@@ -1,0 +1,709 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/PreferenceCenter.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Data/PreferenceCenter.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$campaign_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/MessageEventBase.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/MessageEventBase.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/MessageEventBase.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/MessageEventBase.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$source\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Events/SubscriptionEvent.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/ConfirmController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Models\\Subscription\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/ConfirmController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$clicks\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$opens\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$sent_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Call to an undefined method Statamic\\Contracts\\Entries\\QueryBuilder\:\:where\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\Campaign\|null given\.$#'
+			identifier: argument.type
+			count: 9
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\MailingList\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Goldnead\\Marketing\\Models\\Message\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Relation ''subscription'' is not found in Goldnead\\Marketing\\Models\\Message model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: src/Http/Controllers/Cp/CampaignController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$subscribed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\MailingList\|null given\.$#'
+			identifier: argument.type
+			count: 4
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Parameter \#1 \$callback of method Illuminate\\Support\\Collection\<int,Goldnead\\Marketing\\Models\\Subscription\>\:\:map\(\) contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: src/Http/Controllers/Cp/ListController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\MailingList\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Cp/SubscriberController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Models\\Subscription\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Cp/SubscriberController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\EmailTemplate\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: src/Http/Controllers/Cp/TemplateController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/SubscribeController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Data\\MailingList\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/SubscribeController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/UnsubscribeController.php
+
+		-
+			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Models\\Subscription\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: src/Http/Controllers/UnsubscribeController.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$campaign_handle\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Jobs/SendMessageJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Jobs/SendMessageJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$subscription\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Jobs/SendMessageJob.php
+
+		-
+			message: '#^Relation ''subscription'' is not found in Goldnead\\Marketing\\Models\\Message model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: src/Jobs/SendMessageJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email_normalized\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Jobs/StartCampaignJob.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Mail/ConfirmSubscriptionMail.php
+
+		-
+			message: '#^Parameter \#1 \$view of method Illuminate\\Mail\\Mailable\:\:view\(\) expects view\-string, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/ConfirmSubscriptionMail.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Message.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 5
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email_normalized\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uniqueness_key\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Subscription.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$content\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$from_email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$from_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$preheader\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$reply_to\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$scheduled_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$segment_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$sent_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$subject\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\CampaignRecord\:\:\$template_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentCampaignRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\EmailTemplateRecord\:\:\$handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentEmailTemplateRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\EmailTemplateRecord\:\:\$html\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentEmailTemplateRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\EmailTemplateRecord\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentEmailTemplateRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\MailingListRecord\:\:\$description\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentMailingListRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\MailingListRecord\:\:\$double_opt_in\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentMailingListRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\MailingListRecord\:\:\$handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentMailingListRepository.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\MailingListRecord\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Repositories/Eloquent/EloquentMailingListRepository.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>timestamp" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Repositories/FlatFile/FlatFileCampaignRepository.php
+
+		-
+			message: '#^Method Goldnead\\Marketing\\Repositories\\FlatFile\\YamlStore\:\:all\(\) should return Illuminate\\Support\\Collection\<int, array\> but returns Illuminate\\Support\\Collection\<int, non\-empty\-array\>\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Repositories/FlatFile/YamlStore.php
+
+		-
+			message: '#^Property Goldnead\\Marketing\\ServiceProvider\:\:\$vite \(list\<string\>\) does not accept default value of type array\{input\: array\{''resources/js/cp\.js'', ''resources/css/cp\.css''\}, publicDirectory\: ''resources/dist''\}\.$#'
+			identifier: property.defaultValue
+			count: 1
+			path: src/ServiceProvider.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Services/CampaignRenderer.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/CampaignSender.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$subscription\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/EspEventProcessor.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/EspEventProcessor.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Leadhub\\Models\\Contact\:\:\$do_not_contact\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email_normalized\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Services/SubscriptionPreferences.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$confirmed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$contact_uuid\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 6
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$first_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$last_name\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
+			identifier: property.notFound
+			count: 6
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$meta\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$source\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$unsubscribed_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Services/SubscriptionService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$clicks\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TrackingService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$first_clicked_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TrackingService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$first_opened_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TrackingService.php
+
+		-
+			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$opens\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TrackingService.php

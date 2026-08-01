@@ -21,6 +21,9 @@ return [
     'open_rate' => 'Open rate',
     'click_rate' => 'Click rate',
     'create' => 'Create campaign',
+    'errors' => [
+        'no_list' => 'This campaign has no valid mailing list.',
+    ],
     'flashes' => [
         'created' => 'Campaign created.',
         'updated' => 'Campaign updated.',

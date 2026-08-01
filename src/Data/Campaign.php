@@ -41,8 +41,7 @@ class Campaign
         public string $status = self::STATUS_DRAFT,
         public ?CarbonImmutable $scheduledAt = null,
         public ?CarbonImmutable $sentAt = null,
-    ) {
-    }
+    ) {}
 
     /**
      * Is this campaign running an A/B test?

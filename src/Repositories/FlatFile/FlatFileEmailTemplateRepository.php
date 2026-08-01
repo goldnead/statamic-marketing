@@ -8,9 +8,7 @@ use Illuminate\Support\Collection;
 
 class FlatFileEmailTemplateRepository implements EmailTemplateRepository
 {
-    public function __construct(protected YamlStore $store)
-    {
-    }
+    public function __construct(protected YamlStore $store) {}
 
     public function all(): Collection
     {

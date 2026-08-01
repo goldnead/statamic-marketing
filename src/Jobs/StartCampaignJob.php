@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Jobs;
 
+use Carbon\CarbonImmutable;
 use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Leadhub\Support\EmailNormalizer;
@@ -28,9 +29,7 @@ class StartCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
-    public function __construct(public string $campaignHandle)
-    {
-    }
+    public function __construct(public string $campaignHandle) {}
 
     public function handle(
         CampaignRepository $campaigns,
@@ -150,7 +149,7 @@ class StartCampaignJob implements ShouldQueue
         // Empty audience: nothing will ever finalize the campaign, so do it here.
         if ($index === 0 && Message::forCampaign($campaign->handle)->pending()->count() === 0) {
             $campaign->status = Campaign::STATUS_SENT;
-            $campaign->sentAt = \Carbon\CarbonImmutable::now();
+            $campaign->sentAt = CarbonImmutable::now();
             $campaigns->save($campaign);
 
             event(new CampaignSent($campaign));

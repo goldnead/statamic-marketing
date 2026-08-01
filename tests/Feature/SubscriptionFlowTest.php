@@ -5,6 +5,7 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function (): void {
@@ -78,7 +79,7 @@ it('subscribes immediately when the list uses single opt-in', function (): void 
 });
 
 it('is idempotent for already subscribed addresses', function (): void {
-    $service = app(\Goldnead\Marketing\Services\SubscriptionService::class);
+    $service = app(SubscriptionService::class);
     $list = app(MailingListRepository::class)->find('newsletter');
 
     $first = $service->subscribe($list, 'dup@example.com');

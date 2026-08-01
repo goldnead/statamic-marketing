@@ -10,6 +10,9 @@ Think Mailcoach, but native to Statamic and built on top of
 | Addon | Role |
 | --- | --- |
 | [statamic-leadhub](https://github.com/goldnead/statamic-leadhub) | CRM: contacts, tags, timeline — **required**, subscribers are LeadHub contacts |
+| [statamic-brand-context](https://github.com/goldnead/statamic-brand-context) | **Required** as a package. Multi-brand *mode* is off by default; the package is not optional |
+| [statamic-suppression](https://github.com/goldnead/statamic-suppression) | **Required**. The gate every send path asks before it delivers |
+| [statamic-preference-center](https://github.com/goldnead/statamic-preference-center) | Optional: one preference page over marketing lists, notification types and suppression. Installing it moves every footer link there automatically |
 | [statamic-webhook-manager](https://github.com/goldnead/statamic-webhook-manager) | Optional: ESP feedback webhooks in (bounces/complaints), marketing events out |
 | [statamic-automations](https://github.com/goldnead/statamic-automations) | Optional: marketing triggers & actions for visual drip workflows |
 | **statamic-marketing** | Lists, opt-in, campaigns, sending, tracking |
@@ -33,13 +36,15 @@ Think Mailcoach, but native to Statamic and built on top of
 - **Unsubscribes** via tokenized link plus RFC 8058 one-click
   (`List-Unsubscribe` / `List-Unsubscribe-Post` headers), optional global
   opt-out to LeadHub's `do_not_contact`.
-- **Preference page** at `/!/marketing/preferences/{token}`, addressed by the
-  same unsubscribe token and needing no login: every list of the token's brand
-  with its current state, each switchable on or off, plus a separate
-  "unsubscribe from everything" (that brand's lists — not the CRM opt-out). The
-  page a tokenized unsubscribe link lands on carries the same controls. A
-  contact that is blocked (hard bounce, complaint, `do_not_contact`) can be
-  switched off there but never back on.
+- **Unsubscribe, always**: a tokenized link ends one list and says so, with no
+  login and no optional package involved. Where
+  [statamic-preference-center](https://github.com/goldnead/statamic-preference-center)
+  is installed, every footer link goes there instead — one page for all of this
+  brand's lists, notification types and the suppression state. Marketing does
+  not ship a second copy of that page; the switch is a single resolver
+  (`src/Support/PreferenceLink.php`), so nothing has to be reconfigured when the
+  addon appears or goes away. The RFC 8058 one-click endpoint stays on marketing
+  either way.
 - **LeadHub native**: subscribing upserts the contact, records timeline events
   (`marketing.subscribed` / `marketing.unsubscribed`), and tags contacts with
   `list:{handle}`. Hard bounces and complaints opt the contact out.
@@ -55,14 +60,52 @@ Think Mailcoach, but native to Statamic and built on top of
     `marketing.campaign_sent`) and actions (`marketing.subscribe`,
     `marketing.unsubscribe`, `marketing.send_campaign`) in the visual builder.
 
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Marketing dashboard](screenshots/dashboard.png) | ![Mailing lists](screenshots/lists.png) |
+| Audience and recent campaign performance at a glance | Lists with double-opt-in status and live subscriber counts |
+| ![Campaign composer](screenshots/campaign-edit.png) | ![Campaign report](screenshots/campaign-report.png) |
+| Antlers content, sender, scheduling, test send | Delivery, open and click rates, per-recipient log |
+
+## Requirements
+
+| | |
+| --- | --- |
+| PHP | 8.2+ (8.3+ when running Laravel 13) |
+| Laravel | 12 or 13 |
+| Statamic | 6 |
+| Required addons | `goldnead/statamic-leadhub`, `goldnead/statamic-brand-context`, `goldnead/statamic-suppression` |
+| Optional addons | `goldnead/statamic-preference-center`, `goldnead/statamic-webhook-manager`, `goldnead/statamic-automations` |
+| Also needed | a queue worker (campaign delivery) and the Laravel scheduler (scheduled campaigns) |
+
+All three required addons are installed for you by Composer. `brand-context` is
+required as a *package* even on a single-brand site — only its multi-brand mode
+is optional.
+
 ## Installation
+
+> **Not yet installable from Packagist.** The three required sibling addons are
+> private repositories, and Composer only reads the `repositories` block of the
+> *root* project — never of a package it is installing. So the plain
+> `composer require goldnead/statamic-marketing` cannot resolve them and will
+> fail. Until the siblings are published, add the repositories to your own
+> `composer.json` first:
+
+```jsonc
+// your project's composer.json
+"repositories": [
+    { "type": "vcs", "url": "https://github.com/goldnead/statamic-brand-context.git" },
+    { "type": "vcs", "url": "https://github.com/goldnead/statamic-leadhub.git" },
+    { "type": "vcs", "url": "https://github.com/goldnead/statamic-suppression.git" }
+]
+```
 
 ```bash
 composer require goldnead/statamic-marketing
 php artisan migrate
 ```
-
-Requires PHP 8.2+, Statamic 6, and `goldnead/statamic-leadhub`.
 
 Publish the config if you want to tweak defaults:
 

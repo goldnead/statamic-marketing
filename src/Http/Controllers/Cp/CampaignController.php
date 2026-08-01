@@ -3,6 +3,9 @@
 namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Carbon\CarbonImmutable;
+use Goldnead\EmailTemplates\Facades\EmailTemplates;
+use Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager;
+use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -16,6 +19,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use InvalidArgumentException;
 use Statamic\CP\Column;
+use Statamic\Facades\Entry;
 use Statamic\Support\Str;
 
 class CampaignController extends Controller
@@ -24,8 +28,7 @@ class CampaignController extends Controller
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
         protected EmailTemplateRepository $templates,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request, CampaignStats $stats)
     {
@@ -317,7 +320,34 @@ class CampaignController extends Controller
         return back()->with('success', __('marketing::campaigns.flashes.test_sent'));
     }
 
-    /** Rendered HTML preview with sample subscriber data, shown in an iframe. */
+    /**
+     * Rendered HTML preview with sample subscriber data, shown in an iframe.
+     *
+     * The body of this response is HTML a Control Panel user wrote — the
+     * campaign content and the e-mail template around it — served from a
+     * Control Panel route, which is to say from the session's own origin. A
+     * `<script>` in a template would otherwise run as whoever previews a
+     * campaign using it, so an editor with `manage marketing templates`
+     * becomes every super user who looks. The barrier is two-sided and both
+     * sides are needed:
+     *
+     *  - here, `Content-Security-Policy: sandbox` puts the document in a
+     *    unique opaque origin with scripts and forms off, and it holds even
+     *    when the HTML is opened straight into a tab, which the "open in new
+     *    tab" link invites;
+     *  - in `Campaigns/Edit.vue`, the iframe carries `sandbox` with neither
+     *    `allow-scripts` nor `allow-same-origin`, which holds when the header
+     *    does not reach the parser.
+     *
+     * `default-src 'none'` is the floor, then exactly what an e-mail needs is
+     * handed back: images (a campaign without its images is not a preview) and
+     * inline styles (e-mail HTML has no other kind). Scripts are never handed
+     * back — that is the whole point — and `nosniff` stops the response being
+     * re-read as anything but the HTML it says it is.
+     *
+     * Guarded by `tests/Feature/CampaignPreviewIsolationTest.php` and
+     * `tests/js/preview-sandbox.test.js`.
+     */
     public function preview(Request $request, string $handle, CampaignRenderer $renderer)
     {
         $this->authorizeOrFail($request, 'view marketing');
@@ -327,11 +357,16 @@ class CampaignController extends Controller
 
         $list = $campaign->listHandle ? $this->lists->find($campaign->listHandle) : null;
 
-        abort_unless($list, 422, 'Campaign has no valid mailing list.');
+        abort_unless($list, 422, __('marketing::campaigns.errors.no_list'));
 
         $rendered = $renderer->render($campaign, $list);
 
-        return response($rendered->html)->header('Content-Type', 'text/html; charset=utf-8');
+        return response($rendered->html)->withHeaders([
+            'Content-Type' => 'text/html; charset=utf-8',
+            'Content-Security-Policy' => "sandbox; default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data: https:",
+            'X-Content-Type-Options' => 'nosniff',
+            'Referrer-Policy' => 'no-referrer',
+        ]);
     }
 
     protected function validateCampaign(Request $request): array
@@ -390,8 +425,8 @@ class CampaignController extends Controller
      */
     protected function emailTemplateEntryOptions(): array
     {
-        if (! class_exists(\Goldnead\EmailTemplates\Facades\EmailTemplates::class)
-            || ! class_exists(\Statamic\Facades\Entry::class)) {
+        if (! class_exists(EmailTemplates::class)
+            || ! class_exists(Entry::class)) {
             return [];
         }
 
@@ -399,9 +434,9 @@ class CampaignController extends Controller
             // Handle comes from the addon itself (single source of truth); the
             // addon owns `et_templates` to avoid colliding with any unrelated
             // host-app `email_templates` collection.
-            $handle = \Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager::HANDLE;
+            $handle = EmailTemplateCollectionManager::HANDLE;
 
-            return collect(\Statamic\Facades\Entry::query()->where('collection', $handle)->get())
+            return collect(Entry::query()->where('collection', $handle)->get())
                 ->map(fn ($entry) => [
                     'value' => (string) $entry->slug(),
                     'label' => (string) ($entry->value('title') ?? $entry->slug()),
@@ -425,13 +460,13 @@ class CampaignController extends Controller
      */
     protected function segmentOptions(): array
     {
-        $root = \Goldnead\Leadhub\Facades\LeadHub::getFacadeRoot();
+        $root = LeadHub::getFacadeRoot();
 
         if (! $root || ! method_exists($root, 'segments')) {
             return [];
         }
 
-        return collect(\Goldnead\Leadhub\Facades\LeadHub::segments())
+        return collect(LeadHub::segments())
             ->filter(fn ($segment) => $segment['is_active'] ?? true)
             ->map(fn ($segment) => [
                 'value' => (string) $segment['handle'],

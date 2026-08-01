@@ -17,6 +17,7 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileCampaignRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
+use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -42,9 +43,16 @@ class ServiceProvider extends AddonServiceProvider
         'publicDirectory' => 'resources/dist',
     ];
 
-    protected $tags = [
-        \Goldnead\Marketing\Tags\Marketing::class,
-    ];
+    /*
+     * `$tags` is deliberately absent.
+     *
+     * `AddonServiceProvider::bootTags()` merges the property with an autoload
+     * of `src/Tags/` and de-duplicates, so naming the class here changes
+     * nothing except that the list can go stale — a tag added later without an
+     * entry looks unregistered to a reader while working perfectly, and the
+     * opposite mistake (an entry for a class that was renamed) is a fatal at
+     * boot. `tests/Feature/TagsTest.php` holds the contract that replaces it.
+     */
 
     protected $commands = [
         SendScheduledCampaignsCommand::class,
@@ -60,10 +68,19 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->app->resolving('translator', function ($translator) use ($langPath) {
             $translator->addNamespace('marketing', $langPath);
+            // The Vue layer calls `__('Send now')` with the English sentence as
+            // the key, which is the ordinary Statamic idiom but resolves
+            // through the JSON loader rather than the namespace above. Without
+            // this path those strings had no translation at all: nav and
+            // flashes came out German from the PHP files and every screen
+            // behind them stayed English, which reads worse than shipping no
+            // German. See resources/lang/de.json.
+            $translator->addJsonPath($langPath);
         });
 
         if ($this->app->resolved('translator')) {
             $this->app['translator']->addNamespace('marketing', $langPath);
+            $this->app['translator']->addJsonPath($langPath);
         }
 
         $this->bindRepositories();
@@ -166,7 +183,7 @@ class ServiceProvider extends AddonServiceProvider
      */
     protected function registerSchedule(): self
     {
-        $this->callAfterResolving(\Illuminate\Console\Scheduling\Schedule::class, function ($schedule) {
+        $this->callAfterResolving(Schedule::class, function ($schedule) {
             $schedule->command('marketing:send-scheduled')
                 ->everyMinute()
                 ->onOneServer()

@@ -4,12 +4,15 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Jobs\SendMessageJob;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Contracts\Gate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Goldnead\Suppression\Reasons;
 use Goldnead\Suppression\SuppressionService;
@@ -143,11 +146,11 @@ it('re-checks immediately before transport and skips the message', function (): 
     // Suppressed after the audience was built, before this message is sent.
     $this->suppressions->suppress('late@example.test', Reasons::COMPLAINT);
 
-    (new \Goldnead\Marketing\Jobs\SendMessageJob($message->id))->handle(
+    (new SendMessageJob($message->id))->handle(
         app(CampaignRepository::class),
         app(MailingListRepository::class),
-        app(\Goldnead\Marketing\Services\CampaignRenderer::class),
-        app(\Goldnead\Suppression\Contracts\Gate::class),
+        app(CampaignRenderer::class),
+        app(Gate::class),
     );
 
     Mail::assertNothingSent();
@@ -168,11 +171,11 @@ it('fails the single message rather than sending when the gate cannot answer', f
 
     Schema::drop('suppressions');
 
-    (new \Goldnead\Marketing\Jobs\SendMessageJob($message->id))->handle(
+    (new SendMessageJob($message->id))->handle(
         app(CampaignRepository::class),
         app(MailingListRepository::class),
-        app(\Goldnead\Marketing\Services\CampaignRenderer::class),
-        app(\Goldnead\Suppression\Contracts\Gate::class),
+        app(CampaignRenderer::class),
+        app(Gate::class),
     );
 
     Mail::assertNothingSent();
