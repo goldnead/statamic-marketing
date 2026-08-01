@@ -9,23 +9,22 @@ name: tests
 #
 # It also checked out exactly one of the three required siblings, called it a
 # "path repo" (it has been a VCS repo for several releases) and gave Composer
-# no credentials of its own — `actions/checkout` scopes its token to the
-# checkout it performed, not to clones Composer makes later. So the sibling
-# resolution here was either failing or being served from a cache.
-# `COMPOSER_AUTH` is set once, at workflow level, and the checkout is gone.
+# no credentials of its own. That whole apparatus is gone: since 01.08.2026
+# every goldnead sibling is public and on Packagist, so Composer resolves them
+# anonymously like any other dependency — no checkout beside this one, no VCS
+# repository entries, no COMPOSER_AUTH.
+#
+# The COMPOSER_AUTH line that used to sit here set github-oauth to
+# SIBLING_REPOS_TOKEN with a fallback to github.token. Under `permissions:
+# contents: read` that fallback carries no useful scope, so Composer tried to
+# authenticate EVERY dist download and died on
+# "Could not authenticate against github.com", including for third-party
+# packages. An empty credential is worse than none.
 #
 # Every cell below was resolved with `composer update --dry-run` before being
 # committed. PHP 8.2 with Laravel 13 is the one combination that does not
 # resolve — Laravel 13 requires PHP ^8.3 — and it is excluded rather than left
 # to fail.
-
-# Kein COMPOSER_AUTH: seit 01.08.2026 sind alle goldnead-Geschwister oeffentlich und
-# liegen auf Packagist, Composer laedt sie also anonym. Die fruehere Zeile setzte
-# github-oauth auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser
-# Workflow permissions: {} setzt, hat der Rueckfall keine Scopes -- Composer versuchte
-# daraufhin JEDEN dist-Download zu authentifizieren und starb an
-# "Could not authenticate against github.com", auch bei fremden Paketen.
-# Ein leeres Credential ist schlechter als gar keins.
 
 on:
   push:
@@ -86,8 +85,14 @@ jobs:
       - name: Install dependencies
         run: composer update --prefer-stable --prefer-dist --no-progress --no-interaction
 
+      # `composer show` takes at most one package plus a version; the four
+      # names it used to get made every cell print
+      # "Too many arguments to \"show\" command" in red — a diagnostic step
+      # failing on the line it exists to explain. `--direct` prints exactly the
+      # pinned set (laravel/framework, statamic/cms, pest, testbench and the
+      # goldnead siblings) in one table and cannot take a wrong argument.
       - name: Show what actually resolved
-        run: composer show laravel/framework statamic/cms pestphp/pest orchestra/testbench
+        run: composer show --direct
 
       - name: Run Pest (${{ matrix.driver }} driver)
         env:
@@ -126,6 +131,9 @@ jobs:
 
       - name: Install the lowest resolvable set
         run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-progress --no-interaction
+
+      - name: Show what actually resolved
+        run: composer show --direct
 
       - name: Run Pest
         run: vendor/bin/pest --colors=always
@@ -180,7 +188,9 @@ jobs:
     # The optional peers. `scripts/test-siblings.sh` has been in the repo the
     # whole time and no workflow ran it, so the seven Integration tests covering
     # the automations and webhook-manager bridges have only ever been skipped in
-    # CI — which is indistinguishable from passing in the run summary.
+    # CI — which is indistinguishable from passing in the run summary. The
+    # script now runs Pest with `--fail-on-skipped`, so that specific silence
+    # cannot come back.
     name: Cross-addon integration (optional siblings)
     runs-on: ubuntu-latest
 
@@ -188,8 +198,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The script stages the repo through `git archive HEAD`, so it needs
-          # a commit rather than a detached export.
+          # The script stages the repo out of HEAD (read-tree + checkout-index),
+          # so it needs a commit rather than a detached export.
           fetch-depth: 1
 
       - name: Setup PHP
