@@ -44,7 +44,7 @@ function destroy() {
     <Head :title="[__('Templates'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="__('Templates')" icon="template">
+        <Header :title="__('Templates')" icon="template-theme-design-layout">
             <Button
                 v-if="canManage"
                 :href="createUrl"

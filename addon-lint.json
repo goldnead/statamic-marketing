@@ -1,0 +1,14 @@
+{
+    "//": "Two rules are not applied. Each entry says why, and what would make it apply again. A suppression without that is a lie in a config file.",
+
+    "severity": {
+        "testing.addon-testcase": "info",
+        "ui.listing-component": "info"
+    },
+
+    "reasons": {
+        "testing.addon-testcase": "Statamic\\Testing\\AddonTestCase mocks CP\\Nav::build() to an empty collection and registers exactly one addon provider. This suite needs five providers in a fixed order (Statamic, brand-context, suppression, leadhub, marketing), calls bootAddon() by hand on two of them because Testbench never fires the Statamic::booted callbacks that would, asserts on the nav tree the mock would erase, and flips the storage driver from MARKETING_DRIVER so the whole suite runs twice. tests/TestCase.php documents each with the failure it answers. Revisit when AddonTestCase supports multiple addon providers and stops mocking Nav::build().",
+
+        "ui.listing-component": "False positive as of this commit: the rule matches `<table` case-insensitively, so it fires on the native `<Table>` component from @statamic/cms/ui. resources/js/pages/Dashboard.vue used to hand-build two `<table>` blocks with their own header colours, dividers and row padding; both are now Table/TableColumns/TableRow/TableCell, which is what the baseline audit recommended for a five-row summary panel. Full `<Listing>` is not the right shape here: it is a dashboard summary, not a resource index, and it has no url endpoint, no filters and no bulk actions to give. Revisit if the rule learns to distinguish the element from the component, or if these panels ever grow into real listings."
+    }
+}

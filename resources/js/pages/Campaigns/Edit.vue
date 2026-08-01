@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
     Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea,
-    ConfirmationModal,
+    ConfirmationModal, Text, CommandPaletteItem,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -196,8 +196,8 @@ function destroy() {
 <template>
     <Head :title="[isCreating ? __('Create campaign') : campaign.name, __('Campaigns'), __('Marketing')]" />
 
-    <div class="max-w-5xl 3xl:max-w-6xl mx-auto" data-max-width-wrapper>
-        <Header :title="isCreating ? __('Create campaign') : name" icon="email">
+    <div class="max-w-page mx-auto" data-max-width-wrapper>
+        <Header :title="isCreating ? __('Create campaign') : name" icon="mail">
             <Badge
                 v-if="campaign"
                 :color="statusColor(campaign.status)"
@@ -220,8 +220,10 @@ function destroy() {
 
         <!-- Locked campaigns can no longer be edited -->
         <Panel v-if="!isEditable" class="mb-4">
-            <div class="p-4 text-sm text-gray-700 dark:text-gray-300">
+            <div class="p-4">
+                <Text size="sm">
                 {{ __('This campaign has been sent or is currently sending and can no longer be edited.') }}
+                </Text>
                 <Link :href="showUrl" class="font-medium hover:underline">
                     {{ __('View the report') }} →
                 </Link>
@@ -395,9 +397,9 @@ function destroy() {
                                 <div v-if="campaign.status === 'scheduled'" class="space-y-2">
                                     <div class="text-sm">
                                         <Badge color="purple" :text="__('Scheduled')" />
-                                        <span class="ms-2 text-gray-700 dark:text-gray-300">
+                                        <Text size="sm" class="ms-2 inline">
                                             {{ formatDate(campaign.scheduled_at) }}
-                                        </span>
+                                        </Text>
                                     </div>
                                     <Button :text="__('Unschedule')" variant="default" @click="unschedule" />
                                 </div>

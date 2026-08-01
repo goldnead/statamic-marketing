@@ -17,7 +17,6 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileCampaignRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
-use Goldnead\Marketing\Tags\Marketing;
 use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -44,9 +43,16 @@ class ServiceProvider extends AddonServiceProvider
         'publicDirectory' => 'resources/dist',
     ];
 
-    protected $tags = [
-        Marketing::class,
-    ];
+    /*
+     * `$tags` is deliberately absent.
+     *
+     * `AddonServiceProvider::bootTags()` merges the property with an autoload
+     * of `src/Tags/` and de-duplicates, so naming the class here changes
+     * nothing except that the list can go stale — a tag added later without an
+     * entry looks unregistered to a reader while working perfectly, and the
+     * opposite mistake (an entry for a class that was renamed) is a fatal at
+     * boot. `tests/Feature/TagsTest.php` holds the contract that replaces it.
+     */
 
     protected $commands = [
         SendScheduledCampaignsCommand::class,
