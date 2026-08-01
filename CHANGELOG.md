@@ -1,7 +1,6 @@
 # Changelog
 
-## Unreleased
-
+## 1.9.0 — 2026-08-01
 ### Security — the campaign preview ran in the Control Panel's own origin
 
 `GET marketing/campaigns/{handle}/preview` returns HTML a Control Panel user wrote: the campaign body

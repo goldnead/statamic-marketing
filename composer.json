@@ -23,20 +23,6 @@
         "issues": "https://github.com/goldnead/statamic-marketing/issues",
         "source": "https://github.com/goldnead/statamic-marketing"
     },
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/goldnead/statamic-brand-context.git"
-        },
-        {
-            "type": "vcs",
-            "url": "https://github.com/goldnead/statamic-leadhub.git"
-        },
-        {
-            "type": "vcs",
-            "url": "https://github.com/goldnead/statamic-suppression.git"
-        }
-    ],
     "require": {
         "goldnead/statamic-brand-context": "^1.4",
         "goldnead/statamic-leadhub": "^1.4",
