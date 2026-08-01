@@ -60,10 +60,19 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->app->resolving('translator', function ($translator) use ($langPath) {
             $translator->addNamespace('marketing', $langPath);
+            // The Vue layer calls `__('Send now')` with the English sentence as
+            // the key, which is the ordinary Statamic idiom but resolves
+            // through the JSON loader rather than the namespace above. Without
+            // this path those strings had no translation at all: nav and
+            // flashes came out German from the PHP files and every screen
+            // behind them stayed English, which reads worse than shipping no
+            // German. See resources/lang/de.json.
+            $translator->addJsonPath($langPath);
         });
 
         if ($this->app->resolved('translator')) {
             $this->app['translator']->addNamespace('marketing', $langPath);
+            $this->app['translator']->addJsonPath($langPath);
         }
 
         $this->bindRepositories();
