@@ -19,6 +19,14 @@ name: tests
 # resolve — Laravel 13 requires PHP ^8.3 — and it is excluded rather than left
 # to fail.
 
+# Kein COMPOSER_AUTH: seit 01.08.2026 sind alle goldnead-Geschwister oeffentlich und
+# liegen auf Packagist, Composer laedt sie also anonym. Die fruehere Zeile setzte
+# github-oauth auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser
+# Workflow permissions: {} setzt, hat der Rueckfall keine Scopes -- Composer versuchte
+# daraufhin JEDEN dist-Download zu authentifizieren und starb an
+# "Could not authenticate against github.com", auch bei fremden Paketen.
+# Ein leeres Credential ist schlechter als gar keins.
+
 on:
   push:
     branches: [main]
@@ -28,11 +36,6 @@ on:
 
 permissions:
   contents: read
-
-env:
-  # Composer clones the three private siblings itself. It needs its own
-  # credentials to do that; the checkout token does not reach it.
-  COMPOSER_AUTH: '{"github-oauth":{"github.com":"${{ secrets.SIBLING_REPOS_TOKEN || github.token }}"}}'
 
 jobs:
   pest:
