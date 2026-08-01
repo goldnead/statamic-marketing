@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.9.1 — 2026-08-01
+## Unreleased
 ### Fixed — CI only; nothing in the installed package changes
 
 No file that ships in the Composer tarball is touched by this release. `src/`, `config/`, `routes/`,
