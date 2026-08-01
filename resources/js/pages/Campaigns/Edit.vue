@@ -301,10 +301,23 @@ function destroy() {
                             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 {{ __('The preview reflects the last saved version. Save your changes first.') }}
                             </p>
+                            <!--
+                                The frame shows HTML a Control Panel user wrote,
+                                from a Control Panel route. `sandbox` with no
+                                tokens puts it in a unique opaque origin with
+                                scripts off; adding `allow-scripts` or
+                                `allow-same-origin` back would hand an editor
+                                who can write a template the session of every
+                                super user who previews it. The response carries
+                                the matching Content-Security-Policy. Held by
+                                tests/js/preview-sandbox.test.js.
+                            -->
                             <iframe
                                 v-if="showPreview"
                                 :src="previewUrl"
-                                class="mt-3 w-full h-[600px] rounded border border-content-border bg-white"
+                                :title="__('Email preview')"
+                                sandbox=""
+                                class="mt-3 w-full h-[600px] rounded border border-content-border bg-content-bg"
                             ></iframe>
                         </Card>
                     </Panel>
