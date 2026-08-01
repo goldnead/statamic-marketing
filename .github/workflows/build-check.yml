@@ -4,17 +4,14 @@ name: build-check
 # resources/dist is shipped via Composer (no npm at install time), so it must
 # always match current source. See scripts/check-dist-fresh.sh.
 #
-# The three hard siblings are private VCS repositories that Composer clones on
-# its own, so it gets its own credentials below rather than a checkout beside
-# this one.
-
-# Kein COMPOSER_AUTH: seit 01.08.2026 sind alle goldnead-Geschwister oeffentlich und
-# liegen auf Packagist, Composer laedt sie also anonym. Die fruehere Zeile setzte
-# github-oauth auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser
-# Workflow permissions: {} setzt, hat der Rueckfall keine Scopes -- Composer versuchte
-# daraufhin JEDEN dist-Download zu authentifizieren und starb an
-# "Could not authenticate against github.com", auch bei fremden Paketen.
-# Ein leeres Credential ist schlechter als gar keins.
+# Kein COMPOSER_AUTH und keine Geschwister-Sonderbehandlung: seit 01.08.2026 sind
+# alle goldnead-Geschwister oeffentlich und liegen auf Packagist, Composer laedt sie
+# also anonym wie jede andere Abhaengigkeit. Die fruehere Zeile setzte github-oauth
+# auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser Workflow nur
+# contents: read hat, trug der Rueckfall keine Scopes -- Composer versuchte daraufhin
+# JEDEN dist-Download zu authentifizieren und starb an "Could not authenticate against
+# github.com", auch bei fremden Paketen. Ein leeres Credential ist schlechter als gar
+# keins.
 
 on:
   push:

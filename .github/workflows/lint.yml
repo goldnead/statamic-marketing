@@ -81,12 +81,13 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
 
-      # `--no-check-publish` stays only while the three siblings are private:
-      # it is precisely the flag that hides "this package is not publishable",
-      # which is the true state of affairs until they reach Packagist. The
-      # comment it used to carry cited a `*@dev` path constraint that has not
-      # existed for several releases.
+      # `--no-check-publish` was the flag that hid "this package is not
+      # publishable" for as long as the three siblings were private. They
+      # reached Packagist on 01.08.2026, so the condition it papered over is
+      # gone and the flag goes with it — as the note here promised.
       #
-      # When the siblings are published, drop the flag and add `--strict`.
+      # `--no-check-lock` because composer.lock is deliberately not committed
+      # for a library; without it validate reports a lock it cannot find as an
+      # error.
       - name: Validate composer.json
-        run: composer validate --no-check-publish
+        run: composer validate --strict --no-check-lock
