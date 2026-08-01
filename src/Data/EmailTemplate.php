@@ -13,8 +13,7 @@ class EmailTemplate
         public string $handle,
         public string $name,
         public string $html = '',
-    ) {
-    }
+    ) {}
 
     public static function fromArray(array $data): self
     {

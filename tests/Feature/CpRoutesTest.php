@@ -12,6 +12,8 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\Subscription;
+use Illuminate\Support\Facades\Mail;
 use Statamic\Facades\User;
 
 beforeEach(function (): void {
@@ -107,16 +109,16 @@ it('creates and updates a campaign through the CP', function (): void {
 });
 
 it('adds a subscriber through the CP without double opt-in', function (): void {
-    \Illuminate\Support\Facades\Mail::fake();
+    Mail::fake();
 
     $this->post(cp_route('marketing.lists.subscribers.store', 'newsletter'), [
         'email' => 'manual@example.com',
         'first_name' => 'Manual',
     ])->assertRedirect();
 
-    $subscription = \Goldnead\Marketing\Models\Subscription::forList('newsletter')->first();
+    $subscription = Subscription::forList('newsletter')->first();
 
-    expect($subscription->status)->toBe(\Goldnead\Marketing\Models\Subscription::STATUS_SUBSCRIBED);
+    expect($subscription->status)->toBe(Subscription::STATUS_SUBSCRIBED);
 });
 
 it('serves the campaign HTML preview', function (): void {

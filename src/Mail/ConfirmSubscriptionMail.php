@@ -17,8 +17,7 @@ class ConfirmSubscriptionMail extends Mailable
     public function __construct(
         public MailingList $list,
         public Subscription $subscription,
-    ) {
-    }
+    ) {}
 
     public function build(): self
     {

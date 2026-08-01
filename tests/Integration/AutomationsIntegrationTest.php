@@ -2,11 +2,17 @@
 
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\StatamicAutomations\Context\AutomationContext;
+use Goldnead\StatamicAutomations\Facades\Automations;
+use Goldnead\StatamicAutomations\Models\Automation;
+use Goldnead\StatamicAutomations\Models\AutomationRun;
+use Goldnead\StatamicAutomations\Templates\TemplateRegistry;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function (): void {
-    if (! class_exists(\Goldnead\StatamicAutomations\Facades\Automations::class)) {
+    if (! class_exists(Automations::class)) {
         $this->markTestSkipped('goldnead/statamic-automations is not installed (run scripts/test-siblings.sh).');
     }
 });
@@ -26,7 +32,7 @@ it('registers the marketing triggers and actions as built-in automation nodes', 
 });
 
 it('contributes the marketing templates to the automations catalog', function (): void {
-    $registry = app(\Goldnead\StatamicAutomations\Templates\TemplateRegistry::class);
+    $registry = app(TemplateRegistry::class);
 
     foreach ([
         'marketing_welcome_series',
@@ -43,7 +49,7 @@ it('runs an automation when a subscriber confirms', function (): void {
     Mail::fake();
 
     // An enabled automation: marketing.subscribed trigger -> log entry action.
-    $automation = \Goldnead\StatamicAutomations\Models\Automation::create([
+    $automation = Automation::create([
         'name' => 'On subscribe',
         'handle' => 'on_subscribe',
         'enabled' => true,
@@ -79,12 +85,12 @@ it('runs an automation when a subscriber confirms', function (): void {
     );
 
     // Sync queue: the run executed inline.
-    $run = \Goldnead\StatamicAutomations\Models\AutomationRun::query()
+    $run = AutomationRun::query()
         ->where('automation_id', $automation->id)
         ->first();
 
     expect($run)->not->toBeNull()
-        ->and($run->status)->toBe(\Goldnead\StatamicAutomations\Models\AutomationRun::STATUS_SUCCESS);
+        ->and($run->status)->toBe(AutomationRun::STATUS_SUCCESS);
 });
 
 it('executes the marketing.subscribe action against a real list', function (): void {
@@ -93,7 +99,7 @@ it('executes the marketing.subscribe action against a real list', function (): v
     app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter', doubleOptIn: false));
 
     $action = app('automations')->actions()->instance('marketing.subscribe');
-    $context = \Goldnead\StatamicAutomations\Context\AutomationContext::make([]);
+    $context = AutomationContext::make([]);
 
     $result = $action->execute($context, [
         'list' => 'newsletter',
@@ -104,5 +110,5 @@ it('executes the marketing.subscribe action against a real list', function (): v
     expect($result->isSuccess())->toBeTrue()
         ->and($result->output['status'])->toBe('subscribed');
 
-    expect(\Goldnead\Marketing\Models\Subscription::forList('newsletter')->where('email', 'action@example.com')->exists())->toBeTrue();
+    expect(Subscription::forList('newsletter')->where('email', 'action@example.com')->exists())->toBeTrue();
 });

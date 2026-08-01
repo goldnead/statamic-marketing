@@ -4,8 +4,14 @@ name: build-check
 # resources/dist is shipped via Composer (no npm at install time), so it must
 # always match current source. See scripts/check-dist-fresh.sh.
 #
-# marketing depends on goldnead/statamic-leadhub via a Composer `path` repo
-# (../statamic-leadhub), so the sibling repo is checked out alongside.
+# Kein COMPOSER_AUTH und keine Geschwister-Sonderbehandlung: seit 01.08.2026 sind
+# alle goldnead-Geschwister oeffentlich und liegen auf Packagist, Composer laedt sie
+# also anonym wie jede andere Abhaengigkeit. Die fruehere Zeile setzte github-oauth
+# auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser Workflow nur
+# contents: read hat, trug der Rueckfall keine Scopes -- Composer versuchte daraufhin
+# JEDEN dist-Download zu authentifizieren und starb an "Could not authenticate against
+# github.com", auch bei fremden Paketen. Ein leeres Credential ist schlechter als gar
+# keins.
 
 on:
   push:
@@ -14,21 +20,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   dist-fresh:
     runs-on: ubuntu-latest
     name: Committed dist is fresh (npm ci + build diff)
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: statamic-marketing
-
-      - name: Checkout sibling goldnead/statamic-leadhub (path repo)
-        uses: actions/checkout@v4
-        with:
-          repository: goldnead/statamic-leadhub
-          path: statamic-leadhub
-          token: ${{ secrets.SIBLING_REPOS_TOKEN || github.token }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -40,7 +40,6 @@ jobs:
       # @statamic/cms is a `file:` npm dependency resolved from the installed
       # Composer package, so Composer must run before npm.
       - name: Install Composer dependencies
-        working-directory: statamic-marketing
         run: composer install --prefer-dist --no-progress --no-interaction
 
       - name: Setup Node
@@ -48,18 +47,15 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: statamic-marketing/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Node dependencies (reproducible)
-        working-directory: statamic-marketing
         run: npm ci
 
       # The node_modules this job already installed are all Vitest needs, so
       # the component tests run here rather than in a job of their own.
       - name: Run the Control Panel component tests
-        working-directory: statamic-marketing
         run: npm test
 
       - name: Verify committed resources/dist is fresh
-        working-directory: statamic-marketing
         run: npm run build:check

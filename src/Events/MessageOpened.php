@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class MessageOpened extends MessageEventBase
-{
-}
+class MessageOpened extends MessageEventBase {}

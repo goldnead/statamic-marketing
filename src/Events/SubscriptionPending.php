@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class SubscriptionPending extends SubscriptionEvent
-{
-}
+class SubscriptionPending extends SubscriptionEvent {}

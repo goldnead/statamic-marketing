@@ -15,9 +15,7 @@ use Goldnead\WebhookManager\Domain\InboundEndpoint\Models\InboundEndpoint;
  */
 class ProcessEspEventHandler implements InboundActionHandlerInterface
 {
-    public function __construct(protected EspEventProcessor $processor)
-    {
-    }
+    public function __construct(protected EspEventProcessor $processor) {}
 
     public function handle(): string
     {

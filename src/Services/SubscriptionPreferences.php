@@ -49,8 +49,7 @@ class SubscriptionPreferences
         protected SubscriptionService $subscriptions,
         protected ContactRepository $contacts,
         protected SuppressionGate $gate,
-    ) {
-    }
+    ) {}
 
     /**
      * Build the page for a token, or null when the token addresses nothing.
@@ -325,5 +324,4 @@ class SubscriptionPreferences
             Subscription::STATUS_COMPLAINED,
         ], true);
     }
-
 }

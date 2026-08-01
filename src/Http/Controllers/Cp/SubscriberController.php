@@ -12,8 +12,7 @@ class SubscriberController extends Controller
     public function __construct(
         protected MailingListRepository $lists,
         protected SubscriptionService $subscriptions,
-    ) {
-    }
+    ) {}
 
     /** Manually add a subscriber from the CP — consent is presumed given. */
     public function store(Request $request, string $handle)

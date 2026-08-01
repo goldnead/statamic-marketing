@@ -52,9 +52,7 @@ class YamlStore
      */
     public const TYPES = ['lists', 'campaigns', 'templates'];
 
-    public function __construct(protected string $basePath)
-    {
-    }
+    public function __construct(protected string $basePath) {}
 
     // -------------------------------------------------------------- paths
 

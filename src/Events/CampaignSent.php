@@ -2,6 +2,4 @@
 
 namespace Goldnead\Marketing\Events;
 
-class CampaignSent extends CampaignEvent
-{
-}
+class CampaignSent extends CampaignEvent {}

@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Panel, Badge, Button, DropdownItem, ConfirmationModal,
+    Header, Listing, Panel, Badge, Button, DropdownItem, ConfirmationModal, Text,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -54,7 +54,7 @@ function destroy() {
     <Head :title="[__('Campaigns'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="__('Campaigns')" icon="email">
+        <Header :title="__('Campaigns')" icon="mail">
             <Button
                 v-if="canManage"
                 :href="createUrl"
@@ -82,7 +82,7 @@ function destroy() {
             </template>
 
             <template #cell-subject="{ row }">
-                <span class="text-gray-700 dark:text-gray-300">{{ row.subject }}</span>
+                <Text size="sm">{{ row.subject }}</Text>
             </template>
 
             <template #cell-list="{ row }">

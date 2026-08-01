@@ -3,11 +3,13 @@
 namespace Goldnead\Marketing\Services;
 
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Events\MessageBounced;
 use Goldnead\Marketing\Events\MessageComplained;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
+use Illuminate\Support\Collection;
 
 /**
  * Normalizes ESP feedback payloads (bounces, complaints, unsubscribes) and
@@ -16,9 +18,7 @@ use Goldnead\Marketing\Models\Subscription;
  */
 class EspEventProcessor
 {
-    public function __construct(protected SubscriptionService $subscriptions)
-    {
-    }
+    public function __construct(protected SubscriptionService $subscriptions) {}
 
     /**
      * @param  array  $payload  Either an already-normalized payload
@@ -128,7 +128,7 @@ class EspEventProcessor
         ];
     }
 
-    /** @return \Illuminate\Support\Collection<int, Subscription> */
+    /** @return Collection<int, Subscription> */
     protected function resolveSubscriptions(?Message $message, ?string $email)
     {
         if ($message?->subscription) {
@@ -140,7 +140,7 @@ class EspEventProcessor
         }
 
         return Subscription::query()
-            ->where('email_normalized', \Goldnead\Leadhub\Support\EmailNormalizer::normalize($email))
+            ->where('email_normalized', EmailNormalizer::normalize($email))
             ->get();
     }
 

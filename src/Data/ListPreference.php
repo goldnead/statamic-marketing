@@ -28,8 +28,7 @@ class ListPreference
         public ?string $suppressionReason = null,
         /** The list the token itself belongs to, highlighted on the page. */
         public bool $current = false,
-    ) {
-    }
+    ) {}
 
     public function handle(): string
     {

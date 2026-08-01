@@ -8,9 +8,7 @@ use Illuminate\Support\Collection;
 
 class FlatFileCampaignRepository implements CampaignRepository
 {
-    public function __construct(protected YamlStore $store)
-    {
-    }
+    public function __construct(protected YamlStore $store) {}
 
     public function all(): Collection
     {

@@ -35,8 +35,7 @@ class PreferenceCenter
          * `ListPreference::$suppressed` to ask whether a row is blocked.
          */
         public bool $contactSuppressed = false,
-    ) {
-    }
+    ) {}
 
     public function email(): string
     {

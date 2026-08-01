@@ -24,9 +24,7 @@ class SendMessageJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
-    public function __construct(public int $messageId)
-    {
-    }
+    public function __construct(public int $messageId) {}
 
     public function handle(
         CampaignRepository $campaigns,

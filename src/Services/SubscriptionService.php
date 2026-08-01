@@ -90,9 +90,9 @@ class SubscriptionService
 
     /**
      * @param  array{reason?:string,consent_proof?:string}  $metadata  how this
-     *         consent was established, written to the contact timeline. A
-     *         consent record that says only *that* it exists cannot be
-     *         defended later; one that says how it was given can.
+     *                                                                 consent was established, written to the contact timeline. A
+     *                                                                 consent record that says only *that* it exists cannot be
+     *                                                                 defended later; one that says how it was given can.
      */
     public function markSubscribed(Subscription $subscription, array $metadata = []): Subscription
     {

@@ -3,6 +3,8 @@ import { computed } from 'vue';
 import { Head, Link } from '@statamic/cms/inertia';
 import {
     Header, Panel, Button, Badge, Card, Heading, Subheading, Text,
+    Table, TableColumns, TableColumn, TableRows, TableRow, TableCell,
+    EmptyStateMenu, EmptyStateItem, CommandPaletteItem,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -39,9 +41,23 @@ function formatDate(value) {
     <Head :title="[__('Marketing'), __('Dashboard')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="__('Marketing')" icon="email">
-            <Button :href="createListUrl" :text="__('Create list')" variant="default" />
-            <Button :href="createCampaignUrl" :text="__('Create campaign')" variant="primary" />
+        <Header :title="__('Marketing')" icon="mail">
+            <CommandPaletteItem
+                :category="__('Marketing')"
+                :text="__('Create list')"
+                :url="createListUrl"
+                icon="mail"
+            >
+                <Button :href="createListUrl" :text="__('Create list')" variant="default" />
+            </CommandPaletteItem>
+            <CommandPaletteItem
+                :category="__('Marketing')"
+                :text="__('Create campaign')"
+                :url="createCampaignUrl"
+                icon="mail-send-email-attachment-document"
+            >
+                <Button :href="createCampaignUrl" :text="__('Create campaign')" variant="primary" />
+            </CommandPaletteItem>
         </Header>
 
         <!-- Stat tiles -->
@@ -56,63 +72,79 @@ function formatDate(value) {
             <!-- Lists -->
             <Panel :heading="__('Lists')">
                 <Card>
-                    <div v-if="lists.length === 0" class="py-6 text-sm text-gray-500 text-center">
-                        {{ __('No lists yet.') }}
-                    </div>
-                    <table v-else class="w-full text-sm">
-                        <thead>
-                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
-                                <th class="pb-2 font-normal">{{ __('Name') }}</th>
-                                <th class="pb-2 font-normal text-right">{{ __('Subscribed') }}</th>
-                                <th class="pb-2 font-normal text-right">{{ __('Pending') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-content-border">
-                            <tr v-for="list in lists" :key="list.handle">
-                                <td class="py-2.5">
+                    <!--
+                        Native Table rather than a hand-built one. The markup
+                        here used to carry its own header colours, its own
+                        divider and its own row padding, all of which drift the
+                        first time the CP theme changes — and the empty state
+                        was a centred sentence with no way out of it, on the
+                        landing screen of the addon.
+                    -->
+                    <EmptyStateMenu v-if="lists.length === 0" :heading="__('No lists yet.')">
+                        <EmptyStateItem
+                            icon="mail"
+                            :href="createListUrl"
+                            :heading="__('Create list')"
+                            :description="__('A mailing list is what people subscribe to and what a campaign is sent from.')"
+                        />
+                    </EmptyStateMenu>
+                    <Table v-else>
+                        <TableColumns>
+                            <TableColumn>{{ __('Name') }}</TableColumn>
+                            <TableColumn>{{ __('Subscribed') }}</TableColumn>
+                            <TableColumn>{{ __('Pending') }}</TableColumn>
+                        </TableColumns>
+                        <TableRows>
+                            <TableRow v-for="list in lists" :key="list.handle">
+                                <TableCell>
                                     <Link :href="list.url" class="font-medium hover:underline">
                                         {{ list.name }}
                                     </Link>
-                                </td>
-                                <td class="py-2.5 text-right">{{ list.subscribed }}</td>
-                                <td class="py-2.5 text-right text-gray-500 dark:text-gray-400">{{ list.pending }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                </TableCell>
+                                <TableCell>{{ list.subscribed }}</TableCell>
+                                <TableCell>
+                                    <Text size="sm" variant="subtle">{{ list.pending }}</Text>
+                                </TableCell>
+                            </TableRow>
+                        </TableRows>
+                    </Table>
                 </Card>
             </Panel>
 
             <!-- Recent campaigns -->
             <Panel :heading="__('Recent campaigns')">
                 <Card>
-                    <div v-if="recentCampaigns.length === 0" class="py-6 text-sm text-gray-500 text-center">
-                        {{ __('No campaigns sent yet.') }}
-                    </div>
-                    <table v-else class="w-full text-sm">
-                        <thead>
-                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
-                                <th class="pb-2 font-normal">{{ __('Name') }}</th>
-                                <th class="pb-2 font-normal">{{ __('Status') }}</th>
-                                <th class="pb-2 font-normal text-right">{{ __('Recipients') }}</th>
-                                <th class="pb-2 font-normal text-right">{{ __('Open rate') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-content-border">
-                            <tr v-for="campaign in recentCampaigns" :key="campaign.handle">
-                                <td class="py-2.5">
+                    <EmptyStateMenu v-if="recentCampaigns.length === 0" :heading="__('No campaigns sent yet.')">
+                        <EmptyStateItem
+                            icon="mail-send-email-attachment-document"
+                            :href="createCampaignUrl"
+                            :heading="__('Create campaign')"
+                            :description="__('Compose an email, pick a list, and send it now or on a schedule.')"
+                        />
+                    </EmptyStateMenu>
+                    <Table v-else>
+                        <TableColumns>
+                            <TableColumn>{{ __('Name') }}</TableColumn>
+                            <TableColumn>{{ __('Status') }}</TableColumn>
+                            <TableColumn>{{ __('Recipients') }}</TableColumn>
+                            <TableColumn>{{ __('Open rate') }}</TableColumn>
+                        </TableColumns>
+                        <TableRows>
+                            <TableRow v-for="campaign in recentCampaigns" :key="campaign.handle">
+                                <TableCell>
                                     <Link :href="campaign.url" class="font-medium hover:underline">
                                         {{ campaign.name }}
                                     </Link>
                                     <Text v-if="campaign.sent_at" size="xs" variant="subtle" class="block mt-0.5">{{ formatDate(campaign.sent_at) }}</Text>
-                                </td>
-                                <td class="py-2.5">
+                                </TableCell>
+                                <TableCell>
                                     <Badge :color="statusColor(campaign.status)" :text="campaign.status" />
-                                </td>
-                                <td class="py-2.5 text-right">{{ campaign.recipients ?? '—' }}</td>
-                                <td class="py-2.5 text-right">{{ campaign.open_rate != null ? `${campaign.open_rate}%` : '—' }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                </TableCell>
+                                <TableCell>{{ campaign.recipients ?? '—' }}</TableCell>
+                                <TableCell>{{ campaign.open_rate != null ? `${campaign.open_rate}%` : '—' }}</TableCell>
+                            </TableRow>
+                        </TableRows>
+                    </Table>
                 </Card>
             </Panel>
         </div>

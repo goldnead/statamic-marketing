@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Integrations\Automations;
 
+use Goldnead\StatamicAutomations\Facades\Automations;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Support\Facades\Log;
 
@@ -25,7 +26,7 @@ class AutomationsBridge
     public static function available(): bool
     {
         return (bool) config('marketing.integrations.automations', true)
-            && class_exists(\Goldnead\StatamicAutomations\Facades\Automations::class);
+            && class_exists(Automations::class);
     }
 
     public function boot(Dispatcher $events): void
@@ -43,7 +44,7 @@ class AutomationsBridge
         $this->booted = true;
 
         try {
-            $manager = \Goldnead\StatamicAutomations\Facades\Automations::getFacadeRoot();
+            $manager = Automations::getFacadeRoot();
 
             // Template registration shipped after the initial automations
             // release — degrade gracefully on older versions.

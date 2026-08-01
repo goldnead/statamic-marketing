@@ -54,7 +54,7 @@ it('sends to the whole list and logs once when LeadHub lacks segments', function
     $service->subscribe($this->list, 'john@example.com', ['first_name' => 'John']);
 
     // Now swap the facade root so method_exists() sees the legacy API at send time.
-    LeadHub::swap(new LegacyLeadHubStub());
+    LeadHub::swap(new LegacyLeadHubStub);
     Log::spy();
 
     app(CampaignRepository::class)->save(new Campaign(
@@ -74,7 +74,7 @@ it('sends to the whole list and logs once when LeadHub lacks segments', function
 });
 
 it('hides the segment picker in the CP when LeadHub lacks segments', function (): void {
-    LeadHub::swap(new LegacyLeadHubStub());
+    LeadHub::swap(new LegacyLeadHubStub);
 
     $options = (function () {
         $method = new ReflectionMethod(CampaignController::class, 'segmentOptions');

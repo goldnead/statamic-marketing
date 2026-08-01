@@ -81,8 +81,8 @@ function destroy() {
 <template>
     <Head :title="[isCreating ? __('Create template') : template.name, __('Templates'), __('Marketing')]" />
 
-    <div class="max-w-5xl 3xl:max-w-6xl mx-auto" data-max-width-wrapper>
-        <Header :title="isCreating ? __('Create template') : name" icon="template">
+    <div class="max-w-page mx-auto" data-max-width-wrapper>
+        <Header :title="isCreating ? __('Create template') : name" icon="template-theme-design-layout">
             <Button
                 v-if="deleteUrl"
                 :text="__('Delete')"

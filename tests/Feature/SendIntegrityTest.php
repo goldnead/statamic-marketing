@@ -1,5 +1,6 @@
 <?php
 
+use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
@@ -50,7 +51,7 @@ it('refuses a campaign handle that already has delivery history', function (): v
         'list' => 'newsletter',
     ])->assertSessionHasErrors('handle');
 
-    expect(app(\Goldnead\Marketing\Contracts\Repositories\CampaignRepository::class)->find('summer'))
+    expect(app(CampaignRepository::class)->find('summer'))
         ->toBeNull();
 });
 

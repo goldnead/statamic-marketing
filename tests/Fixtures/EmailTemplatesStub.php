@@ -25,8 +25,7 @@ if (! class_exists(EmailTemplateData::class)) {
             public ?string $plainText = null,
             public ?string $description = null,
             public string $source = 'entry',
-        ) {
-        }
+        ) {}
 
         /**
          * @param  array<string,mixed>  $data

@@ -1,0 +1,34 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    # Level 5 with a generated baseline. The point is a ratchet on new code,
+    # not a rewrite of 5,800 working lines: everything level 5 says about the
+    # code as it stands today is recorded in phpstan-baseline.neon, so the
+    # analysis is green now and fails on anything added after it.
+    #
+    # Raising the level, or shrinking the baseline, is a deliberate piece of
+    # work rather than a side effect of an unrelated change.
+    level: 5
+
+    paths:
+        - src
+
+    # See .phpstan/webhook-manager-stubs.php for why these exist. `scanFiles`
+    # rather than `stubFiles`: these symbols are not overridden, they are
+    # simply not autoloadable in an install without the optional sibling.
+    scanFiles:
+        - .phpstan/webhook-manager-stubs.php
+
+    # The three sibling addons are private packages resolved from GitHub. Where
+    # one of them is genuinely optional (email-templates, automations,
+    # webhook-manager) the code guards on class_exists and PHPStan cannot see
+    # the class at all, which is a finding about the environment rather than
+    # about the code.
+    reportUnmatchedIgnoredErrors: false
+
+    ignoreErrors:
+        -
+            identifier: class.notFound
+            message: '#Goldnead\\(EmailTemplates|StatamicAutomations|WebhookManager|PreferenceCenter)\\#'

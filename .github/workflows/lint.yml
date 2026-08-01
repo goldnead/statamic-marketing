@@ -1,5 +1,13 @@
 name: lint
 
+# Kein COMPOSER_AUTH: seit 01.08.2026 sind alle goldnead-Geschwister oeffentlich und
+# liegen auf Packagist, Composer laedt sie also anonym. Die fruehere Zeile setzte
+# github-oauth auf SIBLING_REPOS_TOKEN mit Rueckfall auf github.token. Weil dieser
+# Workflow permissions: {} setzt, hat der Rueckfall keine Scopes -- Composer versuchte
+# daraufhin JEDEN dist-Download zu authentifizieren und starb an
+# "Could not authenticate against github.com", auch bei fremden Paketen.
+# Ein leeres Credential ist schlechter als gar keins.
+
 on:
   push:
     branches: [main]
@@ -7,10 +15,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  php-syntax:
+  pint:
     runs-on: ubuntu-latest
-    name: PHP syntax check
+    name: Code style (Pint)
 
     steps:
       - name: Checkout
@@ -20,15 +31,41 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          tools: composer:v2
           coverage: none
 
-      - name: Lint every PHP file
-        run: |
-          # Fail if any file has a parse error.
-          set -e
-          find src tests config database routes -type f -name '*.php' \
-            | xargs -n1 -P4 php -l > /dev/null
-          echo "✓ no syntax errors"
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      # Check, never fix. Auto-committing style onto a branch rewrites somebody
+      # else's work without asking.
+      - name: Check formatting
+        run: vendor/bin/pint --test
+
+  phpstan:
+    runs-on: ubuntu-latest
+    name: Static analysis (Larastan)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      # A baseline is committed, so this is a ratchet on new code rather than a
+      # rewrite of what is already here. `php -l` used to stand in for it; a
+      # syntax check is not static analysis on 5,800 lines of consent and send
+      # paths.
+      - name: Analyse
+        run: vendor/bin/phpstan analyse --no-progress
 
   composer-validate:
     runs-on: ubuntu-latest
@@ -44,8 +81,13 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
 
-      # Not --strict: goldnead/statamic-leadhub is an unpublished sibling
-      # resolved via a path repository, so its constraint is deliberately the
-      # unbound "*@dev" — which --strict rejects as a warning.
+      # `--no-check-publish` was the flag that hid "this package is not
+      # publishable" for as long as the three siblings were private. They
+      # reached Packagist on 01.08.2026, so the condition it papered over is
+      # gone and the flag goes with it — as the note here promised.
+      #
+      # `--no-check-lock` because composer.lock is deliberately not committed
+      # for a library; without it validate reports a lock it cannot find as an
+      # error.
       - name: Validate composer.json
-        run: composer validate --no-check-publish
+        run: composer validate --strict --no-check-lock
