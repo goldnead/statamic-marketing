@@ -7,7 +7,7 @@ import {
 } from '@statamic/cms/ui';
 
 const props = defineProps([
-    'campaign',        // { handle, name, subject, preheader, from_name, from_email, reply_to,
+    'campaign',        // { handle, name, subject, variant_subject, preheader, from_name, from_email, reply_to,
                        //   list, template, content, status, scheduled_at, sent_at } | null on create
     'storeUrl',        // POST endpoint (create only)
     'updateUrl',       // PATCH endpoint (edit only)
@@ -31,6 +31,8 @@ const isEditable = computed(() => isCreating.value || props.editable);
 const name = ref(props.campaign?.name || '');
 const handle = ref(props.campaign?.handle || '');
 const subject = ref(props.campaign?.subject || '');
+// Empty means "not an A/B test". Filling it in is the only way to start one.
+const variantSubject = ref(props.campaign?.variant_subject || '');
 const preheader = ref(props.campaign?.preheader || '');
 const list = ref(props.campaign?.list || '');
 const segment = ref(props.campaign?.segment || '');
@@ -94,6 +96,7 @@ function payload() {
         name: name.value,
         ...(isCreating.value ? { handle: handle.value || null } : {}),
         subject: subject.value || null,
+        variant_subject: variantSubject.value || null,
         preheader: preheader.value || null,
         list: list.value || null,
         segment: segment.value || null,
@@ -114,7 +117,7 @@ const formErrors = ref({});
 // not in this list has no field to sit at — it goes into the summary above the
 // form instead, otherwise it would be invisible again.
 const fieldKeys = [
-    'name', 'handle', 'subject', 'preheader', 'content',
+    'name', 'handle', 'subject', 'variant_subject', 'preheader', 'content',
     'list', 'segment', 'template',
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
@@ -254,6 +257,13 @@ function destroy() {
 
                                 <Field :label="__('Subject')" :error="formErrors.subject">
                                     <Input v-model="subject" :placeholder="__('The email subject line')" />
+                                </Field>
+
+                                <Field :label="__('Subject variant B (A/B test)')" :error="formErrors.variant_subject">
+                                    <Input v-model="variantSubject" :placeholder="__('Leave empty for no A/B test')" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ __('Splits the audience evenly and permanently: each recipient is assigned to A or B once, when the campaign starts sending, and keeps that variant. The report breaks every figure down per variant but does not pick a winner.') }}
+                                    </p>
                                 </Field>
 
                                 <Field :label="__('Preheader')" :error="formErrors.preheader">

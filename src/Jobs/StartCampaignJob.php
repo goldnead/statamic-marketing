@@ -11,6 +11,7 @@ use Goldnead\Marketing\Events\CampaignSending;
 use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Services\VariantAssigner;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Bus\Queueable;
@@ -31,8 +32,12 @@ class StartCampaignJob implements ShouldQueue
     {
     }
 
-    public function handle(CampaignRepository $campaigns, ContactRepository $contacts, SuppressionGate $gate): void
-    {
+    public function handle(
+        CampaignRepository $campaigns,
+        ContactRepository $contacts,
+        SuppressionGate $gate,
+        VariantAssigner $variants,
+    ): void {
         $campaign = $campaigns->find($this->campaignHandle);
 
         if (! $campaign || $campaign->status !== Campaign::STATUS_SENDING) {
@@ -55,7 +60,7 @@ class StartCampaignJob implements ShouldQueue
             Subscription::query()
                 ->forList((string) $campaign->listHandle)
                 ->subscribed()
-                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $queue, $perMinute, $segmentMemberIds, &$index) {
+                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $variants, $queue, $perMinute, $segmentMemberIds, &$index) {
                     // One question per chunk rather than one per subscriber.
                     // The addresses this returns never become Message rows at
                     // all — a blocked address must not enter a send, not merely
@@ -80,6 +85,16 @@ class StartCampaignJob implements ShouldQueue
                         }
 
                         // Idempotent: a retried job never double-creates messages.
+                        //
+                        // The variant is decided HERE, at the snapshot, and
+                        // written onto the row — not at render time and not at
+                        // send time. Two things keep it from ever moving:
+                        // firstOrCreate leaves an existing row's attributes
+                        // alone, so a second pass reads the stored variant
+                        // rather than writing one; and VariantAssigner is a
+                        // pure function of (brand, campaign, subscription
+                        // uuid), so even a row that was deleted and rebuilt
+                        // comes back in the same bucket.
                         $message = Message::query()->firstOrCreate(
                             [
                                 'campaign_handle' => $campaign->handle,
@@ -88,6 +103,7 @@ class StartCampaignJob implements ShouldQueue
                             [
                                 'email' => $subscription->email,
                                 'status' => Message::STATUS_PENDING,
+                                'variant' => $this->variantFor($campaign, $subscription, $variants),
                             ],
                         );
 
@@ -139,6 +155,33 @@ class StartCampaignJob implements ShouldQueue
 
             event(new CampaignSent($campaign));
         }
+    }
+
+    /**
+     * The A/B variant this recipient belongs to, or null when the campaign is
+     * not a split test.
+     *
+     * Keyed on `Subscription.uuid` rather than the email address or the row id.
+     * The address is not the recipient's identity here — it can be corrected in
+     * place, and rebucketing somebody mid-test because they fixed a typo would
+     * corrupt the very thing the test measures. The auto-increment id is worse:
+     * it is not preserved by a restore, and it is not brand-scoped.
+     *
+     * The brand comes from the subscription, which is the same brand the
+     * message row is about to be stamped with, so the seed and the row can
+     * never disagree about which tenant this is.
+     */
+    protected function variantFor(Campaign $campaign, Subscription $subscription, VariantAssigner $variants): ?string
+    {
+        if (! $campaign->hasVariants()) {
+            return null;
+        }
+
+        return $variants->assign(
+            $campaign->handle,
+            (string) $subscription->uuid,
+            $subscription->brand_id === null ? null : (int) $subscription->brand_id,
+        );
     }
 
     /**

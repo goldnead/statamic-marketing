@@ -33,6 +33,7 @@ class EloquentCampaignRepository implements CampaignRepository
             [
                 'name' => $campaign->name,
                 'subject' => $campaign->subject,
+                'variant_subject' => $campaign->variantSubject,
                 'preheader' => $campaign->preheader,
                 'from_name' => $campaign->fromName,
                 'from_email' => $campaign->fromEmail,
@@ -71,6 +72,7 @@ class EloquentCampaignRepository implements CampaignRepository
             handle: $record->handle,
             name: $record->name,
             subject: (string) $record->subject,
+            variantSubject: $record->variant_subject,
             preheader: $record->preheader,
             fromName: $record->from_name,
             fromEmail: $record->from_email,

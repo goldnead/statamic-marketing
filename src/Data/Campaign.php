@@ -24,6 +24,12 @@ class Campaign
         public string $handle,
         public string $name,
         public string $subject = '',
+        /**
+         * The subject line variant B receives. `null` (or empty) means this
+         * campaign is not an A/B test and everybody gets `$subject` — the
+         * whole feature is opt-in through this one field.
+         */
+        public ?string $variantSubject = null,
         public ?string $preheader = null,
         public ?string $fromName = null,
         public ?string $fromEmail = null,
@@ -36,6 +42,19 @@ class Campaign
         public ?CarbonImmutable $scheduledAt = null,
         public ?CarbonImmutable $sentAt = null,
     ) {
+    }
+
+    /**
+     * Is this campaign running an A/B test?
+     *
+     * One question, asked in one place, so "what counts as a test" cannot drift
+     * between the job that assigns variants and the renderer that acts on them.
+     * An empty string is not a variant: a form that posts a blank field must not
+     * silently turn a normal campaign into a split test.
+     */
+    public function hasVariants(): bool
+    {
+        return $this->variantSubject !== null && trim($this->variantSubject) !== '';
     }
 
     public function isDraft(): bool
@@ -64,6 +83,7 @@ class Campaign
             handle: (string) $data['handle'],
             name: (string) ($data['name'] ?? $data['handle']),
             subject: (string) ($data['subject'] ?? ''),
+            variantSubject: $data['variant_subject'] ?? null,
             preheader: $data['preheader'] ?? null,
             fromName: $data['from_name'] ?? null,
             fromEmail: $data['from_email'] ?? null,
@@ -88,6 +108,7 @@ class Campaign
             'handle' => $this->handle,
             'name' => $this->name,
             'subject' => $this->subject,
+            'variant_subject' => $this->variantSubject,
             'preheader' => $this->preheader,
             'from_name' => $this->fromName,
             'from_email' => $this->fromEmail,

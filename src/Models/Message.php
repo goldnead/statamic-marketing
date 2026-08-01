@@ -54,6 +54,18 @@ class Message extends Model
         return $query->where('campaign_handle', $campaignHandle);
     }
 
+    /**
+     * The messages of one A/B variant.
+     *
+     * This is the join the whole feature rests on: opens, clicks, bounces and
+     * unsubscribes all hang off a message, so narrowing messages to a variant
+     * narrows every one of those with them.
+     */
+    public function scopeForVariant($query, string $variant)
+    {
+        return $query->where('variant', $variant);
+    }
+
     public function scopePending($query)
     {
         return $query->where('status', self::STATUS_PENDING);

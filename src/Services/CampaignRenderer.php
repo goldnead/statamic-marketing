@@ -33,7 +33,12 @@ class CampaignRenderer
         ?Subscription $subscription = null,
         ?Message $message = null,
     ): RenderedMail {
-        $variables = $this->variables($campaign, $list, $subscription);
+        // Resolved before anything is parsed, because the subject is also a
+        // template variable — a body that prints `{{ subject }}` must show the
+        // line this recipient actually received, not the campaign's default.
+        $subjectTemplate = $this->subjectFor($campaign, $message);
+
+        $variables = $this->variables($campaign, $list, $subscription, $subjectTemplate);
 
         $content = $this->parse($campaign->content, $variables);
 
@@ -51,7 +56,7 @@ class CampaignRenderer
             }
         }
 
-        $subject = $this->parse($campaign->subject, $variables);
+        $subject = $this->parse($subjectTemplate, $variables);
 
         return new RenderedMail(
             subject: $subject,
@@ -98,8 +103,20 @@ class CampaignRenderer
     /**
      * @return array<string, mixed>
      */
-    public function variables(Campaign $campaign, MailingList $list, ?Subscription $subscription): array
-    {
+    /**
+     * @param  string|null  $subjectTemplate  the subject this particular
+     *                                        recipient is getting, which for an
+     *                                        A/B campaign is not necessarily
+     *                                        `$campaign->subject`. Optional so
+     *                                        existing callers of this public
+     *                                        method keep their meaning.
+     */
+    public function variables(
+        Campaign $campaign,
+        MailingList $list,
+        ?Subscription $subscription,
+        ?string $subjectTemplate = null,
+    ): array {
         $unsubscribeUrl = $subscription
             ? route('marketing.unsubscribe', ['token' => $subscription->token])
             : '#';
@@ -113,7 +130,7 @@ class CampaignRenderer
             'last_name' => $lastName ?? '',
             'name' => trim(($firstName ?? '').' '.($lastName ?? '')) ?: ($subscription?->email ?? ''),
             'unsubscribe_url' => $unsubscribeUrl,
-            'subject' => $campaign->subject,
+            'subject' => $subjectTemplate ?? $campaign->subject,
             'preheader' => $campaign->preheader ?? '',
             'campaign' => [
                 'handle' => $campaign->handle,
@@ -124,6 +141,25 @@ class CampaignRenderer
                 'name' => $list->name,
             ],
         ];
+    }
+
+    /**
+     * The subject template for this send: variant B's line when this message
+     * was assigned to B and the campaign actually defines one, otherwise the
+     * campaign subject.
+     *
+     * The message is the authority on which variant this is. It was decided
+     * once, at the audience snapshot, and stored — nothing is re-rolled here.
+     * A preview or a test send has no message and therefore always shows A,
+     * which is the honest answer: there is no recipient to bucket.
+     */
+    protected function subjectFor(Campaign $campaign, ?Message $message): string
+    {
+        if ($message?->variant === VariantAssigner::VARIANT_B && $campaign->hasVariants()) {
+            return (string) $campaign->variantSubject;
+        }
+
+        return $campaign->subject;
     }
 
     protected function parse(string $template, array $variables): string
