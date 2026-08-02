@@ -6,6 +6,12 @@ use Goldnead\BrandContext\Concerns\HasBrand;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * @property string|null $variant The A/B bucket this message was assigned to
+ *                                ('a' / 'b'), decided once at the audience
+ *                                snapshot. NULL means the message took no part
+ *                                in an A/B test.
+ */
 class Message extends Model
 {
     use HasBrand;

@@ -7,6 +7,15 @@ use Goldnead\Leadhub\Support\EmailNormalizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * @property string $uuid The subscription's stable public identity. Written
+ *                        once on create (see booted()) and never rewritten —
+ *                        which is why the A/B assignment seeds on it rather
+ *                        than on the correctable email or the row id.
+ * @property int|null $brand_id Nullable in the schema, stamped by HasBrand on
+ *                              create. Rows that predate brand-context were
+ *                              backfilled, but the column never became NOT NULL.
+ */
 class Subscription extends Model
 {
     use HasBrand;

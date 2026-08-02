@@ -85,12 +85,6 @@ parameters:
 			path: src/Events/SubscriptionEvent.php
 
 		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Events/SubscriptionEvent.php
-
-		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$list_handle\.$#'
 			identifier: property.notFound
 			count: 1
@@ -190,12 +184,6 @@ parameters:
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$subscribed_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: src/Http/Controllers/Cp/ListController.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
-			identifier: property.notFound
-			count: 3
 			path: src/Http/Controllers/Cp/ListController.php
 
 		-
@@ -307,12 +295,6 @@ parameters:
 			path: src/Jobs/StartCampaignJob.php
 
 		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Jobs/StartCampaignJob.php
-
-		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
 			identifier: property.notFound
 			count: 1
@@ -364,12 +346,6 @@ parameters:
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uniqueness_key\.$#'
 			identifier: property.notFound
 			count: 2
-			path: src/Models/Subscription.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
-			identifier: property.notFound
-			count: 1
 			path: src/Models/Subscription.php
 
 		-
@@ -676,12 +652,6 @@ parameters:
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$unsubscribed_at\.$#'
 			identifier: property.notFound
 			count: 1
-			path: src/Services/SubscriptionService.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$uuid\.$#'
-			identifier: property.notFound
-			count: 4
 			path: src/Services/SubscriptionService.php
 
 		-
