@@ -89,8 +89,13 @@ class SendMessageJob implements ShouldQueue
         }
 
         // Last of the three gates, and the only one that says "later" rather
-        // than "no": suppression, then what the reader has said they want
-        // (isSubscribed, above), then how much they have already had.
+        // than "no". In this method the order on the page is: what the reader
+        // said they want (`isSubscribed`), then suppression, then this. The
+        // specification names suppression first; the two are both hard noes
+        // that end the message identically, so which of them answers first
+        // changes only the note left in `error`. What is not interchangeable is
+        // that the cap comes after both — there is no point deferring a mail to
+        // an address that may never receive it at all.
         //
         // Asked HERE, not when the campaign was queued. This job may have sat
         // behind a throttle, a retry or a stopped worker for days; the question

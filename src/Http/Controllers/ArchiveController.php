@@ -197,6 +197,14 @@ class ArchiveController extends Controller
      * a template cannot run against this site's origin. Ordinary links keep
      * working; CSP fetch directives do not govern following one.
      *
+     * `img-src` allows `data:` and `https:` and deliberately not `http:`, which
+     * the control-panel preview does allow. The preview is a private screen
+     * where a broken image is the worse outcome; this is a public HTTPS page,
+     * where a plain-http image is mixed content the browser blocks anyway — and
+     * where a one-pixel `http://` image somebody pasted into a template would
+     * be a third-party counter on a page that is not supposed to count
+     * anything.
+     *
      * There is no `noindex` here, unlike `layout.blade.php`. Being findable is
      * the feature.
      */
@@ -204,7 +212,7 @@ class ArchiveController extends Controller
     {
         return response($html)->withHeaders([
             'Content-Type' => 'text/html; charset=utf-8',
-            'Content-Security-Policy' => "default-src 'none'; img-src data: https: http:; style-src 'unsafe-inline'; font-src data: https:; base-uri 'none'; form-action 'none'",
+            'Content-Security-Policy' => "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data: https:; base-uri 'none'; form-action 'none'",
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }

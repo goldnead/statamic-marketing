@@ -288,6 +288,35 @@ it('wraps a template that has no head of its own', function (): void {
         ->and($rendered)->toContain('<title>Issue</title>');
 });
 
+it('keeps a dollar sign in a subject out of the regex replacement', function (): void {
+    // `preg_replace`'s replacement string is scanned for `$1` and `\1`, and
+    // this one is built out of a subject somebody typed. `e()` escapes HTML and
+    // has no reason to escape `$`, so `Spare $1 heute` was silently rendered as
+    // `Spare  heute` — the offer disappeared from the title and the share
+    // preview. Every replacement now goes through a callback.
+    $document = new ArchiveDocument(
+        '<html><head><title>Layout</title></head><body>x</body></html>',
+        ['title' => 'Spare $1 heute', 'description' => 'Nur $2 pro Monat'],
+    );
+
+    $rendered = $document->render();
+
+    expect($rendered)->toContain('<title>Spare $1 heute</title>')
+        ->and($rendered)->toContain('content="Nur $2 pro Monat"');
+});
+
+it('serves the archive over https sources only', function (): void {
+    // A public HTTPS page: a plain-http image is mixed content the browser
+    // blocks anyway, and a one-pixel `http://` image pasted into a template
+    // would be a third-party counter on a page that counts nothing.
+    ($this->saveCampaign)();
+
+    $csp = $this->get('/newsletter/july_issue')->headers->get('Content-Security-Policy');
+
+    expect($csp)->toContain('img-src data: https:')
+        ->and($csp)->not->toContain('http:;');
+});
+
 it('escapes a subject that would otherwise break out of a meta attribute', function (): void {
     $document = new ArchiveDocument(
         '<html><head></head><body>x</body></html>',

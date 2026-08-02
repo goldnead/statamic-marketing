@@ -107,21 +107,38 @@ class ArchiveDocument
 
         $title = (string) ($this->meta['title'] ?? '');
 
-        // An existing title is replaced, not duplicated. `preg_replace` with a
-        // limit of 1 leaves a `<title>` that somehow appears later in the body
-        // alone — only the document's own is meant here. With no title of our
-        // own there is nothing better to put there, so the template's stays.
+        // An existing title is replaced, not duplicated. Only the first one:
+        // a `<title>` that somehow appears later in the body is not the
+        // document's own. With no title of our own there is nothing better to
+        // put there, so the template's stays.
+        //
+        // Every replacement below goes through a callback rather than a
+        // replacement string. A replacement string is scanned for `$1` and
+        // `\1`, and this one is built out of a campaign subject somebody typed
+        // — `e()` escapes HTML and has no reason to escape `$`, so a subject
+        // reading `Spare $1 heute` came out as `Spare  heute` in the head.
+        // Measured, not imagined.
         if ($title !== '' && preg_match('/<title\b[^>]*>.*?<\/title>/is', $html) === 1) {
-            $head = (string) preg_replace('/<title>.*?<\/title>\n?/is', '', $head, 1);
+            $head = (string) preg_replace_callback(
+                '/<title>.*?<\/title>\n?/is',
+                fn () => '',
+                $head,
+                1,
+            );
 
-            $html = (string) preg_replace(
+            $html = (string) preg_replace_callback(
                 '/<title\b[^>]*>.*?<\/title>/is',
-                '<title>'.e($title).'</title>',
+                fn () => '<title>'.e($title).'</title>',
                 $html,
                 1,
             );
         }
 
-        return (string) preg_replace('/<\/head>/i', $head."\n</head>", $html, 1);
+        return (string) preg_replace_callback(
+            '/<\/head>/i',
+            fn () => $head."\n</head>",
+            $html,
+            1,
+        );
     }
 }

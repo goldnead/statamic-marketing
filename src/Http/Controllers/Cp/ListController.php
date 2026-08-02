@@ -208,6 +208,14 @@ class ListController extends Controller
         $emails = $subscriptions->pluck('email_normalized')->filter()->unique()->values();
 
         $sent = MailLogEntry::query()
+            // Brand-filtered, exactly as DatabaseFrequencyCap::countInWindow()
+            // filters. Without it an address that exists in two brands would be
+            // shown a sum the cap never used — and this column's whole job is to
+            // explain a hold, so a number that is not the one the cap acted on
+            // is worse than no column at all. `MailLogEntry` carries no brand
+            // scope of its own on purpose (a queue worker has no brand), so the
+            // filter has to be stated here.
+            ->where('brand_id', app('brand-context')->currentId())
             ->whereIn('email_normalized', $emails)
             ->where('mail_class', MailClass::Marketing->value)
             ->where('sent_at', '>=', now()->subHours($cap->windowHours()))

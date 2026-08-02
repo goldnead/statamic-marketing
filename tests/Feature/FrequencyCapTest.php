@@ -16,6 +16,7 @@ use Goldnead\Suppression\Contracts\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Statamic\Facades\User;
 
 /**
  * The frequency cap.
@@ -395,6 +396,41 @@ it('discards rather than pretending to defer when there is no queue', function (
         ->and($message->cap_deferrals)->toBe(0)
         ->and($message->error)->toContain('sync')
         ->and(app(CampaignRepository::class)->find('issue')->status)->toBe(Campaign::STATUS_SENT);
+});
+
+it('counts only the current brand in the control panel column', function (): void {
+    // The column exists to explain a hold, so it has to show the number the cap
+    // actually acted on. The cap always filters by brand; this query did not,
+    // so an address that exists in two brands was shown a sum that had never
+    // been used for any decision.
+    ($this->enableCap)(max: 3);
+
+    ($this->fillTheWindow)(2);
+
+    // The same address, one marketing mail, in a brand that is not the current
+    // one. It may not appear in this brand's count.
+    MailLogEntry::query()->create([
+        'brand_id' => app('brand-context')->currentId() + 99,
+        'email_normalized' => 'jane@example.com',
+        'mail_class' => 'marketing',
+        'reference' => 'other-brand',
+        'sent_at' => now(),
+    ]);
+
+    $editor = User::make()->email('cap-editor@example.com')->makeSuper();
+    $editor->save();
+
+    $this->actingAs($editor);
+
+    $response = $this->withHeaders(['X-Inertia' => 'true'])
+        ->get(cp_route('marketing.lists.show', 'newsletter'));
+
+    $subscribers = json_decode($response->getContent(), true)['props']['subscribers'];
+    $jane = collect($subscribers)->firstWhere('email', 'jane@example.com');
+
+    expect($jane['frequency']['sent'])->toBe(2)
+        // …and it agrees with the service, which is the whole point.
+        ->and($jane['frequency']['sent'])->toBe(app(FrequencyCap::class)->countInWindow('jane@example.com'));
 });
 
 it('exposes the classification and the cap through the container, not a slug', function (): void {

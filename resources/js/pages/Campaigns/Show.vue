@@ -64,6 +64,10 @@ const statTiles = computed(() => [
     { label: __('Failed'), value: props.stats.failed },
     { label: __('Unsubscribed'), value: props.stats.unsubscribed },
     { label: __('Bounced'), value: props.stats.bounced },
+    // Only where it happened. A permanent "Capped 0" on every report of every
+    // install that caps nothing is noise; a missing one on the report where it
+    // did happen is people the tiles do not account for.
+    ...(props.stats.capped ? [{ label: __('Capped'), value: props.stats.capped }] : []),
 ]);
 
 // One row per A/B variant. Empty for every campaign that is not a split test,

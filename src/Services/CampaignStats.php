@@ -85,9 +85,9 @@ class CampaignStats
      *                         already narrowed to
      *                         whatever is being
      *                         measured
-     * @return array{recipients:int, sent:int, failed:int, skipped:int, pending:int,
-     *               opened:int, open_rate:float, clicked:int, click_rate:float,
-     *               bounced:int, unsubscribed:int}
+     * @return array{recipients:int, sent:int, failed:int, skipped:int, capped:int,
+     *               pending:int, opened:int, open_rate:float, clicked:int,
+     *               click_rate:float, bounced:int, unsubscribed:int}
      */
     protected function metrics($base): array
     {
@@ -106,6 +106,12 @@ class CampaignStats
             'sent' => $sent,
             'failed' => (clone $base)->where('status', Message::STATUS_FAILED)->count(),
             'skipped' => (clone $base)->where('status', Message::STATUS_SKIPPED)->count(),
+            // Counted separately from `skipped`, because the two are different
+            // answers to "why did this person not get it": skipped means the
+            // address may not be mailed, capped means it may and was not.
+            // Without a figure of its own the statuses stop adding up to
+            // `recipients` and the report quietly loses people.
+            'capped' => (clone $base)->where('status', Message::STATUS_CAPPED)->count(),
             'pending' => (clone $base)->where('status', Message::STATUS_PENDING)->count(),
             'opened' => $opened,
             'open_rate' => $sent > 0 ? round($opened / $sent * 100, 1) : 0.0,
