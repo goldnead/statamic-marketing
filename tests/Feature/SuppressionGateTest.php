@@ -1,5 +1,6 @@
 <?php
 
+use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -151,6 +152,7 @@ it('re-checks immediately before transport and skips the message', function (): 
         app(MailingListRepository::class),
         app(CampaignRenderer::class),
         app(Gate::class),
+        app(FrequencyCap::class),
     );
 
     Mail::assertNothingSent();
@@ -176,6 +178,7 @@ it('fails the single message rather than sending when the gate cannot answer', f
         app(MailingListRepository::class),
         app(CampaignRenderer::class),
         app(Gate::class),
+        app(FrequencyCap::class),
     );
 
     Mail::assertNothingSent();

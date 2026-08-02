@@ -15,6 +15,12 @@ use Illuminate\Support\Str;
  * @property int|null $brand_id Nullable in the schema, stamped by HasBrand on
  *                              create. Rows that predate brand-context were
  *                              backfilled, but the column never became NOT NULL.
+ * @property string $email_normalized The address reduced to its comparable
+ *                                    form, written on every save (see
+ *                                    booted()). This — not the row id and not
+ *                                    the list — is what "the same person" means
+ *                                    to the consent unique, the suppression
+ *                                    gate and the frequency cap alike.
  * @property string $token The subscriber's own key to every page they can reach
  *                         without a session: confirm, unsubscribe, and the
  *                         preference centre. NOT NULL and unique in the schema,

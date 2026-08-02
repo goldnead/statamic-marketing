@@ -5,6 +5,7 @@ namespace Goldnead\Marketing;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
+use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -17,6 +18,7 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileCampaignRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
+use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
 use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -84,6 +86,20 @@ class ServiceProvider extends AddonServiceProvider
         }
 
         $this->bindRepositories();
+
+        // The frequency cap, bound under its own contract's class name.
+        //
+        // Not under the addon slug, and not under any short string key. A
+        // sibling in this family registered a singleton as `marketing`-style
+        // shorthand and overwrote Laravel's own event dispatcher with it; a
+        // fully-qualified interface name cannot collide with the framework's
+        // aliases and is what an application overrides to swap in its own
+        // implementation.
+        //
+        // Bound, not singleton: it reads config on every call, so a host that
+        // changes the limit at runtime (or a test that does) is answered by the
+        // current value rather than by whatever was true at first resolution.
+        $this->app->bind(FrequencyCapContract::class, DatabaseFrequencyCap::class);
 
         // Singletons so the bridges' boot guards hold across resolutions.
         $this->app->singleton(WebhookManagerBridge::class);

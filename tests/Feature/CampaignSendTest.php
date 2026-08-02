@@ -3,6 +3,7 @@
 use Carbon\CarbonImmutable;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Leadhub\Models\Contact;
+use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -92,6 +93,7 @@ it('skips subscribers who unsubscribed between snapshot and delivery', function 
         app(MailingListRepository::class),
         app(CampaignRenderer::class),
         app(Gate::class),
+        app(FrequencyCap::class),
     );
 
     expect($message->fresh()->status)->toBe(Message::STATUS_SKIPPED);
