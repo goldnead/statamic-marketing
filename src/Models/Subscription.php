@@ -15,6 +15,12 @@ use Illuminate\Support\Str;
  * @property int|null $brand_id Nullable in the schema, stamped by HasBrand on
  *                              create. Rows that predate brand-context were
  *                              backfilled, but the column never became NOT NULL.
+ * @property string $token The subscriber's own key to every page they can reach
+ *                         without a session: confirm, unsubscribe, and the
+ *                         preference centre. NOT NULL and unique in the schema,
+ *                         filled on create like $uuid. Declared here rather than
+ *                         baselined per call site, because six files read it and
+ *                         Support\PreferenceLink hands it to two addons.
  */
 class Subscription extends Model
 {

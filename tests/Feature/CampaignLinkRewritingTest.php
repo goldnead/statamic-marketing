@@ -8,18 +8,32 @@ use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Marketing\Support\DeliveryHeaders;
+use Goldnead\Marketing\Support\PreferenceLink;
+use Illuminate\Contracts\Mail\Mailable;
+use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Mime\Email;
 
 /**
  * Which links the renderer sends through the signed redirect, and which it
  * leaves alone.
  *
- * The three it leaves alone all carry their token in the path and are the
+ * The ones it leaves alone all carry their token in the path and are the
  * routes a reader must be able to reach when everything else has failed:
- * confirm, unsubscribe, and the preference centre. The last of those was
- * missing from the list, so preference links were rewritten like any other —
- * and inherited the 403 that a sending platform's appended parameter produces.
+ * confirm, unsubscribe, and the preference page. The last of those was missing
+ * from the list, so preference links were rewritten like any other — and
+ * inherited the 403 that a sending platform's appended parameter produces.
+ *
+ * Since v1.9.0 the preference page is not marketing's. It belongs to
+ * `goldnead/statamic-preference-center`, `route('marketing.preferences')` does
+ * not exist, and no path in this addon spells it. The renderer therefore may
+ * not recognise it by a literal path — it asks {@see PreferenceLink}, the one
+ * resolver that knows where a subscriber's links go, and keeps whatever comes
+ * back out of the redirect. The centre is optional and is not installed in
+ * this suite, so it is simulated the way `PreferenceLinkTest` simulates it:
+ * facade class present, token route in the registry.
  */
 beforeEach(function (): void {
     // The array transport rather than `Mail::fake()`: a fake stores the
@@ -57,25 +71,73 @@ function renderWithLinks(string $content): string
     )->html;
 }
 
-it('leaves the self-service links out of the click redirect', function (): void {
+it('leaves marketing\'s own self-service links out of the click redirect', function (): void {
     $token = $this->subscription->token;
 
     $html = renderWithLinks(implode(' ', [
-        '<a href="'.route('marketing.preferences', ['token' => $token]).'">Preferences</a>',
         '<a href="'.route('marketing.unsubscribe', ['token' => $token]).'">Unsubscribe</a>',
         '<a href="'.route('marketing.confirm', ['token' => $token]).'">Confirm</a>',
     ]));
 
     expect($html)
-        ->toContain(route('marketing.preferences', ['token' => $token]))
-        ->and($html)->toContain(route('marketing.unsubscribe', ['token' => $token]))
+        ->toContain(route('marketing.unsubscribe', ['token' => $token]))
         ->and($html)->toContain(route('marketing.confirm', ['token' => $token]));
 
     // Nothing in this message went through the tracking redirect at all.
     expect($html)->not->toContain('/c/'.$this->message->uuid);
 });
 
+it('leaves the preference centre out of the click redirect once it is installed', function (): void {
+    // The defect. There is no `marketing.preferences` route any more, so the
+    // renderer cannot recognise the page by a path it owns — with the centre
+    // installed, its link went through the signed redirect like any other and
+    // took the provider-parameter 403 with it. The reader who wanted to change
+    // what they receive got a 403 instead of the page.
+    marketingFakePreferenceCenterClass();
+    marketingFakePreferenceCenterRoute();
+
+    $centre = app(PreferenceLink::class)->manage($this->subscription->token);
+
+    // Guard the guard: if this were still marketing's unsubscribe URL, the
+    // assertion below would pass on the literal `/unsubscribe/` check and
+    // prove nothing about the centre.
+    expect($centre)->toContain('/!/preference-center/t/');
+
+    $html = renderWithLinks('<a href="'.$centre.'">Preferences</a>');
+
+    expect($html)->toContain($centre)
+        ->and($html)->not->toContain('/c/'.$this->message->uuid);
+});
+
+it('leaves the preference link alone when the footer has tagged it', function (): void {
+    // A template that writes `{{ unsubscribe_url }}?utm_source=newsletter` is
+    // still pointing at the same page. Matching the one exact URL the resolver
+    // returned would rewrite this one and hand it the same 403.
+    marketingFakePreferenceCenterClass();
+    marketingFakePreferenceCenterRoute();
+
+    $tagged = app(PreferenceLink::class)->manage($this->subscription->token).'?utm_source=newsletter';
+
+    $html = renderWithLinks('<a href="'.$tagged.'">Preferences</a>');
+
+    expect($html)->toContain($tagged)
+        ->and($html)->not->toContain('/c/'.$this->message->uuid);
+});
+
 it('still sends an ordinary link through the click redirect', function (): void {
+    $html = renderWithLinks('<a href="https://example.com/news">News</a>');
+
+    expect($html)->toContain('/c/'.$this->message->uuid)
+        ->and($html)->toContain('signature=');
+});
+
+it('still tracks an ordinary link while a preference centre is installed', function (): void {
+    // The self-service exemption is an exemption, not an off switch. If the
+    // prefix the resolver hands over were empty or a bare host, every link in
+    // the message would silently stop being counted.
+    marketingFakePreferenceCenterClass();
+    marketingFakePreferenceCenterRoute();
+
     $html = renderWithLinks('<a href="https://example.com/news">News</a>');
 
     expect($html)->toContain('/c/'.$this->message->uuid)
@@ -96,11 +158,11 @@ it('adds no delivery headers until a host names some', function (): void {
  * place the assertion can honestly be made; `Mail::fake()` never builds a
  * message at all.
  */
-function headersOfSent(Illuminate\Contracts\Mail\Mailable $mailable): Symfony\Component\Mime\Email
+function headersOfSent(Mailable $mailable): Email
 {
     $captured = null;
 
-    Event::listen(Illuminate\Mail\Events\MessageSent::class, function ($event) use (&$captured) {
+    Event::listen(MessageSent::class, function ($event) use (&$captured) {
         $captured = $event->message;
     });
 
@@ -147,6 +209,6 @@ it('ignores header entries that could not become a header', function (): void {
         'X-Numeric' => 0,
     ]);
 
-    expect(\Goldnead\Marketing\Support\DeliveryHeaders::configured())
+    expect(DeliveryHeaders::configured())
         ->toBe(['X-Good' => 'yes', 'X-Numeric' => '0']);
 });

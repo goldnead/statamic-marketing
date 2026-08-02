@@ -48,9 +48,22 @@ provider and changed how it behaves would be worse than one that asks.
 
 ### Fixed — preference links are no longer rewritten
 
-`/preferences/{token}` joins `/unsubscribe/` and `/confirm/` in the renderer's exception list. All
-three carry their token in the path and all three are routes a reader has to be able to reach when
-everything else has failed.
+Unsubscribe and confirm were already out of the click redirect: their token is in the path, and they
+are the routes a reader has to be able to reach when everything else has failed. The preference page
+belongs in that group and was not in it, so it went through the signed redirect and took the 403 above
+with it — the one reader who acted on the footer got an error page instead of their settings.
+
+It is not fixed by adding a path. Since 1.9.0 marketing serves no preference page: it belongs to
+`goldnead/statamic-preference-center`, and where its route lives is that addon's business, not
+something this renderer may spell out. The renderer asks `Support\PreferenceLink` — the one resolver
+that already decides where a subscriber's links point — for this reader's own self-service URLs, and
+keeps what comes back out of the redirect. Install the preference centre and its links are exempt;
+install nothing and marketing's unsubscribe page is. Neither case needs a path written down twice.
+
+The token is cut off the end of each answer, so the exemption covers the page rather than the one URL:
+a footer that appends `?utm_source=` to `{{ unsubscribe_url }}` survives too. Ordinary links are still
+tracked with the centre installed, which is its own test — an exemption that widened to the whole host
+would stop counting every click in silence.
 
 ### Fixed — CI
 
