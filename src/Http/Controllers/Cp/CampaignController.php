@@ -119,6 +119,7 @@ class CampaignController extends Controller
             handle: $handle,
             name: $data['name'],
             subject: $data['subject'] ?? '',
+            variantSubject: $data['variant_subject'] ?? null,
             preheader: $data['preheader'] ?? null,
             fromName: $data['from_name'] ?? null,
             fromEmail: $data['from_email'] ?? null,
@@ -221,6 +222,7 @@ class CampaignController extends Controller
 
         $campaign->name = $data['name'];
         $campaign->subject = $data['subject'] ?? '';
+        $campaign->variantSubject = $data['variant_subject'] ?? null;
         $campaign->preheader = $data['preheader'] ?? null;
         $campaign->fromName = $data['from_name'] ?? null;
         $campaign->fromEmail = $data['from_email'] ?? null;
@@ -373,6 +375,9 @@ class CampaignController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'handle' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9_]+$/'],
             'subject' => ['nullable', 'string', 'max:255'],
+            // Present means "this campaign is an A/B test on the subject line".
+            // Absent or blank means it is not — see Campaign::hasVariants().
+            'variant_subject' => ['nullable', 'string', 'max:255'],
             'preheader' => ['nullable', 'string', 'max:255'],
             'from_name' => ['nullable', 'string', 'max:255'],
             'from_email' => ['nullable', 'email'],

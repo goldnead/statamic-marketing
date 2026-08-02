@@ -9,7 +9,8 @@ const props = defineProps([
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
                      //   list, template, content, status, scheduled_at, sent_at }
     'stats',         // { recipients, sent, failed, skipped, pending, opened, open_rate,
-                     //   clicked, click_rate, bounced, unsubscribed }
+                     //   clicked, click_rate, bounced, unsubscribed,
+                     //   variants: { a: {...same, sample_size}, b: {...} } — empty unless A/B }
     'messages',      // [{ id, email, status, sent_at, opens, clicks }]
     'columns',       // Array<Column>
     'pagination',    // { current_page, last_page, total }
@@ -26,6 +27,14 @@ const statTiles = computed(() => [
     { label: __('Unsubscribed'), value: props.stats.unsubscribed },
     { label: __('Bounced'), value: props.stats.bounced },
 ]);
+
+// One row per A/B variant. Empty for every campaign that is not a split test,
+// so the whole block disappears rather than showing an empty table.
+const variantRows = computed(() => Object.entries(props.stats.variants || {}).map(([variant, s]) => ({
+    variant,
+    subject: variant === 'b' ? props.campaign.variant_subject : props.campaign.subject,
+    ...s,
+})));
 
 function campaignStatusColor(status) {
     return {
@@ -83,6 +92,47 @@ function reloadPage() {
             <Card v-for="tile in statTiles" :key="tile.label" class="h-full">
                 <Subheading :text="tile.label" />
                 <Heading size="lg" class="mt-2" :text="String(tile.value)" />
+            </Card>
+        </div>
+
+        <!-- A/B breakdown. Deliberately does not name a winner: whether a gap
+             between two rates is a result or noise depends on the sample, and
+             that question belongs to a test-design review, not to this table.
+             The sample size is stated next to every rate so it can be asked. -->
+        <div v-if="variantRows.length" class="mb-6">
+            <Subheading :text="__('A/B variants')" class="mb-2" />
+            <Card>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                                <th class="py-2 pe-4 font-medium">{{ __('Variant') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Subject') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Recipients') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Sample size') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Open rate') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Click rate') }}</th>
+                                <th class="py-2 pe-4 font-medium">{{ __('Bounced') }}</th>
+                                <th class="py-2 font-medium">{{ __('Unsubscribed') }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="row in variantRows" :key="row.variant" class="border-t border-gray-200 dark:border-gray-700">
+                                <td class="py-2 pe-4 font-medium uppercase">{{ row.variant }}</td>
+                                <td class="py-2 pe-4 text-gray-500 dark:text-gray-400">{{ row.subject || '—' }}</td>
+                                <td class="py-2 pe-4">{{ row.recipients }}</td>
+                                <td class="py-2 pe-4">{{ row.sample_size }}</td>
+                                <td class="py-2 pe-4">{{ row.open_rate }}% <span class="text-xs text-gray-400">({{ row.opened }})</span></td>
+                                <td class="py-2 pe-4">{{ row.click_rate }}% <span class="text-xs text-gray-400">({{ row.clicked }})</span></td>
+                                <td class="py-2 pe-4">{{ row.bounced }}</td>
+                                <td class="py-2">{{ row.unsubscribed }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                    {{ __('Rates are measured against the sample size (delivered messages). This report does not declare a winner — read the difference against the sample size before drawing a conclusion.') }}
+                </p>
             </Card>
         </div>
 
