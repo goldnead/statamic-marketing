@@ -6,6 +6,8 @@ use Carbon\CarbonImmutable;
 use Goldnead\EmailTemplates\Facades\EmailTemplates;
 use Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager;
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Marketing\Contracts\FrequencyCap;
+use Goldnead\Marketing\Contracts\MailClass;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -16,6 +18,7 @@ use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use InvalidArgumentException;
 use Statamic\CP\Column;
@@ -82,6 +85,8 @@ class CampaignController extends Controller
             'lists' => $this->listOptions(),
             'segments' => $this->segmentOptions(),
             'templates' => $this->templateOptions(),
+            'mailClasses' => $this->mailClassOptions(),
+            'frequencyCap' => $this->frequencyCapSummary(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
         ]);
     }
@@ -128,6 +133,7 @@ class CampaignController extends Controller
             segmentHandle: $data['segment'] ?? null,
             templateHandle: $data['template'] ?? null,
             content: $data['content'] ?? '',
+            mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
         );
 
         $this->campaigns->save($campaign);
@@ -179,7 +185,59 @@ class CampaignController extends Controller
             ],
             'editUrl' => cp_route('marketing.campaigns.edit', $handle),
             'editable' => $campaign->isEditable(),
+            'archive' => [
+                'enabled' => (bool) config('marketing.archive.enabled', true),
+                'released' => $campaign->inArchive,
+                'live' => $campaign->isArchived(),
+                'sendable_only' => ! $campaign->sentAt,
+                'url' => route('marketing.archive.show', ['marketingCampaign' => $campaign->handle]),
+                'update_url' => cp_route('marketing.campaigns.archive', $handle),
+            ],
+            'canManage' => $this->userCan($request, 'manage marketing campaigns'),
         ]);
+    }
+
+    /**
+     * Release this campaign to the public web archive, or take it back.
+     *
+     * Its own endpoint rather than a field on the edit form, and that is the
+     * whole reason it exists. `update()` refuses a campaign that is not
+     * editable, and a campaign stops being editable the moment it is sent —
+     * which is exactly when somebody decides whether the issue should be
+     * readable on the web. A field on the edit form would therefore have been
+     * settable only in the window before anyone could have made the decision.
+     *
+     * Withdrawal is the same call with `false`, and it takes effect on the next
+     * request: the archive resolves visibility per request rather than caching
+     * a list, so a campaign published by mistake is one toggle away from being
+     * gone.
+     */
+    public function archive(Request $request, string $handle)
+    {
+        $this->authorizeOrFail($request, 'manage marketing campaigns');
+
+        $campaign = $this->campaigns->find($handle);
+
+        // Spelled out rather than `abort_unless($campaign, 404)` like its
+        // neighbours: `abort()` is `never`, so the analyser narrows the type
+        // here and the truthiness of an object is not passed off as a bool.
+        // The nine older call sites are in the baseline; new code does not join
+        // them.
+        if (! $campaign) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'archive' => ['required', 'boolean'],
+        ]);
+
+        $campaign->inArchive = (bool) $data['archive'];
+
+        $this->campaigns->save($campaign);
+
+        return back()->with('success', $campaign->inArchive
+            ? __('marketing::campaigns.flashes.archive_released')
+            : __('marketing::campaigns.flashes.archive_withdrawn'));
     }
 
     public function edit(Request $request, string $handle)
@@ -202,6 +260,8 @@ class CampaignController extends Controller
             'lists' => $this->listOptions(),
             'segments' => $this->segmentOptions(),
             'templates' => $this->templateOptions(),
+            'mailClasses' => $this->mailClassOptions(),
+            'frequencyCap' => $this->frequencyCapSummary(),
             'editable' => $campaign->isEditable(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
         ]);
@@ -231,6 +291,7 @@ class CampaignController extends Controller
         $campaign->segmentHandle = $data['segment'] ?? null;
         $campaign->templateHandle = $data['template'] ?? null;
         $campaign->content = $data['content'] ?? '';
+        $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
 
         $this->campaigns->save($campaign);
 
@@ -378,6 +439,12 @@ class CampaignController extends Controller
             // Present means "this campaign is an A/B test on the subject line".
             // Absent or blank means it is not — see Campaign::hasVariants().
             'variant_subject' => ['nullable', 'string', 'max:255'],
+            // The frequency-cap classification. Validated against the enum, so
+            // a value the send path cannot act on never reaches storage —
+            // MailClass::fromValue() would silently read it back as
+            // `marketing`, and an editor who picked "reminder" and got a capped
+            // campaign would have no way to see why.
+            'mail_class' => ['nullable', Rule::in(MailClass::values())],
             'preheader' => ['nullable', 'string', 'max:255'],
             'from_name' => ['nullable', 'string', 'max:255'],
             'from_email' => ['nullable', 'email'],
@@ -387,6 +454,37 @@ class CampaignController extends Controller
             'template' => ['nullable', 'string'],
             'content' => ['nullable', 'string'],
         ]);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    protected function mailClassOptions(): array
+    {
+        return array_map(fn (MailClass $class) => [
+            'value' => $class->value,
+            'label' => $class->label(),
+        ], MailClass::cases());
+    }
+
+    /**
+     * What the cap is set to, so the edit screen can say what choosing a class
+     * actually means here instead of describing a feature in the abstract.
+     *
+     * Only the two numbers and the on/off state. No config value that is not
+     * already visible on the screen it describes goes to the browser.
+     *
+     * @return array{enabled: bool, max: int, window_hours: int}
+     */
+    protected function frequencyCapSummary(): array
+    {
+        $cap = app(FrequencyCap::class);
+
+        return [
+            'enabled' => $cap->enabled(),
+            'max' => $cap->limit(),
+            'window_hours' => $cap->windowHours(),
+        ];
     }
 
     protected function listOptions(): array

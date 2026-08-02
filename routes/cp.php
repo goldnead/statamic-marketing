@@ -39,6 +39,11 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
         Route::post('/{handle}/unschedule', [CampaignController::class, 'unschedule'])->name('unschedule');
         Route::post('/{handle}/test', [CampaignController::class, 'sendTest'])->name('test');
         Route::get('/{handle}/preview', [CampaignController::class, 'preview'])->name('preview');
+
+        // Separate from `update` on purpose: a sent campaign is no longer
+        // editable, and whether it belongs in the public archive is decided
+        // after it went out. See CampaignController::archive().
+        Route::patch('/{handle}/archive', [CampaignController::class, 'archive'])->name('archive');
     });
 
     Route::prefix('templates')->name('templates.')->group(function () {

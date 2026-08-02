@@ -240,6 +240,27 @@ function destroy() {
                 <span class="text-xs text-gray-500">{{ formatDate(row.subscribed_at) }}</span>
             </template>
 
+            <!-- Where this contact stands against the frequency cap, and how
+                 many campaigns have actually been held back from them. The
+                 second number is the one somebody asks about: "capped" on a
+                 campaign report names a message, this names a person. -->
+            <template #cell-frequency="{ row }">
+                <span v-if="!row.frequency" class="text-2xs text-gray-400">—</span>
+                <span v-else class="inline-flex items-center gap-2">
+                    <Badge
+                        :color="row.frequency.at_limit ? 'orange' : 'default'"
+                        :text="`${row.frequency.sent}/${row.frequency.limit}`"
+                    />
+                    <span
+                        v-if="row.frequency.held_back"
+                        class="text-xs text-gray-500"
+                        :title="__('marketing::subscribers.frequency_held_back_hint')"
+                    >
+                        {{ row.frequency.held_back }} {{ __('marketing::subscribers.frequency_held_back') }}
+                    </span>
+                </span>
+            </template>
+
             <template #prepended-row-actions="{ row }">
                 <DropdownItem
                     v-if="canManageSubscribers && row.status !== 'unsubscribed'"

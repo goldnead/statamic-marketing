@@ -21,6 +21,13 @@ return [
     'open_rate' => 'Open rate',
     'click_rate' => 'Click rate',
     'create' => 'Create campaign',
+    'mail_class' => 'Classification',
+    'mail_class_options' => [
+        'marketing' => 'Marketing',
+        'transactional' => 'Transactional',
+        'digest' => 'Digest',
+        'reminder' => 'Reminder',
+    ],
     'errors' => [
         'no_list' => 'This campaign has no valid mailing list.',
     ],
@@ -36,5 +43,7 @@ return [
         'scheduled' => 'Campaign scheduled.',
         'unscheduled' => 'Campaign moved back to draft.',
         'test_sent' => 'Test email sent.',
+        'archive_released' => 'Campaign released to the web archive.',
+        'archive_withdrawn' => 'Campaign removed from the web archive.',
     ],
 ];

@@ -21,6 +21,8 @@ const props = defineProps([
     'lists',           // [{ value, label }]
     'segments',        // [{ value, label, members_count }] — empty if LeadHub lacks segments
     'templates',       // [{ value, label }]
+    'mailClasses',     // [{ value, label }] — marketing/transactional/digest/reminder
+    'frequencyCap',    // { enabled, max, window_hours }
     'editable',        // bool (edit only)
     'canSend',         // bool
 ]);
@@ -41,6 +43,23 @@ const fromName = ref(props.campaign?.from_name || '');
 const fromEmail = ref(props.campaign?.from_email || '');
 const replyTo = ref(props.campaign?.reply_to || '');
 const content = ref(props.campaign?.content || '');
+// Defaults to marketing, which is the only value that is subject to the cap.
+// Opting a campaign out is an act; leaving this alone never is.
+const mailClass = ref(props.campaign?.mail_class || 'marketing');
+
+const capDays = computed(() => Math.round((props.frequencyCap?.window_hours ?? 168) / 24));
+
+const capNote = computed(() => {
+    if (! props.frequencyCap?.enabled) {
+        return __('No frequency cap is configured, so every class is delivered immediately. The class is still stored and still applies the moment a cap is switched on.');
+    }
+
+    if (mailClass.value === 'marketing') {
+        return __('Marketing is the only class the cap holds back. Recipients who have already reached the limit get this campaign later, or not at all if it stays over the limit.');
+    }
+
+    return __('This class is exempt: it is neither counted against the limit nor held back by it.');
+});
 
 // Kept in script so Vue's template compiler never sees the Antlers braces.
 const antlersHint = ['first_name', 'name', 'email', 'unsubscribe_url']
@@ -105,6 +124,7 @@ function payload() {
         from_email: fromEmail.value || null,
         reply_to: replyTo.value || null,
         content: content.value || null,
+        mail_class: mailClass.value || null,
     };
 }
 
@@ -118,7 +138,7 @@ const formErrors = ref({});
 // form instead, otherwise it would be invisible again.
 const fieldKeys = [
     'name', 'handle', 'subject', 'variant_subject', 'preheader', 'content',
-    'list', 'segment', 'template',
+    'list', 'segment', 'template', 'mail_class',
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
 ];
@@ -360,6 +380,22 @@ function destroy() {
 
                                 <Field :label="__('Template')" :error="formErrors.template">
                                     <Select v-model="template" :options="templateOptions" />
+                                </Field>
+
+                                <!-- The frequency-cap classification. Sits with
+                                     the audience rather than with the sender,
+                                     because what it changes is who receives
+                                     this and when, not how it looks. -->
+                                <Field :label="__('Classification')" :error="formErrors.mail_class">
+                                    <Select v-model="mailClass" :options="mailClasses || []" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <template v-if="frequencyCap && frequencyCap.enabled">
+                                            {{ __('Cap in force:') }}
+                                            <Badge color="blue" :text="String(frequencyCap.max)" />
+                                            {{ __('marketing mails per') }} {{ capDays }} {{ __('days') }}.
+                                        </template>
+                                        {{ capNote }}
+                                    </p>
                                 </Field>
                             </div>
                         </Card>

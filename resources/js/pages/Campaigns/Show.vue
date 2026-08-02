@@ -1,13 +1,13 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Button, Badge, Card, Heading, Subheading, Listing,
+    Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Switch, Field, Text,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
-                     //   list, template, content, status, scheduled_at, sent_at }
+                     //   list, template, content, status, scheduled_at, sent_at, archive }
     'stats',         // { recipients, sent, failed, skipped, pending, opened, open_rate,
                      //   clicked, click_rate, bounced, unsubscribed,
                      //   variants: { a: {...same, sample_size}, b: {...} } — empty unless A/B }
@@ -16,7 +16,45 @@ const props = defineProps([
     'pagination',    // { current_page, last_page, total }
     'editUrl',       // string
     'editable',      // bool
+    'archive',       // { enabled, released, live, sendable_only, url, update_url }
+    'canManage',     // bool
 ]);
+
+// Mirrors the server's `archive.released`. Kept as local state so the switch
+// moves the moment it is clicked, and reconciled from the prop when the Inertia
+// response comes back — the server, not the switch, decides what is published.
+const released = ref(props.archive?.released ?? false);
+watch(() => props.archive?.released, (value) => { released.value = value ?? false; });
+
+const showsArchivePanel = computed(() => props.canManage && props.archive?.enabled);
+
+// A rejected toggle used to be invisible here in exactly the way the edit form
+// once was: the request came back with errors, nothing was saved, and the
+// switch stayed where the click put it.
+const formErrors = ref({});
+
+// The one key this page binds to a control of its own. Anything else the
+// server reports has no field to sit at and goes into the summary instead.
+const fieldKeys = ['archive'];
+
+const generalErrors = computed(() =>
+    Object.entries(formErrors.value)
+        .filter(([key]) => ! fieldKeys.includes(key))
+        .map(([, message]) => message)
+);
+
+function toggleArchive(value) {
+    released.value = value;
+    router.patch(props.archive.update_url, { archive: value }, {
+        preserveScroll: true,
+        // Nothing was saved, so the switch must not keep claiming otherwise.
+        onError: (errors) => {
+            formErrors.value = errors || {};
+            released.value = props.archive.released;
+        },
+        onSuccess: () => { formErrors.value = {}; },
+    });
+}
 
 const statTiles = computed(() => [
     { label: __('Recipients'), value: props.stats.recipients },
@@ -86,6 +124,34 @@ function reloadPage() {
             <span v-if="campaign.sent_at">{{ __('Sent') }} {{ formatDate(campaign.sent_at) }}</span>
             <span v-else-if="campaign.scheduled_at">{{ __('Scheduled for') }} {{ formatDate(campaign.scheduled_at) }}</span>
         </p>
+
+        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
+            <div class="p-4 text-sm text-red-600 dark:text-red-400">
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </div>
+        </Panel>
+
+        <!-- Web archive. Not on the edit form: that form closes when the
+             campaign is sent, which is when this question actually gets
+             asked. -->
+        <Panel v-if="showsArchivePanel" :heading="__('Web archive')" class="mb-6">
+            <Card>
+                <Field :label="__('Publish a public web version')" :error="formErrors.archive">
+                    <Switch :model-value="released" @update:model-value="toggleArchive" />
+                </Field>
+                <Text size="sm" variant="subtle" class="mt-2 block">
+                    {{ __('The web version is the depersonalised edition: no tracking pixel, no click counting, and greetings resolve to a neutral word. Off by default — a campaign only appears once you publish it here.') }}
+                </Text>
+                <Text v-if="released && archive.sendable_only" size="sm" variant="warning" class="mt-2 block">
+                    {{ __('It goes live once the campaign has been sent. Until then nothing is public.') }}
+                </Text>
+                <p v-if="archive.live" class="mt-2">
+                    <a :href="archive.url" target="_blank" rel="noopener" class="text-sm hover:underline">
+                        {{ archive.url }} ↗
+                    </a>
+                </p>
+            </Card>
+        </Panel>
 
         <!-- Stat tiles -->
         <div class="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7 mb-6">

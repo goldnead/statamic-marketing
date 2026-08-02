@@ -21,6 +21,13 @@ return [
     'open_rate' => 'Öffnungsrate',
     'click_rate' => 'Klickrate',
     'create' => 'Kampagne erstellen',
+    'mail_class' => 'Einstufung',
+    'mail_class_options' => [
+        'marketing' => 'Marketing',
+        'transactional' => 'Transaktional',
+        'digest' => 'Digest',
+        'reminder' => 'Erinnerung',
+    ],
     'errors' => [
         'no_list' => 'Diese Kampagne hat keine gültige Mailingliste.',
     ],
@@ -36,5 +43,7 @@ return [
         'scheduled' => 'Kampagne geplant.',
         'unscheduled' => 'Kampagne zurück auf Entwurf gesetzt.',
         'test_sent' => 'Test-E-Mail versendet.',
+        'archive_released' => 'Kampagne im Webarchiv veröffentlicht.',
+        'archive_withdrawn' => 'Kampagne aus dem Webarchiv entfernt.',
     ],
 ];
