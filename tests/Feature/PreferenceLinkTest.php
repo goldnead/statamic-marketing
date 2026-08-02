@@ -18,39 +18,10 @@
  */
 
 use Goldnead\Marketing\Support\PreferenceLink;
-use Illuminate\Support\Facades\Route;
 
-/**
- * Stands in for the sibling's facade class.
- *
- * `class_exists()` is answered by the autoloader, and there is no way to make
- * it true for a class nobody has defined — so the class is defined here, under
- * the name the resolver names. It has no body because the resolver never calls
- * it: it asks whether it exists, which is the whole contract.
- */
-function marketingFakePreferenceCenterClass(): void
-{
-    if (! class_exists(PreferenceLink::CENTER_FACADE)) {
-        eval('namespace Goldnead\PreferenceCenter\Facades; class PreferenceCenter {}');
-    }
-}
-
-/**
- * Registers the token route the preference centre would register.
- *
- * The name lookup has to be refreshed by hand. `->name()` runs after the route
- * is already in the collection, and the framework rebuilds the name list once,
- * from `booted()` — which is long past by the time a test registers anything.
- * In an installed sibling the route is declared during boot and the framework
- * does this itself.
- */
-function marketingFakePreferenceCenterRoute(): void
-{
-    Route::get('/!/preference-center/t/{'.PreferenceLink::CENTER_PARAMETER.'}', fn () => 'centre')
-        ->name(PreferenceLink::CENTER_ROUTE);
-
-    Route::getRoutes()->refreshNameLookups();
-}
+// `marketingFakePreferenceCenterClass()` and `marketingFakePreferenceCenter
+// Route()` are in tests/Pest.php: the renderer's link test needs the same
+// simulation, and a helper declared at file scope twice is a fatal error.
 
 it('sends a person to marketing\'s own unsubscribe page when no centre is installed', function (): void {
     $link = app(PreferenceLink::class);

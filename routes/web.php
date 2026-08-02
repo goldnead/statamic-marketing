@@ -6,6 +6,7 @@ use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
 use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
+use Goldnead\Marketing\Http\Middleware\ValidateTrackingSignature;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -80,7 +81,18 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->name('marketing.track.open')
         ->middleware($brandFrom(Message::class, 'uuid', 'uuid'));
 
+    // The one signed route in this file, and the only one a sending platform
+    // can break. A click counter forwards the reader with a parameter of its
+    // own attached, which changes the string `signed` verifies and answers 403
+    // ahead of the controller — so the reader never arrives and the click is
+    // never counted. `ValidateTrackingSignature` is `signed` with the named
+    // provider parameters overlooked; everything else, above all the
+    // destination in `url`, stays inside the signature. `TrackingParameters`
+    // says what that costs and enforces the boundary.
     Route::get('/c/{uuid}', [TrackingController::class, 'click'])
         ->name('marketing.track.click')
-        ->middleware(['signed', $brandFrom(Message::class, 'uuid', 'uuid')]);
+        ->middleware([
+            ValidateTrackingSignature::class,
+            $brandFrom(Message::class, 'uuid', 'uuid'),
+        ]);
 });

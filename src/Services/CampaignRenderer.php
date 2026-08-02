@@ -51,7 +51,7 @@ class CampaignRenderer
 
         if ($message) {
             if (config('marketing.tracking.clicks', true)) {
-                $html = $this->rewriteLinks($html, $message);
+                $html = $this->rewriteLinks($html, $message, $this->selfServiceUrls($subscription));
             }
 
             if (config('marketing.tracking.opens', true)) {
@@ -180,17 +180,68 @@ class CampaignRenderer
     }
 
     /**
-     * Rewrite every absolute http(s) link to a signed tracking redirect. The
-     * unsubscribe link and anchors/mailto/tel are left untouched.
+     * The start of every URL that leads this reader to their own self-service
+     * pages, as prefixes to compare a rendered `href` against.
+     *
+     * Why this is asked rather than written down. Until v1.9.0 the renderer
+     * matched the literal path `/preferences/`, which was marketing's own
+     * preference page. That page is gone — it belongs to `goldnead/statamic-
+     * preference-center` now — and the literal has been matching nothing ever
+     * since, so every preference link in a campaign was going through the
+     * signed redirect and inheriting the 403 this release exists to remove.
+     * A second hardcoded path would fail the same way the moment the sibling
+     * moves its route. Where a subscriber's links live is decided in exactly
+     * one place, {@see PreferenceLink}, so that is who gets asked.
+     *
+     * The token is cut off the end of each answer on purpose. What comes back
+     * is the area, not the one URL: a footer that appends `?utm_source=` to
+     * `{{ unsubscribe_url }}` still has to survive, and so does a link to the
+     * same page carrying somebody else's token.
+     *
+     * @return list<string>
      */
-    protected function rewriteLinks(string $html, Message $message): string
+    protected function selfServiceUrls(?Subscription $subscription): array
+    {
+        $token = $subscription?->token;
+
+        if (! is_string($token) || $token === '') {
+            return [];
+        }
+
+        $prefixes = [];
+
+        foreach ([$this->links->manage($token), $this->links->oneClick($token)] as $url) {
+            $prefix = strstr($url, $token, true);
+
+            if (is_string($prefix) && $prefix !== '') {
+                $prefixes[$prefix] = true;
+            }
+        }
+
+        return array_keys($prefixes);
+    }
+
+    /**
+     * Rewrite every absolute http(s) link to a signed tracking redirect. The
+     * self-service links and anchors/mailto/tel are left untouched.
+     *
+     * Unsubscribe, confirm and the preference page all carry their token in
+     * the path and are the routes a reader has to be able to reach when
+     * everything else has failed. Sending them through the signed redirect
+     * would hand a sending platform the chance to break them too — a rewritten
+     * link plus an appended parameter is a 403, which would leave someone
+     * unable to unsubscribe or to change what they receive.
+     *
+     * @param  list<string>  $selfService  prefixes from {@see selfServiceUrls()}
+     */
+    protected function rewriteLinks(string $html, Message $message, array $selfService = []): string
     {
         return (string) preg_replace_callback(
             '/href="(https?:\/\/[^"]+)"/i',
-            function (array $matches) use ($message) {
+            function (array $matches) use ($message, $selfService) {
                 $url = html_entity_decode($matches[1]);
 
-                if (str_contains($url, '/unsubscribe/') || str_contains($url, '/confirm/')) {
+                if ($this->isSelfServiceLink($url, $selfService)) {
                     return $matches[0];
                 }
 
@@ -203,6 +254,32 @@ class CampaignRenderer
             },
             $html,
         );
+    }
+
+    /**
+     * @param  list<string>  $selfService
+     */
+    protected function isSelfServiceLink(string $url, array $selfService): bool
+    {
+        /*
+         * Marketing's own two routes, by path. They are checked literally and
+         * not only through the resolver because they are the floor: a preview,
+         * or a send whose subscription could not be resolved, produces no
+         * prefixes at all, and "stopping mail" may not depend on anything
+         * having gone right. `/confirm/` is here for the same reason and has
+         * no resolver entry of its own — nothing renders it from a variable.
+         */
+        if (str_contains($url, '/unsubscribe/') || str_contains($url, '/confirm/')) {
+            return true;
+        }
+
+        foreach ($selfService as $prefix) {
+            if (str_starts_with($url, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function appendOpenPixel(string $html, Message $message): string

@@ -1,10 +1,76 @@
 # Changelog
 
 ## Unreleased
-### Fixed — CI only; nothing in the installed package changes
 
-No file that ships in the Composer tarball is touched by this release. `src/`, `config/`, `routes/`,
-`resources/views/`, `lang/` and `resources/dist/` are byte-for-byte 1.9.0.
+### Fixed — every tracked link in a campaign sent through Brevo was a 403
+
+Brevo rewrites every `href` in the HTML part of a message onto its own click counter, and when that
+counter forwards the reader it appends `_se`, the recipient address in base64, in front of the rest of
+the query. Laravel signs the whole query string. One appended parameter is therefore not the URL that
+was signed, and `ValidateSignature` answers 403 before `TrackingController` runs.
+
+Measured at the QA hub against a real `marketing_messages` row, not reasoned about: without a signature
+403 — with a valid signature no longer 403 — with a valid signature **plus `_se`** a 403 again. The
+appended parameter destroys exactly the signature check.
+
+**What that cost.** On a campaign sent through Brevo it hit *every* tracked link, which is every
+absolute `http(s)` link in the message. Twice over: the reader never reached the destination, and the
+click was never counted either, because the middleware aborts ahead of `recordClick()`. Confirmation
+and unsubscribe links came through unharmed — their token is in the path and nothing about them is
+signed — which is why the failure looked partial rather than total. Preference-centre links did not:
+they were missing from the renderer's exception list, so they were rewritten like any other link and
+inherited the same 403, leaving people unable to change what they receive.
+
+**The fix, and the line it does not cross.** `delivery.ignored_query_parameters` names the parameters a
+sending platform may append without invalidating the signature — eleven of them, each one a name a real
+provider adds, each one commented with which. Everything else is still refused.
+
+The boundary matters more here than in the same fix in `statamic-preference-center`, where a magic
+link's payload sits in the path. This route carries its destination **in the query**, as
+`?url=https://…`. A `url` on that list would not be a weaker signature, it would be an open redirect on
+the sender's own domain with the sender's own reputation behind it. So `Support\TrackingParameters`
+refuses to ignore `url`, `expires` or `signature` — in any casing, and through any comma-separated
+smuggling — however the config is edited. The tests prove the refusal at the endpoint, with `url` on
+the live ignore list: an edited destination is still a 403 and still counts no click.
+
+The list is read per request rather than baked into the route, because this addon merges its config
+after Statamic has loaded the route files, and because `route:cache` would otherwise freeze whatever
+was on the list the day the cache was built.
+
+### Added — `delivery.mail_headers`
+
+The other half of the answer: the per-message header that asks the provider not to rewrite the links at
+all, added verbatim to campaigns and double-opt-in mail. Mailgun, Postmark, Mailjet, SparkPost,
+SendGrid, Mandrill and Elastic Email each have one, verified against their own documentation and
+tabulated in `config/marketing.php`. Brevo has none, and none is coming — there the ignore list above is
+not defence in depth, it is the only thing that works. Empty by default: an addon that guessed your
+provider and changed how it behaves would be worse than one that asks.
+
+### Fixed — preference links are no longer rewritten
+
+Unsubscribe and confirm were already out of the click redirect: their token is in the path, and they
+are the routes a reader has to be able to reach when everything else has failed. The preference page
+belongs in that group and was not in it, so it went through the signed redirect and took the 403 above
+with it — the one reader who acted on the footer got an error page instead of their settings.
+
+It is not fixed by adding a path. Since 1.9.0 marketing serves no preference page: it belongs to
+`goldnead/statamic-preference-center`, and where its route lives is that addon's business, not
+something this renderer may spell out. The renderer asks `Support\PreferenceLink` — the one resolver
+that already decides where a subscriber's links point — for this reader's own self-service URLs, and
+keeps what comes back out of the redirect. Install the preference centre and its links are exempt;
+install nothing and marketing's unsubscribe page is. Neither case needs a path written down twice.
+
+The token is cut off the end of each answer, so the exemption covers the page rather than the one URL:
+a footer that appends `?utm_source=` to `{{ unsubscribe_url }}` survives too. Ordinary links are still
+tracked with the centre installed, which is its own test — an exemption that widened to the whole host
+would stop counting every click in silence.
+
+### Fixed — CI
+
+Nothing in this section reaches an installed site: it touches `.github/workflows/`,
+`scripts/test-siblings.sh` and `composer.json`'s repository metadata, and no runtime file.
+`resources/views/`, `lang/` and `resources/dist/` are byte-for-byte 1.9.0. (`src/`, `config/` and
+`routes/` are not — the click-tracking fix above changes them.)
 
 - **The cross-addon integration job ran no tests at all.** `scripts/test-siblings.sh` staged its
   throwaway copy with `git archive HEAD`, and `git archive` applies `.gitattributes` `export-ignore`

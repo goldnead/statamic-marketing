@@ -7,12 +7,6 @@ parameters:
 			path: src/Data/PreferenceCenter.php
 
 		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Data/PreferenceCenter.php
-
-		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$campaign_handle\.$#'
 			identifier: property.notFound
 			count: 1
@@ -74,12 +68,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Events/SubscriptionEvent.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Events/SubscriptionEvent.php
@@ -295,12 +283,6 @@ parameters:
 			path: src/Jobs/StartCampaignJob.php
 
 		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Mail/ConfirmSubscriptionMail.php
-
-		-
 			message: '#^Parameter \#1 \$view of method Illuminate\\Mail\\Mailable\:\:view\(\) expects view\-string, string given\.$#'
 			identifier: argument.type
 			count: 1
@@ -334,12 +316,6 @@ parameters:
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$status\.$#'
 			identifier: property.notFound
 			count: 2
-			path: src/Models/Subscription.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 1
 			path: src/Models/Subscription.php
 
 		-
@@ -517,22 +493,10 @@ parameters:
 			path: src/Services/CampaignRenderer.php
 
 		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 2
-			path: src/Services/CampaignRenderer.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 2
 			path: src/Services/CampaignRenderer.php
-
-		-
-			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Subscription\:\:\$token\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Services/CampaignSender.php
 
 		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$subscription\.$#'
