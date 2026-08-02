@@ -35,8 +35,23 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class SetBrandFromListHandle
 {
-    public function handle(Request $request, Closure $next, string $parameter = 'list'): Response
-    {
+    /**
+     * @param  string  $parameter  the route parameter (or input field) holding the handle
+     * @param  string  $type  which kind of definition the handle names — one of
+     *                        the HandleOwnership constants. Campaign handles are
+     *                        unique across brands for the same reason list
+     *                        handles are, and the newsletter archive addresses a
+     *                        campaign by handle from a request with no session,
+     *                        so it needs the identical derivation. Defaults to
+     *                        lists, which is what every existing use of this
+     *                        middleware means.
+     */
+    public function handle(
+        Request $request,
+        Closure $next,
+        string $parameter = 'list',
+        string $type = HandleOwnership::LISTS,
+    ): Response {
         $manager = app('brand-context');
 
         if (! $manager->multiBrandEnabled()) {
@@ -48,7 +63,7 @@ class SetBrandFromListHandle
         $value = $request->route($parameter) ?? $request->input($parameter);
 
         $brand = app(HandleOwnership::class)->brandFor(
-            HandleOwnership::LISTS,
+            $type,
             is_string($value) ? $value : null,
         );
 

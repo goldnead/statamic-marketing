@@ -1,6 +1,7 @@
 <?php
 
 use Goldnead\BrandContext\Http\Middleware\SetBrandFromRouteValue;
+use Goldnead\Marketing\Http\Controllers\ArchiveController;
 use Goldnead\Marketing\Http\Controllers\ConfirmController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
@@ -9,6 +10,7 @@ use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
 use Goldnead\Marketing\Http\Middleware\ValidateTrackingSignature;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Route;
@@ -95,4 +97,41 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
             ValidateTrackingSignature::class,
             $brandFrom(Message::class, 'uuid', 'uuid'),
         ]);
+});
+
+/*
+ * The newsletter web archive.
+ *
+ * Deliberately outside the group above and without its bang prefix. Everything
+ * in that group is a machine endpoint — a pixel, a redirect, a provider's
+ * unsubscribe POST — and `!/` marks it as such, the way Statamic marks its own
+ * action routes. These three are pages: a reader opens them, links them, and a
+ * crawler indexes them, so they get a readable path of their own.
+ *
+ * `feed.xml` is declared before the campaign route and constrained out of it.
+ * Without both, a campaign whose handle happened to be `feed` would shadow the
+ * feed — or, worse, the feed URL would resolve as a campaign lookup and 404 with
+ * no explanation. Handles are snake_case, so the constraint excludes nothing.
+ *
+ * The parameter is `{marketingCampaign}` and not `{campaign}`. Route parameter
+ * names are application-wide: a sibling addon that binds `{campaign}` — and
+ * `campaign` is a word half this family could reach for — would resolve ours
+ * against its own repository, find nothing, and 404 every archive page. That is
+ * not hypothetical, it is how goldnead/statamic-leadhub 1.8.0 shipped a delete
+ * button that did nothing. The name never appears in a URL, so the cost is nil.
+ */
+Route::prefix(config('marketing.archive.prefix', 'newsletter'))->group(function () {
+    Route::get('/', [ArchiveController::class, 'index'])
+        ->name('marketing.archive.index');
+
+    Route::get('/feed.xml', [ArchiveController::class, 'feed'])
+        ->name('marketing.archive.feed');
+
+    // No session, so no brand — derived from the handle, which addresses
+    // exactly one campaign across all brands. Same guarantee, same middleware
+    // and the same reasoning as the subscribe endpoint above.
+    Route::get('/{marketingCampaign}', [ArchiveController::class, 'show'])
+        ->name('marketing.archive.show')
+        ->where('marketingCampaign', '[a-z0-9_]+')
+        ->middleware(SetBrandFromListHandle::class.':marketingCampaign,'.HandleOwnership::CAMPAIGNS);
 });

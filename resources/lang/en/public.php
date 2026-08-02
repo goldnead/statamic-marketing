@@ -13,4 +13,14 @@ return [
      */
     'unsubscribed_manage' => 'Other lists continue independently of this one.',
     'unsubscribed_manage_link' => 'Manage your email preferences',
+
+    /*
+     * The web archive. `archive_neutral_name` stands in for {{ first_name }}
+     * and {{ name }} on a page that has no recipient — override it in
+     * `marketing.archive.neutral_name` where the newsletter's own voice needs
+     * a different word.
+     */
+    'archive_neutral_name' => 'there',
+    'archive_empty' => 'No issues have been published here yet.',
+    'archive_feed_link' => 'RSS feed',
 ];

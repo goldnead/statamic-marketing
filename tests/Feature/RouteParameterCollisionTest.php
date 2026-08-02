@@ -225,8 +225,16 @@ it('keeps the bound names and the route files in agreement', function (): void {
     // them, so nothing can be taken from anyone. This is the list that used to
     // be kept as "generic names accepted with a reason"; the reason is now the
     // same for all of them and it is written above.
+    // `marketingCampaign` is on this list and is unbound, which reads like a
+    // contradiction and is not. The `marketing…` prefix is required of a name
+    // this addon BINDS, so no sibling can pick it by accident. It is also worth
+    // having on a name this addon merely uses, when the plain word is one a
+    // sibling might bind: the archive route would then resolve its handle
+    // against somebody else's repository and 404 every page. `campaign` is
+    // exactly that kind of word. Prefixing costs nothing — parameter names are
+    // internal and never appear in a URL.
     expect($unbound)->toBe(
-        ['handle', 'subscription', 'token', 'uuid'],
+        ['handle', 'marketingCampaign', 'subscription', 'token', 'uuid'],
         'The unbound parameter names changed. Keep them unbound — and if one of these ever needs '
         .'a binding, rename it to `marketing…` in the same commit.'
     );

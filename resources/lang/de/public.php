@@ -14,4 +14,14 @@ return [
      */
     'unsubscribed_manage' => 'Andere Verteiler laufen unabhängig davon weiter.',
     'unsubscribed_manage_link' => 'E-Mail-Einstellungen verwalten',
+
+    /*
+     * Das Webarchiv. `archive_neutral_name` steht für {{ first_name }} und
+     * {{ name }} auf einer Seite, die keine Empfängerin hat — über
+     * `marketing.archive.neutral_name` überschreibbar, wenn der Newsletter ein
+     * anderes Wort benutzt.
+     */
+    'archive_neutral_name' => 'du',
+    'archive_empty' => 'Hier ist noch keine Ausgabe veröffentlicht.',
+    'archive_feed_link' => 'RSS-Feed',
 ];

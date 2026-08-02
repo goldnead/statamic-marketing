@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Data;
 
 use Carbon\CarbonImmutable;
+use Goldnead\Marketing\Contracts\MailClass;
 
 /**
  * A campaign (broadcast) definition. Content is Antlers-enabled HTML that is
@@ -41,7 +42,46 @@ class Campaign
         public string $status = self::STATUS_DRAFT,
         public ?CarbonImmutable $scheduledAt = null,
         public ?CarbonImmutable $sentAt = null,
+        /**
+         * Has an editor released this campaign to the public web archive?
+         *
+         * `false` is the default and stays the default for every campaign that
+         * already exists. A campaign is written for the people who asked for
+         * it, and some of them carry prices, a segment's context or an
+         * individual address — publishing that to the open web because a
+         * package was updated is not a decision an addon may take on someone's
+         * behalf. Releasing it is one deliberate act per campaign.
+         */
+        public bool $inArchive = false,
+        /**
+         * Which {@see MailClass} this campaign is sent under. `marketing` is
+         * the default and the conservative one: a campaign nobody classified
+         * is subject to the frequency cap rather than exempt from it. A
+         * community digest or an event reminder is opted out by naming its
+         * class, never by leaving the field alone.
+         */
+        public string $mailClass = MailClass::Marketing->value,
     ) {}
+
+    /** The classification the send path acts on. */
+    public function mailClass(): MailClass
+    {
+        return MailClass::fromValue($this->mailClass);
+    }
+
+    /**
+     * Is there a public web version of this campaign right now?
+     *
+     * Two conditions, and the second one is not decoration. The flag says an
+     * editor wants this campaign public; the status says it has actually gone
+     * out. A draft that is already flagged would otherwise be readable on the
+     * open web before its own recipients have it, which is the one ordering
+     * mistake a newsletter archive can make that cannot be taken back.
+     */
+    public function isArchived(): bool
+    {
+        return $this->inArchive && $this->status === self::STATUS_SENT;
+    }
 
     /**
      * Is this campaign running an A/B test?
@@ -98,6 +138,12 @@ class Campaign
             sentAt: isset($data['sent_at']) && $data['sent_at']
                 ? CarbonImmutable::parse($data['sent_at'])
                 : null,
+            // Absent means not archived. A YAML file written before this
+            // release has no key here, and reading that silence as "publish
+            // it" would put every past campaign on the open web the moment the
+            // package is updated.
+            inArchive: (bool) ($data['archive'] ?? false),
+            mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
         );
     }
 
@@ -119,6 +165,8 @@ class Campaign
             'status' => $this->status,
             'scheduled_at' => $this->scheduledAt?->toIso8601String(),
             'sent_at' => $this->sentAt?->toIso8601String(),
+            'archive' => $this->inArchive,
+            'mail_class' => $this->mailClass,
         ];
     }
 }

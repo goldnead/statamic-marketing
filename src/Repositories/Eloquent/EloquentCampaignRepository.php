@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use Goldnead\Marketing\Contracts\MailClass;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\CampaignRecord;
@@ -45,6 +46,8 @@ class EloquentCampaignRepository implements CampaignRepository
                 'status' => $campaign->status,
                 'scheduled_at' => $campaign->scheduledAt,
                 'sent_at' => $campaign->sentAt,
+                'in_archive' => $campaign->inArchive,
+                'mail_class' => $campaign->mailClass,
             ],
         );
 
@@ -84,6 +87,8 @@ class EloquentCampaignRepository implements CampaignRepository
             status: $record->status,
             scheduledAt: $record->scheduled_at ? CarbonImmutable::parse($record->scheduled_at) : null,
             sentAt: $record->sent_at ? CarbonImmutable::parse($record->sent_at) : null,
+            inArchive: (bool) $record->in_archive,
+            mailClass: MailClass::fromValue($record->mail_class)->value,
         );
     }
 }

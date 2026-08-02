@@ -36,12 +36,49 @@ class CampaignRenderer
         ?Subscription $subscription = null,
         ?Message $message = null,
     ): RenderedMail {
+        return $this->build($campaign, $list, $subscription, $message, archive: false);
+    }
+
+    /**
+     * The public web version of a campaign: the same mail, with nobody in it.
+     *
+     * It goes through the same pipeline as a send rather than beside it. A
+     * second renderer would be a second answer to "what does this campaign look
+     * like", and the two would drift on the first template change — the web
+     * version would then stop being the newsletter it claims to archive.
+     *
+     * Two things are true of this call and of nothing else:
+     *
+     *  - **there is no message**, so `rewriteLinks()` and `appendOpenPixel()`
+     *    are never reached. That is not a convenience, it is the point. An
+     *    open in the archive is not an open of the e-mail, and a click counted
+     *    without a recipient behind it would be added to a campaign's rate as
+     *    if somebody who received the mail had clicked. The number would go up
+     *    and mean less.
+     *  - **there is no subscriber**, so every personalisation variable resolves
+     *    to something neutral rather than to a stranger's data or to a blank.
+     *    See {@see archiveVariables()}.
+     */
+    public function renderForArchive(Campaign $campaign, MailingList $list): RenderedMail
+    {
+        return $this->build($campaign, $list, null, null, archive: true);
+    }
+
+    protected function build(
+        Campaign $campaign,
+        MailingList $list,
+        ?Subscription $subscription,
+        ?Message $message,
+        bool $archive,
+    ): RenderedMail {
         // Resolved before anything is parsed, because the subject is also a
         // template variable — a body that prints `{{ subject }}` must show the
         // line this recipient actually received, not the campaign's default.
         $subjectTemplate = $this->subjectFor($campaign, $message);
 
-        $variables = $this->variables($campaign, $list, $subscription, $subjectTemplate);
+        $variables = $archive
+            ? $this->archiveVariables($campaign, $list, $subjectTemplate)
+            : $this->variables($campaign, $list, $subscription, $subjectTemplate);
 
         $content = $this->parse($campaign->content, $variables);
 
@@ -149,6 +186,56 @@ class CampaignRenderer
                 'name' => $list->name,
             ],
         ];
+    }
+
+    /**
+     * The same variables as a send, with the recipient taken out of them.
+     *
+     * Built on top of {@see variables()} rather than beside it, so a variable
+     * added there is available in the archive too. Only the four that describe
+     * a person are overridden.
+     *
+     * `first_name` and `name` become a neutral word instead of an empty string.
+     * A greeting is the most common use of either, and an empty value turns
+     * `Hallo {{ first_name }},` into `Hallo ,` — visibly broken, on a page
+     * indexed by search engines. The word is configurable
+     * (`marketing.archive.neutral_name`) because who a reader is addressed as
+     * is a matter of voice, and translated by default.
+     *
+     * `email` stays empty, deliberately. There is no address this copy went to
+     * and there is no honest placeholder for one — a made-up address in
+     * "this mail was sent to …" is worse than a gap.
+     *
+     * `unsubscribe_url` and its one-click twin come back from `variables()` as
+     * `#` for a call with no subscription. That is the right answer here: there
+     * is no subscription to end from a public page, the link is inert rather
+     * than broken, and `toText()` already leaves the unsubscribe line out when
+     * it sees `#`.
+     *
+     * @return array<string, mixed>
+     */
+    public function archiveVariables(
+        Campaign $campaign,
+        MailingList $list,
+        ?string $subjectTemplate = null,
+    ): array {
+        $neutral = $this->neutralName();
+
+        return array_merge($this->variables($campaign, $list, null, $subjectTemplate), [
+            'email' => '',
+            'first_name' => $neutral,
+            'last_name' => '',
+            'name' => $neutral,
+        ]);
+    }
+
+    protected function neutralName(): string
+    {
+        $configured = config('marketing.archive.neutral_name');
+
+        return is_string($configured) && $configured !== ''
+            ? $configured
+            : (string) __('marketing::public.archive_neutral_name');
     }
 
     /**

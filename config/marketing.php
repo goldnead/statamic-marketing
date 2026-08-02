@@ -230,6 +230,92 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frequency cap
+    |--------------------------------------------------------------------------
+    |
+    | An upper bound on how much MARKETING mail one contact receives in a
+    | rolling window. Off by default, and it has to stay that way: an addon
+    | that started holding a running installation's mail back because a package
+    | was updated would be a worse failure than any amount of mail.
+    |
+    | The exceptions are the rule. Every outgoing mail carries a classification
+    | — marketing, transactional, digest or reminder (see
+    | Goldnead\Marketing\Contracts\MailClass) — and the cap acts on `marketing`
+    | alone. A community digest does not eat the budget, a password reset is
+    | never delayed, and an event reminder goes out whatever the count says.
+    | A campaign's class is set on its edit screen and defaults to `marketing`:
+    | opting out is an act, never an omission.
+    |
+    | The decision is taken when a message is actually sent, not when it is
+    | queued. A job that waited three days behind a throttle is measured
+    | against the window that ends now.
+    |
+    | A capped message is DEFERRED, not dropped: it goes back on the queue
+    | `retry_after_minutes` later, up to `max_deferrals` times. Only then is it
+    | discarded — with `status = capped` on the row and a warning in the log,
+    | because "why did I never get the March issue" has to have an answer.
+    |
+    | `window_hours` is stated in hours rather than days so the arithmetic has
+    | one unit end to end: 168 is the roadmap's "three mails in seven days".
+    |
+    */
+
+    'frequency_cap' => [
+        'enabled' => env('MARKETING_FREQUENCY_CAP', false),
+        'max' => (int) env('MARKETING_FREQUENCY_CAP_MAX', 3),
+        'window_hours' => (int) env('MARKETING_FREQUENCY_CAP_WINDOW_HOURS', 168),
+
+        'defer' => [
+            'retry_after_minutes' => 1440,
+            'max_deferrals' => 3,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Newsletter web archive
+    |--------------------------------------------------------------------------
+    |
+    | A public web version of a campaign, on a stable readable URL — no token,
+    | so it can be linked, shared and indexed. It is not the same page as the
+    | token link in a mail: that one is personalised, this one is deliberately
+    | not.
+    |
+    | Visibility is per campaign and OFF by default. Nothing appears here until
+    | an editor releases a campaign from its report page, because a campaign can
+    | carry a price, a segment's context or an individual address, and none of
+    | that belongs on the open web because a package was updated.
+    |
+    | `prefix` is the path the three pages live under — the index, `feed.xml`,
+    | and one page per campaign at `{prefix}/{handle}`. Unlike the endpoints
+    | above it carries no bang: those are machine routes, this is a page for
+    | readers.
+    |
+    | `neutral_name` replaces `{{ first_name }}` and `{{ name }}` in the web
+    | version. There is no recipient, so a greeting has to be addressed to
+    | somebody — leave it null to use the translation
+    | (`marketing::public.archive_neutral_name`), or set the word your
+    | newsletter would actually use.
+    |
+    | Multi-brand: the index and the feed show the brand that is current for the
+    | request. A public request carries no session, so unless the application
+    | resolves a brand for its front end, that is the default brand. A campaign
+    | page derives its brand from the handle, the same way the subscribe
+    | endpoint derives one from a list handle. Give each brand its own `prefix`
+    | if their archives must be separately addressable.
+    |
+    */
+
+    'archive' => [
+        'enabled' => env('MARKETING_ARCHIVE', true),
+        'prefix' => env('MARKETING_ARCHIVE_PREFIX', 'newsletter'),
+        'title' => env('MARKETING_ARCHIVE_TITLE'),
+        'neutral_name' => null,
+        'feed_limit' => 20,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | LeadHub
     |--------------------------------------------------------------------------
     |
