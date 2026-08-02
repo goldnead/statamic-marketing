@@ -4,6 +4,9 @@ namespace Goldnead\Marketing\Http\Middleware;
 
 use Closure;
 use Goldnead\Marketing\Support\TrackingParameters;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use Illuminate\Routing\Middleware\ValidateSignature;
 
 /**
@@ -29,13 +32,25 @@ use Illuminate\Routing\Middleware\ValidateSignature;
 class ValidateTrackingSignature extends ValidateSignature
 {
     /**
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @param  Request  $request
+     * @return Response
      *
-     * @throws \Illuminate\Routing\Exceptions\InvalidSignatureException
+     * @throws InvalidSignatureException
      */
     public function handle($request, Closure $next, ...$args)
     {
-        return parent::handle($request, $next, ...TrackingParameters::ignored());
+        /*
+         * Handed over on the property rather than spread into the parent call.
+         * `parent::handle()` takes its ignore list as variadic middleware
+         * arguments but declares them `array|null` — the annotation describes
+         * the collected `$args`, not one of them, so passing the parameter
+         * names it actually wants is a type error to any analyser reading that
+         * signature. The property is the same list at the same moment:
+         * `parseArguments()` merges it with the arguments before either is
+         * used, and this class has no `except` property to displace it.
+         */
+        $this->ignore = TrackingParameters::ignored();
+
+        return parent::handle($request, $next);
     }
 }
