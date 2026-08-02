@@ -33,6 +33,24 @@ Think Mailcoach, but native to Statamic and built on top of
   throttle, per-recipient message records, and automatic finalization.
 - **Tracking**: open pixel, signed click redirects, per-campaign reports
   (open/click rates, bounces, unsubscribes).
+- **Newsletter web archive**: a public, linkable web version of a campaign on a
+  readable URL (`/newsletter/{handle}`), plus a chronological index and an RSS
+  feed, with title, description, canonical and Open Graph tags. Visibility is
+  per campaign and **off by default** — a campaign is released from its report
+  page after it has been sent. The web version is the depersonalised edition:
+  the same renderer, but no open pixel, no rewritten links (an open on a web
+  page is not an open of the e-mail) and personalisation placeholders resolved
+  to a neutral word. An unreleased campaign answers **404, not 403** — a 403
+  would confirm that it exists.
+- **Frequency caps**: an upper bound on marketing mail per contact per rolling
+  window (default off). Every outgoing mail carries a classification —
+  `marketing`, `transactional`, `digest`, `reminder` — and the cap acts on
+  `marketing` alone: the community digest does not eat the budget, a password
+  reset is never delayed, an event reminder goes out regardless. The decision is
+  taken **when the message is sent**, not when it is queued, so a job that
+  waited three days is measured against the window that ends now. A capped
+  message is deferred and retried, and only discarded — with `status = capped`
+  and a log entry — once its deferral budget runs out.
 - **Unsubscribes** via tokenized link plus RFC 8058 one-click
   (`List-Unsubscribe` / `List-Unsubscribe-Post` headers), optional global
   opt-out to LeadHub's `do_not_contact`.
@@ -198,6 +216,50 @@ refused with a message naming the brand that holds it.
 | `delivery.mail_headers` | `[]` | Per-message headers asking the provider not to rewrite links |
 | `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
+| `frequency_cap.enabled` | `false` | Off until you turn it on — updating the package changes no send |
+| `frequency_cap.max` / `.window_hours` | `3` / `168` | Three marketing mails per seven days |
+| `frequency_cap.defer.*` | `1440` min, `3` tries | How long a capped message waits, and how often, before it is discarded and logged |
+| `archive.enabled` | `true` | The archive routes; per-campaign visibility is still off by default |
+| `archive.prefix` | `newsletter` | Path for the index, `feed.xml` and each campaign page |
+| `archive.neutral_name` | `null` | Stands in for `{{ first_name }}` / `{{ name }}` on the web version (falls back to the translation) |
+
+### Classifying mail from another addon
+
+The classification is a contract, not a marketing internal — a cap is only as
+good as its exceptions, and the addon doing the sending is not the one that
+knows what a mail is for. Any package in the family can name a class and ask
+before it sends:
+
+```php
+use Goldnead\Marketing\Contracts\FrequencyCap;
+use Goldnead\Marketing\Contracts\MailClass;
+
+if (app(FrequencyCap::class)->allows($email, MailClass::Marketing, $brandId)) {
+    // …send…
+    app(FrequencyCap::class)->record($email, MailClass::Marketing, $brandId, 'my-addon:weekly');
+}
+```
+
+`allows()` is always true when the cap is off and always true for a class the
+cap does not act on, so a caller never has to know the exceptions. Unknown or
+absent reads as `marketing`: forgetting to classify costs a delay, never an
+exemption nobody asked for. Counting is keyed on the normalized address, so
+somebody on four lists is still one person with one budget.
+
+The check falls **open** — a cap that cannot count says yes and logs it. That is
+the deliberate opposite of `Goldnead\Suppression\Contracts\Gate`, which falls
+closed and aborts the send: suppression is the only thing between a send and
+somebody who said no, while the cap is between a send and somebody who has been
+hearing from you a lot.
+
+### Publishing an issue to the web archive
+
+Open the campaign's report page and switch **Publish a public web version** on.
+It takes effect once the campaign has actually been sent, and switching it off
+removes the page on the next request — nothing caches the list. Under
+multi-brand the index and the feed show whichever brand is current for the
+request; a campaign page derives its brand from the handle, the same way the
+subscribe endpoint derives one from a list handle.
 
 ### Sending through a provider that counts clicks
 

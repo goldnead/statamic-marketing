@@ -2,6 +2,138 @@
 
 ## Unreleased
 
+<!--
+    Everything below this line is v1.10.0. Both features are additive and both
+    ship inert: the frequency cap is off, and no campaign is in the archive
+    until somebody puts it there. A `composer update` therefore changes neither
+    what is sent nor what is public.
+-->
+
+### Added — the newsletter web archive
+
+A campaign existed only as an e-mail. Anyone who wanted to read it in a browser,
+link it, or find it later could not, and every "can you send me the last issue"
+was answered by hand.
+
+Each campaign can now be released to a public web version on a readable,
+guessable URL — `/newsletter/{handle}`, a slug and not a token, because the
+token link is the personalised one and this is deliberately the other thing.
+With it come a chronological index per brand, an RSS feed, and the head tags a
+search engine and a share preview need: title, description, canonical, Open
+Graph.
+
+**Off by default, per campaign.** Applying the migration publishes nothing, and
+the flag is not on the edit form — it is on the report page, because `update()`
+refuses a campaign that has been sent and "should this be public" is a question
+that gets asked afterwards. A campaign can carry a price, a segment's context or
+an individual address; putting a year of that on the open web because a package
+moved is not a decision an addon may take.
+
+**Not released answers 404, not 403.** 403 is the accurate status and the wrong
+one to send: it confirms that a campaign with this handle exists, which turns a
+guessable URL into a way to enumerate unpublished issues by name. The archive
+says nothing about what it is not showing — a draft, another brand's campaign
+and a handle nobody ever used are the same answer.
+
+**Nothing on the page counts.** The web version goes through the existing
+`CampaignRenderer`, not a second implementation, and it goes through it with no
+message — which is what removes the open pixel and the click rewriting. That is
+a correctness property rather than a preference: an open in the archive is not
+an open of the e-mail, and a click counted with no recipient behind it would be
+added to the campaign's rate as if somebody who received the mail had clicked.
+Both numbers would go up and mean less.
+
+**Personalisation resolves neutrally.** `{{ first_name }}` and `{{ name }}` come
+out as a configurable word (`archive.neutral_name`, translated by default)
+rather than as raw braces — the embarrassing failure — or as an empty string,
+which turns `Hallo {{ first_name }},` into `Hallo ,` on a page search engines
+index. `{{ email }}` stays empty: there is no address this copy went to, and a
+made-up one in "this mail was sent to …" is worse than a gap.
+
+The page is served with `default-src 'none'` and no script source, so a
+`<script>` that reaches a template cannot run against the site's origin. It is
+deliberately *not* the CP preview's `sandbox`: an opaque origin is not something
+a page meant to be read and shared can be.
+
+### Added — frequency caps, and the classification they rest on
+
+An upper bound on how much marketing mail one contact receives in a rolling
+window — three in seven days, by default, once switched on.
+
+**The exceptions are the rule, so they are a contract.**
+`Goldnead\Marketing\Contracts\MailClass` names four kinds of outgoing mail —
+`marketing`, `transactional`, `digest`, `reminder` — and the cap acts on
+`marketing` alone. A community digest is the rhythm somebody subscribed to, not
+the extra mail the cap exists to limit, so counting it would mean the digest ate
+the budget and silenced everything else. A password reset is somebody waiting on
+a screen. An event reminder that arrives late is a missed event, not a quieter
+inbox. None of that can be decided by whichever addon happens to be sending, so
+the class travels with the mail and any package in the family can name one
+through `Goldnead\Marketing\Contracts\FrequencyCap`.
+
+Unknown or absent reads as `marketing`. Forgetting to classify costs a delay;
+it never buys an exemption nobody asked for.
+
+**The decision is taken at the send, not at the enqueue.** A campaign snapshots
+its audience and hands the queue one job per recipient, and those jobs sit
+behind a throttle, a retry or a stopped worker — sometimes for days. Whether
+somebody has had their three mails is a fact about the moment the mail leaves.
+Both directions are tested: a recipient who was under the limit when the job was
+created and over it by the time it ran is held, and one who was over it then and
+under it now is sent.
+
+**A capped message is moved, not dropped.** It goes back on the queue and is
+tried again; only when its deferral budget runs out is it discarded — with
+`status = capped` on the row and a warning in the log naming the campaign, the
+recipient and the limit. Silent discarding is the version where somebody asks in
+three months why they never got the March issue and nobody can answer. `capped`
+is a different word from `skipped` on purpose: skipped means the address may not
+be mailed, capped means it may and was not.
+
+While a message is deferred it stays `pending`, which is load-bearing: a
+campaign is marked sent once nothing is pending, and a deferred message under
+any other status would let it report itself finished while people were still
+waiting.
+
+**On the `sync` connection there is no later.** A dispatch runs inline and a
+delay is ignored, so pushing a message back would re-enter the same code
+immediately and spend a three-day deferral budget inside one request, ending in
+a discard that reads as if three attempts had been made. There, the message is
+discarded once and the log says exactly why.
+
+Counting is keyed on the normalized address rather than the subscription:
+somebody on four lists is one person with one inbox, and per-subscription
+counting would have handed them four times the cap while the config still said
+three. The window is measured on one clock end to end — `now()` writes the log
+row and `now()->subHours()` reads it back — because Laravel's `datetime` cast
+serialises a zoned Carbon without converting it, and a window built on a value
+that crossed a timezone is wrong at both edges by that offset. There is a test
+that runs the whole flow in Europe/Berlin.
+
+The cap falls **open**: a check that cannot be answered lets the mail through
+and says so in the log. That is the deliberate opposite of the suppression gate,
+which falls closed and aborts the campaign. Suppression is the only thing
+between a send and an address that said no; the cap is between a send and
+somebody who has been hearing from us a lot, and refusing to send because a
+count failed would trade a real delivery failure for a hypothetical annoyance.
+
+**Visible at the contact.** Where a cap is configured, each subscriber row shows
+how many marketing mails they have had inside the window against the limit, and
+how many campaigns have actually been held back from them. Without it, "capped"
+on a campaign report names a message that nobody can trace back to a person.
+
+### Changed
+
+- `SendMessageJob::handle()` takes a fifth argument, the `FrequencyCap`. The
+  gate order in the send path is now suppression → what the reader has said they
+  want → the cap, which is the order in which "never", "no" and "not yet" have
+  to be asked.
+- The archive route uses `{marketingCampaign}` rather than `{campaign}`. Route
+  parameter names are application-wide, and `campaign` is a word half this
+  family could reach for; a sibling binding it would resolve our handle against
+  its own repository and 404 every archive page. The name never appears in a
+  URL, so the prefix costs nothing.
+
 ### Fixed — every tracked link in a campaign sent through Brevo was a 403
 
 Brevo rewrites every `href` in the HTML part of a message onto its own click counter, and when that
