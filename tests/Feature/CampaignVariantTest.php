@@ -2,6 +2,7 @@
 
 use Goldnead\BrandContext\Facades\BrandContext;
 use Goldnead\BrandContext\Models\Brand;
+use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -14,6 +15,7 @@ use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Goldnead\Marketing\Services\VariantAssigner;
+use Goldnead\Suppression\Contracts\Gate;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -146,8 +148,8 @@ it('does not reassign or duplicate a variant when the start job runs again', fun
 
     $run = fn () => (new StartCampaignJob('juli'))->handle(
         app(CampaignRepository::class),
-        app(\Goldnead\Leadhub\Contracts\Repositories\ContactRepository::class),
-        app(\Goldnead\Suppression\Contracts\Gate::class),
+        app(ContactRepository::class),
+        app(Gate::class),
         app(VariantAssigner::class),
     );
 
@@ -193,8 +195,8 @@ it('rebuilds the identical assignment after the message rows are destroyed', fun
 
     (new StartCampaignJob('juli'))->handle(
         app(CampaignRepository::class),
-        app(\Goldnead\Leadhub\Contracts\Repositories\ContactRepository::class),
-        app(\Goldnead\Suppression\Contracts\Gate::class),
+        app(ContactRepository::class),
+        app(Gate::class),
         app(VariantAssigner::class),
     );
 

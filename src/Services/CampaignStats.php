@@ -6,6 +6,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
+use Illuminate\Database\Eloquent\Builder;
 
 class CampaignStats
 {
@@ -80,10 +81,10 @@ class CampaignStats
     }
 
     /**
-     * @param  \Illuminate\Database\Eloquent\Builder  $base  a message query,
-     *                                                       already narrowed to
-     *                                                       whatever is being
-     *                                                       measured
+     * @param  Builder  $base  a message query,
+     *                         already narrowed to
+     *                         whatever is being
+     *                         measured
      * @return array{recipients:int, sent:int, failed:int, skipped:int, pending:int,
      *               opened:int, open_rate:float, clicked:int, click_rate:float,
      *               bounced:int, unsubscribed:int}
