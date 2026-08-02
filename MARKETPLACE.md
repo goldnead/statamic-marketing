@@ -10,19 +10,19 @@ Source material for the Statamic Marketplace listing.
 
 ## Tagline / Short Description
 
-Email marketing and newsletters native to Statamic — mailing lists, double opt-in, campaigns, batch sending, and open/click tracking, right inside your Control Panel.
+Email marketing and newsletters native to Statamic: mailing lists, double opt-in, campaigns, batch sending, and open/click tracking, right inside your Control Panel.
 
 ## Long Description
 
 Statamic Marketing is a Mailcoach-style email marketing engine built specifically for Statamic. Instead of syncing your audience to an external newsletter SaaS and composing campaigns in someone else's editor, everything lives where your content already is: lists, templates, and campaigns as flat YAML files under `content/marketing/` (version-controlled, the Statamic way), campaigns written in Antlers, and a Control Panel that feels exactly like the rest of Statamic 6 (Inertia + Vue 3 + the native `@statamic/cms` UI).
 
-Subscribers are [LeadHub](https://github.com/goldnead/statamic-leadhub) contacts — every signup, confirmation, and unsubscribe lands on the contact's timeline, tags the contact with the list, and respects the CRM's do-not-contact flag. Delivery runs through your own Laravel mailer (SES, Mailgun, Postmark, SMTP, …) via queued jobs with a configurable throttle. Opens and clicks are tracked first-party — an open pixel and signed redirect links, no third-party tracking domain.
+Subscribers are [LeadHub](https://github.com/goldnead/statamic-leadhub) contacts. Every signup, confirmation, and unsubscribe lands on the contact's timeline, tags the contact with the list, and respects the CRM's do-not-contact flag. Delivery runs through your own Laravel mailer (SES, Mailgun, Postmark, SMTP, …) via queued jobs with a configurable throttle. Opens and clicks are tracked first-party: an open pixel and signed redirect links, no third-party tracking domain.
 
 Compliance is built in: per-list double opt-in with tokenized confirmation links, one-click unsubscribe headers (RFC 8058), tokenized unsubscribe pages, and automatic opt-outs on hard bounces and spam complaints (fed by your ESP's webhooks through Webhook Manager).
 
 ## Positioning Sentence
 
-Your audience, your content, your mail server — newsletters shouldn't require renting your subscriber list back from a SaaS. Statamic Marketing keeps the whole loop inside Statamic.
+Your audience, your content, your mail server. Newsletters shouldn't require renting your subscriber list back from a SaaS. Statamic Marketing keeps the whole loop inside Statamic.
 
 ## Key Features
 
@@ -47,8 +47,8 @@ Your audience, your content, your mail server — newsletters shouldn't require 
 
 ## Who It's *Not* For
 
-- High-volume ESP replacement (millions of sends/day) — bring a transactional provider and throttle accordingly
-- Teams that need a drag-and-drop email designer — templates are hand-crafted HTML/Antlers
+- High-volume ESP replacement (millions of sends/day): bring a transactional provider and throttle accordingly
+- Teams that need a drag-and-drop email designer: templates are hand-crafted HTML/Antlers
 
 ## Requirements
 
@@ -60,14 +60,14 @@ Your audience, your content, your mail server — newsletters shouldn't require 
 
 | File | Caption |
 | --- | --- |
-| `screenshots/dashboard.png` | Marketing dashboard — audience and recent campaign performance at a glance |
+| `screenshots/dashboard.png` | Marketing dashboard: audience and recent campaign performance at a glance |
 | `screenshots/lists.png` | Mailing lists with double-opt-in status and live subscriber counts |
-| `screenshots/list.png` | List detail — subscriber management, filters, and stats |
-| `screenshots/campaign-edit.png` | Campaign composer — Antlers content, sender, scheduling, test send |
-| `screenshots/campaign-report.png` | Campaign report — delivery, open & click rates, per-recipient log |
+| `screenshots/list.png` | List detail: subscriber management, filters, and stats |
+| `screenshots/campaign-edit.png` | Campaign composer: Antlers content, sender, scheduling, test send |
+| `screenshots/campaign-report.png` | Campaign report: delivery, open & click rates, per-recipient log |
 | `screenshots/templates.png` | Reusable HTML email templates |
 
 ## Art
 
-- `art/icon.svg` / `art/icon.png` — addon icon (512×512)
-- `art/cover.png` — marketplace cover (1200×630), source: `art/cover.html`
+- `art/icon.svg` / `art/icon.png`: addon icon (512×512)
+- `art/cover.png`: marketplace cover (1200×630), built from `art/cover.html`

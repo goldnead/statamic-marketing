@@ -6,6 +6,12 @@ use Goldnead\BrandContext\Concerns\HasBrand;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
 
+/**
+ * @property string|null $variant The A/B bucket this message was assigned to
+ *                                ('a' / 'b'), decided once at the audience
+ *                                snapshot. NULL means the message took no part
+ *                                in an A/B test.
+ */
 class Message extends Model
 {
     use HasBrand;
@@ -52,6 +58,18 @@ class Message extends Model
     public function scopeForCampaign($query, string $campaignHandle)
     {
         return $query->where('campaign_handle', $campaignHandle);
+    }
+
+    /**
+     * The messages of one A/B variant.
+     *
+     * This is the join the whole feature rests on: opens, clicks, bounces and
+     * unsubscribes all hang off a message, so narrowing messages to a variant
+     * narrows every one of those with them.
+     */
+    public function scopeForVariant($query, string $variant)
+    {
+        return $query->where('variant', $variant);
     }
 
     public function scopePending($query)
