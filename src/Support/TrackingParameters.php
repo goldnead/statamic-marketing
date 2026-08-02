@@ -79,7 +79,7 @@ final class TrackingParameters
                 continue;
             }
 
-            if (static::isReserved($parameter)) {
+            if (self::isReserved($parameter)) {
                 continue;
             }
 

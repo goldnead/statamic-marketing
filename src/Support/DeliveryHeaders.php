@@ -51,7 +51,7 @@ final class DeliveryHeaders
     {
         $headers = $message->getHeaders();
 
-        foreach (static::configured() as $name => $value) {
+        foreach (self::configured() as $name => $value) {
             if ($headers->has($name)) {
                 continue;
             }
