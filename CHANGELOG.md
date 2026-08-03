@@ -1,12 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.10.0 — 2026-08-03
 
 <!--
-    Everything below this line is v1.10.0. Both features are additive and both
-    ship inert: the frequency cap is off, and no campaign is in the archive
-    until somebody puts it there. A `composer update` therefore changes neither
-    what is sent nor what is public.
+    Both features are additive and both ship inert: the frequency cap is off,
+    and no campaign is in the archive until somebody puts it there. A
+    `composer update` therefore changes neither what is sent nor what is public.
 -->
 
 ### Added — the newsletter web archive
