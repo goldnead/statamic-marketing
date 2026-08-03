@@ -27,6 +27,16 @@ use Illuminate\Support\Str;
  *                         filled on create like $uuid. Declared here rather than
  *                         baselined per call site, because six files read it and
  *                         Support\PreferenceLink hands it to two addons.
+ * @property string $email The address as the subscriber wrote it. What a mail
+ *                         is addressed to; $email_normalized is what it is
+ *                         compared by, and the two are not interchangeable.
+ * @property string $list_handle The list this subscription belongs to, which is
+ *                               where its consent comes from.
+ * @property string|null $contact_uuid The LeadHub contact, once the
+ *                                     subscription has been confirmed and
+ *                                     synced. Null on a pending sign-up — a
+ *                                     shortcut to the person, never the
+ *                                     identity itself.
  */
 class Subscription extends Model
 {
