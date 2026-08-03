@@ -20,6 +20,7 @@ parameters:
     # simply not autoloadable in an install without the optional sibling.
     scanFiles:
         - .phpstan/webhook-manager-stubs.php
+        - .phpstan/automations-stubs.php
 
     # The three sibling addons are private packages resolved from GitHub. Where
     # one of them is genuinely optional (email-templates, automations,
