@@ -1,5 +1,85 @@
 # Changelog
 
+## Unreleased
+
+<!--
+    Additive. Nothing existing sends differently: the new node is a node
+    somebody has to place, and the one-recipient send path is new code that no
+    existing caller reaches.
+-->
+
+### Added — `marketing.send_email`, the send node a sequence is built out of
+
+`goldnead/statamic-automations` can already do the timing a sequence needs —
+delays, wait-until windows, branches, brands. What it could not do was send a
+*marketing* mail, because everything that makes one different from an ordinary
+mail is this addon's domain: which list carries the consent, whether the
+address is suppressed, whether the person has opted out, and whether they have
+already had their three mails this week.
+
+So the node lives here and is contributed to the builder, rather than
+`automations` learning what a newsletter is. It sends one campaign to the
+contact the run is about, through `Sending\SingleSend`, which asks the four
+questions in the order the send path has always asked them:
+
+1. **Consent** — a subscribed subscription on the configured list, or nothing
+   is sent. Not even to an address the flow otherwise knows perfectly well.
+2. **Suppression** — the hard no, and the only gate that fails *closed*: a
+   check that cannot be answered blocks the send.
+3. **Opt-out** — LeadHub's `do_not_contact`, which is what the preference
+   centre and an editor's manual opt-out both write. Also fail-closed.
+4. **Frequency cap** — last, because it is the only one that says "later"
+   rather than "no", and there is no point deferring a mail to an address that
+   may never receive it at all.
+
+**This is not `ThrottleNode`.** That node throttles one flow. The cap counts a
+*person's* marketing mail across every flow, every campaign and every broadcast
+in the same brand — two sequences that each throttle themselves correctly still
+add up to six mails a week for somebody who is in both. Only a node on the
+marketing send path can see that.
+
+**And not `automations`' own `send_email`**, which stays domain-neutral: an
+address, a subject, a body, and no opinion about consent, because it is also
+how a site sends a password reset.
+
+What a gate answers turns into what the run does:
+
+- *Blocked* ends the run. Not "skip this mail and carry on to the next one":
+  every later step of a marketing sequence is more marketing mail.
+- *Capped* pauses the run and asks again later — the same deferral budget the
+  campaign path spends, so a reader is held back for the same length of time
+  whether the mail came from a broadcast or from a sequence.
+- *Out of deferrals* sends nothing, lets the flow continue, and writes a
+  warning naming the recipient and the campaign, so somebody asking in three
+  months why the third mail never arrived can be answered.
+
+The mail is an ordinary campaign — authored in the campaign editor, left in
+draft — and the send writes a real `marketing_messages` row, so opens, clicks,
+bounces, the unsubscribe link and the ESP feedback loop all work exactly as
+they do for a broadcast. The campaign is never marked sent, because it is the
+content of a step rather than a broadcast that happened.
+
+### Added — `Sending\SingleSend`
+
+The marketing send path for exactly one recipient: `StartCampaignJob` +
+`SendMessageJob` with the fan-out removed and all four gates kept. Usable on
+its own, and the reason the node above is thin enough to read.
+
+### Changed
+
+- `Integrations\Automations\AutomationsBridge` registers the node as
+  **built-in** and contributes the `marketing.campaigns` / `marketing.lists`
+  option sources. Built-in because the node is this addon's own surface in the
+  builder; gating it behind the orchestrator's Pro licence would make a
+  marketing feature depend on an automations edition.
+- `Models\Subscription` carries `@property` annotations for `email`,
+  `list_handle` and `contact_uuid`.
+- `.phpstan/automations-stubs.php` keeps the new node inside level-5 analysis
+  even though the optional sibling is absent, exactly as the webhook-manager
+  stubs next door do. The live check that the class still satisfies the real
+  interface is `tests/Integration/AutomationsIntegrationTest.php`, run by
+  `scripts/test-siblings.sh`.
+
 ## 1.10.0 — 2026-08-03
 
 <!--
