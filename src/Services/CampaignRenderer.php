@@ -207,7 +207,7 @@ class CampaignRenderer
         $firstName = $subscription?->first_name;
         $lastName = $subscription?->last_name;
 
-        return [
+        return $this->withSubscriberAlias([
             'email' => $subscription?->email ?? 'preview@example.com',
             'first_name' => $firstName ?? '',
             'last_name' => $lastName ?? '',
@@ -224,7 +224,43 @@ class CampaignRenderer
                 'handle' => $list->handle,
                 'name' => $list->name,
             ],
+        ]);
+    }
+
+    /**
+     * The flat person variables, offered a second time under `subscriber.*`.
+     *
+     * Which variables a template may use depended on *which node sent it*. An
+     * automation's own nodes resolve their config against the run, where the
+     * person lives under `subscriber.*`; a `marketing.send_email` body is
+     * parsed against this flat array, where no `subscriber` key existed. Antlers
+     * resolves an unknown variable to the empty string, so a template written
+     * for one context rendered `Hallo ,` in the other — **silently**, with no
+     * error anywhere. That is what made it expensive: the mail went out, it just
+     * went out wrong. `subscriber` is marketing's own domain word, not an
+     * application placeholder, so offering it here is naming the same thing the
+     * way the surrounding system already names it.
+     *
+     * Derived from the array rather than rebuilt beside it, and applied last in
+     * both {@see variables()} and {@see archiveVariables()}. The two spellings
+     * therefore cannot drift: `archiveVariables()` overrides the flat person
+     * keys after the fact, and re-deriving is what keeps `subscriber.first_name`
+     * from still holding the recipient's name on a public archive page.
+     *
+     * @param  array<string, mixed>  $variables
+     * @return array<string, mixed>
+     */
+    protected function withSubscriberAlias(array $variables): array
+    {
+        $variables['subscriber'] = [
+            'email' => $variables['email'],
+            'first_name' => $variables['first_name'],
+            'last_name' => $variables['last_name'],
+            'name' => $variables['name'],
+            'unsubscribe_url' => $variables['unsubscribe_url'],
         ];
+
+        return $variables;
     }
 
     /**
@@ -260,12 +296,15 @@ class CampaignRenderer
     ): array {
         $neutral = $this->neutralName();
 
-        return array_merge($this->variables($campaign, $list, null, $subjectTemplate), [
-            'email' => '',
-            'first_name' => $neutral,
-            'last_name' => '',
-            'name' => $neutral,
-        ]);
+        return $this->withSubscriberAlias(array_merge(
+            $this->variables($campaign, $list, null, $subjectTemplate),
+            [
+                'email' => '',
+                'first_name' => $neutral,
+                'last_name' => '',
+                'name' => $neutral,
+            ]
+        ));
     }
 
     protected function neutralName(): string

@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added — the person is also addressable as `subscriber.*`
+
+Which merge variables a template could use depended on **which node sent it**.
+An automation resolves its own node config against the run, where the person
+lives under `subscriber.*`. A `marketing.send_email` body is parsed against the
+flat array from `CampaignRenderer::variables()`, which had no `subscriber` key.
+
+Antlers resolves an unknown variable to the empty string, so a template written
+for one context rendered its greeting empty in the other — with no error, no
+log line and no failed send. `Hallo {{ subscriber.first_name }},` became
+`Hallo ,` and the mail went out that way. That is what made it expensive to
+find on adriangoldner.com, and it would have hit every future template written
+for the marketing node.
+
+`variables()` now offers `email`, `first_name`, `last_name`, `name` and
+`unsubscribe_url` a second time under `subscriber.*`. `subscriber` is
+marketing's own domain word, not an application placeholder.
+
+The two spellings cannot drift: the alias is derived from the flat array rather
+than rebuilt beside it, and applied last in both `variables()` and
+`archiveVariables()` — the latter overrides the person keys after the fact, so
+re-deriving is what keeps a recipient's name off the public archive page.
+
 ## 1.12.0 — 2026-08-04
 
 ### Added — `marketing.send_email` sends a template, not only a campaign

@@ -69,7 +69,12 @@ Two things are required here that campaign mode does not need:
 The template is the mail. There is no content to inject: if the template prints
 `{{ content }}`, it renders nothing there. Marketing's own merge variables
 (`{{ first_name }}`, `{{ unsubscribe_url }}`, `{{ subject }}`, …) resolve inside
-it exactly as they do in a campaign, and tracking, the open pixel and the
+it exactly as they do in a campaign. The person is also available under
+`{{ subscriber.first_name }}`, `{{ subscriber.email }}` and so on, which is how
+an automation's own node config names them — so the same template body works
+whether the node that sends it is `marketing.send_email` or the domain-neutral
+`send_email`. Both spellings are derived from one set of values and cannot
+disagree. Tracking, the open pixel and the
 `List-Unsubscribe` header are applied the same way. A template reference that
 resolves to nothing is a **failure**, not a fallback layout — for a campaign the
 built-in layout is a reasonable frame around real content, but here it would
