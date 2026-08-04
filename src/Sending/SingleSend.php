@@ -143,11 +143,13 @@ class SingleSend
             return SingleSendResult::failed('template_unresolved', static::unresolvedTemplateMessage($template));
         }
 
+        $class ??= MailClass::Marketing;
+
         return $this->deliver(
-            $this->templateCampaign($template, $subject, $list, $class ?? MailClass::Marketing),
+            $this->templateCampaign($template, $subject, $list, $class),
             $list,
             $subscription,
-            $class ?? MailClass::Marketing,
+            $class,
             $reference ?? $template,
             campaignHandle: null,
             templateHandle: $template,

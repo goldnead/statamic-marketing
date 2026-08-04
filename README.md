@@ -76,7 +76,11 @@ Think Mailcoach, but native to Statamic and built on top of
     webhooks onto subscriptions.
   - *Automations*: triggers (`marketing.subscribed`, `marketing.unsubscribed`,
     `marketing.campaign_sent`) and actions (`marketing.subscribe`,
-    `marketing.unsubscribe`, `marketing.send_campaign`) in the visual builder.
+    `marketing.unsubscribe`, `marketing.send_campaign`, `marketing.send_email`)
+    in the visual builder. `marketing.send_email` is the node a drip sequence is
+    built out of: it sends one campaign — or one managed `et_template` — to the
+    contact in the run, through list consent, suppression, opt-out and the
+    frequency cap, in that order. See [docs/sequences.md](docs/sequences.md).
 
 ## Screenshots
 
