@@ -307,7 +307,13 @@ return [
     */
 
     'archive' => [
-        'enabled' => env('MARKETING_ARCHIVE', true),
+        // Off unless the site asks for it. The archive claims a readable path
+        // — `newsletter` by default — and a site that already has a page there
+        // would lose it to a `composer update`. That happened on
+        // adriangoldner.com, whose own /newsletter page stopped rendering the
+        // moment this addon was upgraded. A package may not take a public URL
+        // from its host without being asked.
+        'enabled' => env('MARKETING_ARCHIVE', false),
         'prefix' => env('MARKETING_ARCHIVE_PREFIX', 'newsletter'),
         'title' => env('MARKETING_ARCHIVE_TITLE'),
         'neutral_name' => null,

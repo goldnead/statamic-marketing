@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.11.2 — 2026-08-04
+
+### Fixed — the archive took `/newsletter` from the host application
+
+The newsletter archive shipped **on** by default and registered its routes
+unconditionally. Both were wrong, and together they took a public URL from the
+site that installed this package.
+
+`adriangoldner.com` has its own `/newsletter` page. Upgrading this addon there
+stopped it rendering: two of the site's Inertia smoke tests began reporting
+"Not a valid Inertia response" for that exact path. The addon's archive index had
+won the route, during a `composer update`, without anyone being asked.
+
+Two changes:
+
+- **`marketing.archive.enabled` now defaults to `false`.** Set
+  `MARKETING_ARCHIVE=true` to switch it on. A package may not claim a readable
+  public path on installation.
+- **The routes are registered only when it is on.** Checking the flag inside the
+  controller was not enough — the route still existed and still matched first, so
+  a host page on that path was unreachable even with the archive switched off.
+
+Three tests pin it: no `marketing.archive.*` route exists while off, the
+configured prefix is left unclaimed, and a host route on `/newsletter` still
+answers.
+
+**A correction to the 1.10.0 entry.** It said both features "ship inert" and that
+a `composer update` "changes neither what is sent nor what is public". The first
+half was true of the frequency cap. The second was not true of the archive, and
+this release is what makes the sentence honest.
+
+Nothing else changed. Sites that want the archive set one environment variable.
+
 ## 1.11.1 — 2026-08-04
 
 ### Fixed — the addon could not be installed on a current Statamic 6 site

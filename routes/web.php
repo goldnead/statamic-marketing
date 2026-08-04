@@ -120,18 +120,24 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
  * not hypothetical, it is how goldnead/statamic-leadhub 1.8.0 shipped a delete
  * button that did nothing. The name never appears in a URL, so the cost is nil.
  */
-Route::prefix(config('marketing.archive.prefix', 'newsletter'))->group(function () {
-    Route::get('/', [ArchiveController::class, 'index'])
-        ->name('marketing.archive.index');
+// Registered only when the archive is on. Checking the flag inside the
+// controller is not enough: the route would still exist and still win against a
+// host route on the same path, so a site with its own /newsletter page lost it
+// even with the archive switched off.
+if (config('marketing.archive.enabled', false)) {
+    Route::prefix(config('marketing.archive.prefix', 'newsletter'))->group(function () {
+        Route::get('/', [ArchiveController::class, 'index'])
+            ->name('marketing.archive.index');
 
-    Route::get('/feed.xml', [ArchiveController::class, 'feed'])
-        ->name('marketing.archive.feed');
+        Route::get('/feed.xml', [ArchiveController::class, 'feed'])
+            ->name('marketing.archive.feed');
 
-    // No session, so no brand — derived from the handle, which addresses
-    // exactly one campaign across all brands. Same guarantee, same middleware
-    // and the same reasoning as the subscribe endpoint above.
-    Route::get('/{marketingCampaign}', [ArchiveController::class, 'show'])
-        ->name('marketing.archive.show')
-        ->where('marketingCampaign', '[a-z0-9_]+')
-        ->middleware(SetBrandFromListHandle::class.':marketingCampaign,'.HandleOwnership::CAMPAIGNS);
-});
+        // No session, so no brand — derived from the handle, which addresses
+        // exactly one campaign across all brands. Same guarantee, same middleware
+        // and the same reasoning as the subscribe endpoint above.
+        Route::get('/{marketingCampaign}', [ArchiveController::class, 'show'])
+            ->name('marketing.archive.show')
+            ->where('marketingCampaign', '[a-z0-9_]+')
+            ->middleware(SetBrandFromListHandle::class.':marketingCampaign,'.HandleOwnership::CAMPAIGNS);
+    });
+}

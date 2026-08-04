@@ -55,6 +55,12 @@ abstract class TestCase extends OrchestraTestCase
         // Marketing driver: flip via MARKETING_DRIVER for the flat/eloquent matrix.
         $app['config']->set('marketing.storage.driver', env('MARKETING_DRIVER', 'flat'));
 
+        // The archive ships off, because its routes claim a readable path and
+        // would take it from a host that already has a page there. The suite
+        // turns it on so the archive can be tested at all — and the fact that
+        // this line is needed is itself the assertion that it is off by default.
+        $app['config']->set('marketing.archive.enabled', true);
+
         $tmpRoot = sys_get_temp_dir().'/marketing-test-'.getmypid();
         $app['config']->set('marketing.storage.flat.path', $tmpRoot.'/content');
     }
