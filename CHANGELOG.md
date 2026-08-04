@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.11.1 — 2026-08-04
+
+### Fixed — the addon could not be installed on a current Statamic 6 site
+
+`symfony/yaml` was constrained to `^6.0|^7.0`, and so was `goldnead/statamic-leadhub`,
+which this package requires. Statamic 6.26 on Laravel 13 ships `symfony/yaml` v8, so
+`composer require goldnead/statamic-marketing` on a site created today failed to resolve
+with "the package is fixed to v8.1.2 by a partial update".
+
+Widened to `^6.0|^7.0|^8.0`, and the leadhub requirement now resolves to v1.12.1, which
+carries the same widening. The addon uses exactly `Yaml::parse`, `Yaml::dump` and one
+`DUMP_*` constant, all unchanged across Symfony 6, 7 and 8. The suite runs green against
+v8.1.2: 311 passed, 2128 assertions, PHPStan and Pint clean.
+
+**How this was missed.** Installing the package into an empty directory succeeded, because
+Composer was free to pick `symfony/yaml` v7 there. A real Statamic site already has v8, and
+nothing can move it. An empty-directory install proves a package has *some* resolvable set,
+not that it fits the environment it is built for.
+
 ## 1.11.0 — 2026-08-04
 
 <!--
