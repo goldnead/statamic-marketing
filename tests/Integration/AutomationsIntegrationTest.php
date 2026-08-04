@@ -281,9 +281,12 @@ function seedTemplateNode(string $email = 'tpl@example.com'): void
 
 function templateNodeConfig(array $overrides = []): array
 {
+    // No `to`: the node falls back to the address the run is already about,
+    // which is how a sequence step is normally configured. Tokens in `to` are
+    // resolved by the runner before execute() ever sees the config, so a
+    // literal `{{ subscriber.email }}` here would be taken as an address.
     return array_merge([
         'template' => 'welcome-sequenz-1-willkommen',
-        'to' => '{{ subscriber.email }}',
         'subject' => '{{ subscriber.first_name }}, schön, dass du dabei bist',
         'list' => 'newsletter',
     ], $overrides);
