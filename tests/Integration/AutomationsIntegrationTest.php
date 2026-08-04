@@ -1,12 +1,16 @@
 <?php
 
+use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
+use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Integrations\Automations\Actions\SendMarketingEmailAction;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\MailLogEntry;
+use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
@@ -14,6 +18,7 @@ use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Models\Automation;
 use Goldnead\StatamicAutomations\Models\AutomationRun;
 use Goldnead\StatamicAutomations\Templates\TemplateRegistry;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function (): void {
@@ -136,7 +141,18 @@ it('contributes the marketing send node to the automations builder', function ()
 
     expect($described['kind'])->toBe('action')
         ->and($described['group'])->toBe('Marketing')
-        ->and(collect($described['schema'])->pluck('handle')->all())->toBe(['campaign', 'list', 'to']);
+        ->and(collect($described['schema'])->pluck('handle')->all())
+        ->toBe(['campaign', 'template', 'subject', 'list', 'to', 'mail_class']);
+
+    // `campaign` stopped being `required` in 1.12.0, and that is not a
+    // loosening. Either it or `template` has to be set, and a form that demands
+    // both cannot express the node at all — so the either/or moved to
+    // execute(), where it can name which of the two mistakes was made.
+    $fields = collect($described['schema'])->keyBy('handle');
+
+    expect($fields['campaign']['required'])->toBeFalse()
+        ->and($fields['template']['required'])->toBeFalse()
+        ->and($fields['mail_class']['default'])->toBe('marketing');
 });
 
 it('sends a campaign to the contact in the run, through the marketing gates', function (): void {
@@ -234,6 +250,280 @@ it('pauses the run instead of dropping a mail the frequency cap holds back', fun
 
     // And the run is re-executed at this node rather than skipped past it.
     expect(SendMarketingEmailAction::reexecuteOnResume())->toBeTrue();
+});
+
+/*
+ * Template mode — the reason 1.12.0 exists.
+ *
+ * A site whose welcome mails are `et_templates` (a recipient, a subject, a
+ * template slug) could not put them through this node at all and put them
+ * through the domain-neutral `send_email` in `automations` instead, which asks
+ * nobody anything. What follows is that configuration, arriving at this node,
+ * and the gates it now has to pass.
+ */
+
+function seedTemplateNode(string $email = 'tpl@example.com'): void
+{
+    app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter', doubleOptIn: false));
+
+    app(EmailTemplateRepository::class)->save(new EmailTemplate(
+        handle: 'welcome-sequenz-1-willkommen',
+        name: 'Willkommen',
+        html: '<html><body><p>Hallo {{ first_name }}.</p></body></html>',
+    ));
+
+    app(SubscriptionService::class)->subscribe(
+        app(MailingListRepository::class)->find('newsletter'),
+        $email,
+        ['first_name' => 'Tina'],
+    );
+}
+
+function templateNodeConfig(array $overrides = []): array
+{
+    return array_merge([
+        'template' => 'welcome-sequenz-1-willkommen',
+        'to' => '{{ subscriber.email }}',
+        'subject' => '{{ subscriber.first_name }}, schön, dass du dabei bist',
+        'list' => 'newsletter',
+    ], $overrides);
+}
+
+it('sends a managed email template through the marketing gates', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com', 'first_name' => 'Tina']]),
+        templateNodeConfig(),
+    );
+
+    Mail::assertSent(CampaignMail::class, 1);
+
+    expect($result->isSuccess())->toBeTrue()
+        ->and($result->output['sent'])->toBeTrue()
+        ->and($result->output['template'])->toBe('welcome-sequenz-1-willkommen')
+        ->and($result->output['email'])->toBe('tpl@example.com')
+        // No campaign key on this path, and no campaign row behind it either.
+        ->and($result->output)->not->toHaveKey('campaign');
+
+    $message = Message::query()->latest('id')->first();
+
+    expect($message->campaign_handle)->toBeNull()
+        ->and($message->template_handle)->toBe('welcome-sequenz-1-willkommen');
+});
+
+it('ends the flow when a template recipient has no consent on the list', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'stranger@example.com']]),
+        templateNodeConfig(['to' => 'stranger@example.com']),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isStopped())->toBeTrue()
+        ->and($result->output['reason'])->toContain('not on list');
+});
+
+it('does not send a template to a suppressed address', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $this->mock(SuppressionGate::class)->shouldReceive('isSuppressed')->andReturn(true);
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isStopped())->toBeTrue()
+        ->and($result->output['reason'])->toContain('suppression list');
+});
+
+it('does not send a template to a contact who has opted out', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $contact = app(ContactRepository::class)->findByEmailNormalized('tpl@example.com');
+    $contact->do_not_contact = true;
+    $contact->save();
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isStopped())->toBeTrue()
+        ->and($result->output['reason'])->toContain('opted out');
+});
+
+it('pauses a template send the frequency cap holds back', function (): void {
+    Mail::fake();
+
+    config()->set('marketing.frequency_cap.enabled', true);
+    config()->set('marketing.frequency_cap.max', 1);
+
+    seedTemplateNode();
+
+    MailLogEntry::query()->create([
+        'brand_id' => app('brand-context')->currentId(),
+        'email_normalized' => 'tpl@example.com',
+        'mail_class' => 'marketing',
+        'reference' => 'earlier',
+        'sent_at' => now(),
+    ]);
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isWaiting())->toBeTrue()
+        ->and($result->output['reason'])->toBe('frequency_cap')
+        ->and($result->output['template'])->toBe('welcome-sequenz-1-willkommen');
+});
+
+it('lets a transactional template past the cap and still caps a marketing one', function (): void {
+    Mail::fake();
+
+    config()->set('marketing.frequency_cap.enabled', true);
+    config()->set('marketing.frequency_cap.max', 1);
+
+    seedTemplateNode();
+
+    MailLogEntry::query()->create([
+        'brand_id' => app('brand-context')->currentId(),
+        'email_normalized' => 'tpl@example.com',
+        'mail_class' => 'marketing',
+        'reference' => 'earlier',
+        'sent_at' => now(),
+    ]);
+
+    $context = fn () => AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]);
+    $node = app('automations')->actions()->instance('marketing.send_email');
+
+    expect($node->execute($context(), templateNodeConfig(['mail_class' => 'marketing']))->isWaiting())
+        ->toBeTrue();
+
+    Mail::assertNothingSent();
+
+    expect($node->execute($context(), templateNodeConfig(['mail_class' => 'transactional']))->isSuccess())
+        ->toBeTrue();
+
+    Mail::assertSent(CampaignMail::class, 1);
+});
+
+it('reports a node that names both a campaign and a template', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    app(CampaignRepository::class)->save(new Campaign(
+        handle: 'welcome-1', name: 'Welcome 1', subject: 'Welcome',
+        listHandle: 'newsletter', content: '<p>Hi.</p>',
+    ));
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(['campaign' => 'welcome-1']),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isFailed())->toBeTrue()
+        ->and($result->error)->toContain('not both');
+});
+
+it('reports a node that names neither a campaign nor a template', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        ['to' => '{{ subscriber.email }}'],
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isFailed())->toBeTrue();
+});
+
+it('refuses a template node with no mailing list rather than sending unchecked', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(['list' => '']),
+    );
+
+    // The whole point of the mode. Without a list there is nothing to prove
+    // consent with, and this node's contract is that a marketing mail never
+    // goes out on that basis.
+    Mail::assertNothingSent();
+
+    expect($result->isFailed())->toBeTrue()
+        ->and(Message::query()->count())->toBe(0);
+});
+
+it('reports a broken template as a configuration error, in test mode too', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $node = app('automations')->actions()->instance('marketing.send_email');
+
+    $result = $node->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'tpl@example.com']]),
+        templateNodeConfig(['template' => 'does-not-exist-anywhere']),
+    );
+
+    Mail::assertNothingSent();
+
+    expect($result->isFailed())->toBeTrue();
+
+    // And a test run finds it, which is what a test run is for. An editor has
+    // to be told the node is broken by pressing Test, not three days later when
+    // the first person reaches that step.
+    $test = AutomationContext::make([]);
+    $test->setTestMode(true);
+
+    expect($node->execute($test, templateNodeConfig(['template' => 'does-not-exist-anywhere']))->isFailed())
+        ->toBeTrue();
+});
+
+it('previews a template send in test mode without consulting a gate', function (): void {
+    Mail::fake();
+
+    seedTemplateNode();
+
+    $context = AutomationContext::make([]);
+    $context->setTestMode(true);
+
+    $result = app('automations')->actions()->instance('marketing.send_email')
+        ->execute($context, templateNodeConfig(['mail_class' => 'reminder']));
+
+    Mail::assertNothingSent();
+
+    expect($result->isSuccess())->toBeTrue()
+        ->and($result->output['preview']['template'])->toBe('welcome-sequenz-1-willkommen')
+        ->and($result->output['preview']['list'])->toBe('newsletter')
+        ->and($result->output['preview']['mail_class'])->toBe('reminder');
 });
 
 it('runs a two-mail sequence as an ordinary node chain', function (): void {
