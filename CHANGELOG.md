@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.11.0 — 2026-08-04
 
 <!--
     Additive. Nothing existing sends differently: the new node is a node
