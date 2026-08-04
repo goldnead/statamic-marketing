@@ -16,6 +16,13 @@ use Illuminate\Support\Str;
  *                        carries and what a log line names.
  * @property string $email The address this message was addressed to, kept even
  *                         if the subscription is later corrected or deleted.
+ * @property string|null $campaign_handle The campaign this delivery belongs to.
+ *                                        NULL means it belongs to none — a
+ *                                        template send, which names its mail in
+ *                                        `template_handle` instead. Exactly one
+ *                                        of the two is ever set.
+ * @property string|null $template_handle The managed email template this mail
+ *                                        was, for a send that had no campaign.
  * @property int|null $brand_id Denormalised from the subscription at the
  *                              audience snapshot. It is what a queue worker
  *                              hands the frequency cap, because a worker has no
@@ -78,9 +85,23 @@ class Message extends Model
         return $this->hasMany(MessageEvent::class);
     }
 
+    /**
+     * The messages of one campaign.
+     *
+     * Unchanged, and deliberately blind to template sends: `campaign_handle` is
+     * NULL on those, and `where campaign_handle = ?` never matches NULL on any
+     * engine. A template send is not part of a campaign's numbers, so every
+     * report built on this scope stayed correct without being touched.
+     */
     public function scopeForCampaign($query, string $campaignHandle)
     {
         return $query->where('campaign_handle', $campaignHandle);
+    }
+
+    /** The messages sent from one managed email template. */
+    public function scopeForTemplate($query, string $templateHandle)
+    {
+        return $query->where('template_handle', $templateHandle);
     }
 
     /**
