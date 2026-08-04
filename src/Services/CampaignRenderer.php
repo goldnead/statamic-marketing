@@ -110,18 +110,46 @@ class CampaignRenderer
     /**
      * Resolve the layout HTML for a campaign's template reference.
      *
-     * When the optional email-templates addon is installed, a managed
-     * `email_templates` entry with a matching slug wins; the marketing
-     * template repository is the caller-supplied fallback (entry wins, file
-     * fallback). When the addon is absent, or the slug resolves to neither an
-     * entry nor a repository template, we fall back to the marketing template
-     * repository and finally the built-in layout. Raw legacy handles therefore
-     * keep resolving exactly as before — existing campaigns never break.
+     * A campaign whose template reference answers to nothing still goes out, in
+     * the built-in layout. That is right for a broadcast: the content is the
+     * mail, the template is the frame around it, and refusing to send a written
+     * campaign because a layout handle was renamed would be the more damaging
+     * failure. {@see findTemplateHtml()} is the same lookup without that
+     * fallback, for the caller where the template *is* the mail.
      */
     protected function resolveTemplateHtml(?string $handle): string
     {
-        if ($handle !== null && $handle !== ''
-            && class_exists(EmailTemplates::class)) {
+        $html = ($handle !== null && $handle !== '') ? $this->findTemplateHtml($handle) : null;
+
+        return $html ?? EmailTemplate::fallback()->html;
+    }
+
+    /**
+     * The layout HTML a template reference actually resolves to, or null when
+     * nothing answers to it.
+     *
+     * When the optional email-templates addon is installed, a managed
+     * `email_templates` entry with a matching slug wins; the marketing template
+     * repository is the caller-supplied fallback (entry wins, file fallback).
+     * When the addon is absent, or the slug resolves to neither an entry nor a
+     * repository template, only the repository is consulted. Raw legacy handles
+     * therefore keep resolving exactly as before — existing campaigns never
+     * break.
+     *
+     * Null is the answer this method exists for. A template-mode send names its
+     * template and has no content of its own, so quietly substituting the
+     * built-in layout would deliver an empty mail under a subject a reader
+     * recognises. The caller has to be able to tell the difference between "the
+     * template says this" and "there is no such template", and only an
+     * unfalsified lookup can tell it.
+     */
+    public function findTemplateHtml(string $handle): ?string
+    {
+        if ($handle === '') {
+            return null;
+        }
+
+        if (static::emailTemplatesInstalled()) {
             $resolved = EmailTemplates::resolve(
                 $handle,
                 function (string $slug): ?array {
@@ -136,9 +164,20 @@ class CampaignRenderer
             }
         }
 
-        $template = ($handle !== null && $handle !== '') ? $this->templates->find($handle) : null;
+        return $this->templates->find($handle)?->html;
+    }
 
-        return ($template ?? EmailTemplate::fallback())->html;
+    /**
+     * Is `goldnead/statamic-email-templates` installed?
+     *
+     * `class_exists` on the facade class itself, which is an ordinary class and
+     * answers honestly. Note that `method_exists()` on a facade does not: every
+     * call it is asked about goes through `__callStatic` and is not declared,
+     * so it reports false for methods that work perfectly well.
+     */
+    public static function emailTemplatesInstalled(): bool
+    {
+        return class_exists(EmailTemplates::class);
     }
 
     /**
