@@ -32,10 +32,58 @@ campaign and every broadcast in the same brand. Two sequences that each throttle
 themselves correctly still add up to six mails a week for somebody who is in
 both. Only a node on the marketing send path can see that.
 
+## Two ways to write the mail
+
+Sites write their sequence mails in one of two places, and the node takes
+either. **Exactly one of `Campaign` and `Email template` is set.** Both is two
+different answers to "what is this mail"; neither is no answer at all, and both
+are configuration errors that a *test run* reports — an editor finds out a node
+is broken by pressing Test, not three days later when the first person reaches
+that step.
+
+### Campaign mode
+
+The mail is a campaign, left in draft. It carries its own subject, content,
+layout, list and classification.
+
+### Template mode
+
+The mail is a managed email template from `goldnead/statamic-email-templates`
+(`et_templates`), addressed to one person. This is the shape the domain-neutral
+`send_email` node in `automations` uses — `to`, `subject`, `template` — so a
+site that already writes its welcome mails that way can move them onto this node
+unchanged, which is the whole point: until 1.12.0 they could not, and every one
+of them was going out through the neutral node without consent, suppression,
+opt-out or the cap ever being asked.
+
+Two things are required here that campaign mode does not need:
+
+- **Mailing list.** Not optional. A campaign carries its own list and a template
+  carries none, so without this field there is nothing to prove the recipient
+  ever agreed to be mailed — and a marketing mail may not go out on that basis.
+  The node refuses rather than sending unchecked.
+- **Subject.** A campaign brings one; a template is a layout. The node's subject
+  is the mail's subject, and a subject stored on the template entry itself is
+  not consulted.
+
+The template is the mail. There is no content to inject: if the template prints
+`{{ content }}`, it renders nothing there. Marketing's own merge variables
+(`{{ first_name }}`, `{{ unsubscribe_url }}`, `{{ subject }}`, …) resolve inside
+it exactly as they do in a campaign, and tracking, the open pixel and the
+`List-Unsubscribe` header are applied the same way. A template reference that
+resolves to nothing is a **failure**, not a fallback layout — for a campaign the
+built-in layout is a reasonable frame around real content, but here it would
+deliver an empty mail under a subject the reader recognises.
+
+Without the email-templates package installed, template mode still resolves
+against marketing's own template repository. A slug that answers to neither
+fails with a message naming the missing package, rather than a fatal error.
+
 ## Setting one up
 
-1. Write each mail as an ordinary **campaign** and leave it in draft. The
-   campaign is the content of a step; a sequence never queues it to the list.
+1. Write each mail — as an ordinary **campaign** left in draft, or as an
+   **et_template**. A campaign is the content of a step; a sequence never queues
+   it to the list.
 2. Build the flow in Automations: a trigger, then `Send Marketing Email`, then
    `Delay`, then the next one.
 3. Set the trigger's **Re-entry** rule. A welcome series wants *Ignore — only
@@ -45,9 +93,12 @@ The node's fields:
 
 | Field | Meaning |
 |---|---|
-| **Campaign** | The campaign whose subject, content and template make up this mail. |
-| **Mailing list** | Where consent comes from. Empty uses the campaign's own list. |
+| **Campaign** | Campaign mode. The campaign whose subject, content and template make up this mail. |
+| **Email template** | Template mode. The `et_templates` slug to send instead. |
+| **Subject** | Template mode only, and required there. Tokenable. |
+| **Mailing list** | Where consent comes from. Campaign mode: empty uses the campaign's own list. Template mode: required. |
 | **Recipient** | Empty uses the address the run is already about (`{{ subscriber.email }}`, `{{ contact.email }}`, `{{ email }}`). |
+| **Classification** | Template mode only: `marketing` (capped) / `transactional` / `digest` / `reminder`. Defaults to `marketing`. Campaign mode ignores it and takes the campaign's own. |
 
 ## What the node actually does
 
@@ -64,10 +115,11 @@ four gates kept, asked in the order the send path has always asked them:
    than "no", and there is no point deferring a mail to an address that may
    never receive it at all.
 
-The classification is the campaign's own `mail_class`, which defaults to
-`marketing` — so a mail nobody classified is capped rather than exempt, and a
-campaign declared `digest` or `reminder` keeps its exemption here exactly as it
-does on the broadcast path.
+The classification in campaign mode is the campaign's own `mail_class`; in
+template mode it is the node's **Classification** field. Both default to
+`marketing` — so a mail nobody classified is capped rather than exempt — and a
+mail declared `digest` or `reminder` keeps its exemption here exactly as it does
+on the broadcast path.
 
 ## What happens when a gate says no
 
@@ -83,6 +135,16 @@ Every send writes a `marketing_messages` row, so opens, clicks, bounces, the
 unsubscribe link, the `List-Unsubscribe` header and the ESP feedback loop all
 work exactly as they do for a broadcast, and the mail appears in the recipient's
 own history.
+
+A **template send has no campaign**, and its row says so: `campaign_handle` is
+`NULL` and `template_handle` holds the slug. That is the honest encoding and
+also the useful one. Every campaign report is a `where campaign_handle = ?`,
+which never matches `NULL` on any engine, so a template mail stays out of numbers
+it was never part of — without a single one of those queries being changed. A
+placeholder handle would have been included in all of them as a campaign that
+does not exist. `template_handle` is what keeps the row self-describing: "which
+mail was this" is the first question a bounce, a complaint or a support request
+asks, and it has to be answerable from the row alone.
 
 The campaign itself is **never marked sent**. It is the content of a step, not a
 broadcast that happened — and a campaign flipped to `sent` would drop out of

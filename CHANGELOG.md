@@ -1,5 +1,93 @@
 # Changelog
 
+## 1.12.0 — 2026-08-04
+
+### Added — `marketing.send_email` sends a template, not only a campaign
+
+The node demanded a campaign handle. It was built for sequences in which every
+mail is a campaign, and where a site writes its mails that way it was right.
+
+`adriangoldner.com` does not. Its marketing mails are managed email templates
+(`et_templates`), and its automations configure them the way the domain-neutral
+`send_email` node in `automations` takes them:
+
+```php
+'to'       => '{{ subscriber.email }}'
+'subject'  => '{{ subscriber.first_name }}, schön, dass du dabei bist'
+'template' => 'welcome-sequenz-1-willkommen'
+```
+
+Recipient plus template, not campaign. So the site's seven marketing mails could
+not use this node at all and went out through the neutral one instead — which
+asks nobody whether the recipient wants marketing mail, because it is also how a
+site sends a password reset. Seven live marketing mails with no consent check,
+no suppression check, no opt-out check and no frequency cap. The node was
+correct and unusable, and that is the defect this release fixes.
+
+**Template mode.** `template` + `to` + `subject` + `list`, alongside the
+existing `campaign` + optional `list`. Exactly one of `campaign` and `template`:
+both is two different answers to "what is this mail", neither is no answer at
+all, and both are reported as configuration errors — before the test-mode
+branch, so pressing **Test** finds a broken node rather than the first person to
+reach that step three days later.
+
+**The gates are unchanged, in both modes.** Consent (list subscription) →
+suppression (fail-closed) → LeadHub `do_not_contact` (fail-closed) → frequency
+cap. `SingleSend::sendTemplate()` is `send()` with the campaign replaced by the
+three things a template send actually has; everything between the gates and the
+delivery is shared code, so the two modes cannot drift apart.
+
+**`list` is required in template mode**, where it was optional in campaign mode.
+A campaign carries its own list; a template carries none. Without one there is
+nothing to prove the recipient ever agreed to be mailed, and the node refuses
+rather than sending unchecked — this is the one place the new mode is stricter
+than the old one, deliberately.
+
+**A `mail_class` field**, defaulting to `marketing`. Campaign mode still takes
+`Campaign::mailClass()` and ignores this field. Template mode has no campaign to
+ask, so the node states it, and the cap exceptions (`transactional`, `digest`,
+`reminder`) work exactly as they do on the broadcast path. Anything unrecognised
+reads as `marketing`: forgetting to classify a mail costs a delay, never an
+exemption nobody asked for.
+
+**A template that resolves to nothing fails.** The campaign path falls back to
+the built-in layout for an unknown template handle, which is right there — the
+content is the mail and the layout is the frame. Here the template *is* the mail,
+and the same fallback would deliver an empty one under a subject the reader
+recognises. `statamic-email-templates` stays optional: without it, template mode
+resolves against marketing's own template repository, and a slug that answers to
+neither fails with a message naming the missing package instead of a fatal error
+on its facade.
+
+### Changed — a `marketing_messages` row may belong to no campaign
+
+`campaign_handle` becomes nullable and `template_handle` is added beside it.
+Exactly one of the two is set on every row.
+
+A template send has no campaign — not a draft one, not a hidden one, not a
+synthetic handle that resolves to nothing — and `NULL` says that literally.
+It is also the useful encoding: `Message::forCampaign()` and every campaign
+report are a `where campaign_handle = ?`, which never matches `NULL` on any
+engine, so a template mail stays out of numbers it was never part of without a
+single one of those queries being touched. A placeholder handle would have been
+counted by all of them as a campaign that does not exist.
+
+`template_handle` keeps the row self-describing. "Which mail was this" is the
+first question a bounce, a complaint or a support request asks, and it has to be
+answerable from the row alone.
+
+The migration is additive and carries existing rows and indexes through SQLite's
+table rebuild; `tests/Migrations/CampaignlessMessagesTest.php` runs a populated
+1.6.3 install forward and checks both.
+
+### Note
+
+`campaign` is no longer marked `required` in the node's schema. That is not a
+loosening — a form that demands both fields cannot express a node that takes
+exactly one of them, so the rule moved into `execute()`, where it can say which
+of the two mistakes was made. Existing campaign-mode nodes are unaffected in
+every respect: same config, same gates, same classification, same message row.
+
 ## 1.11.2 — 2026-08-04
 
 ### Fixed — the archive took `/newsletter` from the host application
