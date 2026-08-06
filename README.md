@@ -359,4 +359,4 @@ Setup notes, in case something fails at an import rather than at an assertion:
 
 ## License
 
-MIT
+Commercial license. See [LICENSE](LICENSE).

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed — the licence is now proprietary
+
+This is a paid Marketplace addon. `composer.json` declares `proprietary` and the
+licence file carries the commercial addon licence instead of MIT. Entitlement is
+enforced by the Statamic Marketplace, not by code in this package.
+
+Tags up to and including `v1.13.0` remain MIT. The change takes effect with the next
+release.
+
 ## 1.13.0 — 2026-08-05
 
 ### Added — the person is also addressable as `subscriber.*`
