@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.1 — 2026-08-09
+
+### Fixed — the sibling constraint excluded the new majors
+
+`goldnead/statamic-leadhub` was pinned to `^1.4` to the 1.x line. LeadHub 2.0.0 and Marketing 2.0.0 carry no code change over 1.12.2
+and 1.13.0 — that major is the licence switch alone. A site running both this package and an
+updated sibling could not resolve its dependencies at all. The constraints now accept both
+lines.
+
 ## 2.0.0 — 2026-08-09
 
 ### Changed — the licence is now proprietary

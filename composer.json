@@ -25,7 +25,7 @@
     },
     "require": {
         "goldnead/statamic-brand-context": "^1.4",
-        "goldnead/statamic-leadhub": "^1.4",
+        "goldnead/statamic-leadhub": "^1.4|^2.0",
         "goldnead/statamic-suppression": "^1.0",
         "inertiajs/inertia-laravel": "^1.0|^2.0",
         "laravel/framework": "^12.0|^13.0",
