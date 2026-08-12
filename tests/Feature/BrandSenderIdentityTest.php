@@ -3,13 +3,16 @@
 use Goldnead\BrandContext\Facades\BrandContext;
 use Goldnead\BrandContext\Models\Brand;
 use Goldnead\BrandContext\Sending\SenderIdentity;
+use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
+use Goldnead\Marketing\Sending\SingleSend;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -433,4 +436,130 @@ it('lets the host application answer the question its own way', function (): voi
 
     expect(($this->mails)('marke_b')[0]->getOriginalMessage()->getFrom()[0]->getAddress())
         ->toBe('host@example.com');
+});
+
+/**
+ * Was aus einer Verweigerung wird, je nachdem wer gefragt hat.
+ *
+ * `BrandMailer::send()` gibt seit 2.2.0 zurück, ob die Mail rausging, und die
+ * vier Aufrufstellen behandeln das absichtlich unterschiedlich: ein Fanout
+ * schreibt eine Fehlerzeile und macht weiter, das Anmeldeformular lässt die
+ * `pending`-Zeile stehen, der CP-Testversand wirft, weil dort ein Mensch auf
+ * eine Antwort wartet. Bis hierher stand das nur im Code — und der teuerste
+ * Teil daran, dass eine nicht versandte Mail das Kontingent der Empfängerin
+ * nicht verbraucht, hing an einer Zeilenreihenfolge.
+ */
+function markeMitHalbemPaar(): Brand
+{
+    return Brand::create([
+        'handle' => 'halbes-paar',
+        'name' => 'Halbes Paar',
+        'settings' => ['mail' => ['mailer' => 'marke_b']],
+    ]);
+}
+
+it('meldet die Nachricht als gescheitert und verbraucht kein Kontingent', function (): void {
+    $marke = markeMitHalbemPaar();
+
+    $list = BrandContext::runFor($marke, function () {
+        app(MailingListRepository::class)->save(new MailingList(
+            handle: 'liste-f',
+            name: 'Liste F',
+            doubleOptIn: false,
+        ));
+
+        app(CampaignRepository::class)->save(new Campaign(
+            handle: 'kampagne-f',
+            name: 'Kampagne F',
+            subject: 'Neues von uns',
+            listHandle: 'liste-f',
+            content: '<p>Hallo.</p>',
+        ));
+
+        return app(MailingListRepository::class)->find('liste-f');
+    });
+
+    BrandContext::runFor($marke, function () use ($list) {
+        app(SubscriptionService::class)->subscribe($list, 'gerda@example.com');
+
+        app(CampaignSender::class)->queue(app(CampaignRepository::class)->find('kampagne-f'));
+    });
+
+    expect(($this->mails)('marke_b'))->toHaveCount(0)
+        ->and(($this->mails)('global'))->toHaveCount(0);
+
+    $message = BrandContext::runFor($marke, fn () => Message::query()->where('email', 'gerda@example.com')->firstOrFail());
+
+    expect($message->status)->toBe(Message::STATUS_FAILED)
+        ->and($message->sent_at)->toBeNull();
+
+    // Der eigentliche Punkt: wer nichts bekommen hat, hat auch nichts von
+    // seinem Kontingent ausgegeben. Sonst kostet ein Konfigurationsfehler die
+    // Empfängerin ihre nächste echte Mail.
+    expect(app(FrequencyCap::class)->countInWindow('gerda@example.com', $marke->id))->toBe(0);
+});
+
+it('gibt dem Sequenzversand einen Fehlschlag zurück statt eines stillen Erfolgs', function (): void {
+    $marke = markeMitHalbemPaar();
+
+    $ergebnis = BrandContext::runFor($marke, function () {
+        app(MailingListRepository::class)->save(new MailingList(
+            handle: 'liste-g',
+            name: 'Liste G',
+            doubleOptIn: false,
+        ));
+
+        app(CampaignRepository::class)->save(new Campaign(
+            handle: 'kampagne-g',
+            name: 'Kampagne G',
+            subject: 'Neues von uns',
+            listHandle: 'liste-g',
+            content: '<p>Hallo.</p>',
+        ));
+
+        $list = app(MailingListRepository::class)->find('liste-g');
+        app(SubscriptionService::class)->subscribe($list, 'hilde@example.com');
+
+        return app(SingleSend::class)->send(
+            app(CampaignRepository::class)->find('kampagne-g'),
+            $list,
+            Subscription::query()->where('email', 'hilde@example.com')->firstOrFail(),
+        );
+    });
+
+    expect($ergebnis->isFailed())->toBeTrue()
+        ->and($ergebnis->wasSent())->toBeFalse()
+        ->and($ergebnis->reason)->toBe('send_failed');
+
+    expect(app(FrequencyCap::class)->countInWindow('hilde@example.com', $marke->id))->toBe(0);
+});
+
+it('sagt es im Control Panel ins Gesicht statt Erfolg zu melden', function (): void {
+    $marke = markeMitHalbemPaar();
+
+    BrandContext::runFor($marke, function () {
+        app(MailingListRepository::class)->save(new MailingList(
+            handle: 'liste-h',
+            name: 'Liste H',
+            doubleOptIn: false,
+        ));
+
+        app(CampaignRepository::class)->save(new Campaign(
+            handle: 'kampagne-h',
+            name: 'Kampagne H',
+            subject: 'Neues von uns',
+            listHandle: 'liste-h',
+            content: '<p>Hallo.</p>',
+        ));
+
+        // Der CP-Controller fängt genau diese Ausnahme und macht daraus einen
+        // Feldfehler am Formular. Ein stilles `true` wäre dort „Testmail
+        // verschickt" über einer Mail, die es nicht gibt.
+        expect(fn () => app(CampaignSender::class)->sendTest(
+            app(CampaignRepository::class)->find('kampagne-h'),
+            'redaktion@halbes-paar.test',
+        ))->toThrow(InvalidArgumentException::class, 'settings.mail.from_address');
+    });
+
+    expect(($this->mails)('marke_b'))->toHaveCount(0);
 });

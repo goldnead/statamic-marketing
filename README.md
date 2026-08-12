@@ -249,12 +249,14 @@ rendered or stamped. Falling back to the configured mailer would send the
 brand's mail through somebody else's account, which is the failure this whole
 section is about. Check the name against `config/mail.php` when you set it.
 
-**Name both or neither.** A brand with a `mailer` and no `from_address` sends
-nothing at all and says so in the log (since 2.2.0; 2.1.0 sent over the brand
-transport with the host-wide From). That pair is what has to agree, and
-splitting it is the same failure with the halves swapped. An address without a
-mailer is fine — that is the ordinary case for the brand the global credentials
-belong to.
+**Name both or neither.** A brand that fills in `from_name` or `mailer` and
+leaves `from_address` empty sends nothing at all and says so in the log (since
+2.2.0; 2.1.0 sent over the brand transport with the host-wide From). That pair
+is what has to agree, and splitting it is the same failure with the halves
+swapped. An address without a mailer is fine — that is the ordinary case for the
+brand the global credentials belong to. Other keys under `settings.mail` do not
+count as declaring a sender: a host that keeps, say, a base URL there is not
+suddenly refused for a missing address.
 
 A host that keeps sender identities somewhere else rebinds one contract:
 

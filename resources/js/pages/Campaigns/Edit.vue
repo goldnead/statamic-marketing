@@ -404,7 +404,20 @@ function destroy() {
                     <Panel :heading="__('Sender')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('From name')" :error="formErrors.from_name">
+                                <!--
+                                    Auch hier, und aus einem eigenen Grund: der
+                                    Anzeigename wird im selben Fall verworfen wie
+                                    die Adresse, aber ohne Logzeile — er hängt an
+                                    der Adresse und wird nur zusammen mit ihr
+                                    gesetzt. Ohne diesen Hinweis ist das die
+                                    einzige Stelle des Formulars, an der ein
+                                    Eingabewert spurlos verschwindet.
+                                -->
+                                <Field
+                                    :label="__('From name')"
+                                    :error="formErrors.from_name"
+                                    :instructions="__('Ignored for a brand that declares its own settings.mail.from_address — the display name travels with the address, and the brand supplies both.')"
+                                >
                                     <Input v-model="fromName" :placeholder="__('Defaults to the site sender')" />
                                 </Field>
 

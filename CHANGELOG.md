@@ -3,8 +3,8 @@
 ## 2.2.0 — 2026-08-12
 ### Fixed
 
-- **A brand that named a mailer but no from-address kept sending**, over the brand's own transport
-  with the host-wide From. That is exactly the pair a relay verifying sending domains per account
+- **A brand that named a mailer or a from-name but no from-address kept sending**, over the brand's
+  own transport with the host-wide From. That is exactly the pair a relay verifying sending domains per account
   refuses — or delivers under whichever identity the account does own, which is another brand's.
   2.1.0 chose to warn and send anyway, on the grounds that a loud rejection beats a quiet
   mis-delivery; the three sibling addons chose to refuse, which beats both. **It now refuses**: no
