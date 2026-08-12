@@ -233,23 +233,28 @@ place.
 `marketing.sending.mailer`, `marketing.from.*` and the application locale,
 exactly as before.
 
-**A campaign's own From still wins.** Fill in *From email* on a campaign and it
-overrides the brand address for that campaign; the transport stays the brand's.
-Explicit configuration beats a default — but on a relay that verifies domains
-per account, an address the brand's account does not own now fails visibly
-instead of being silently replaced. Leave the field empty unless you mean it.
+**The brand's address beats a campaign's own From** (since 2.2.0; before that it
+was the other way round). Fill in *From email* on a campaign and it applies
+wherever the brand declares no address of its own — every single-brand install.
+Where the brand does declare one, the campaign value is dropped and the reason
+is written to the log. The address and the transport are one pair: only the
+brand row knows which addresses the relay account behind that transport owns,
+and a per-campaign address can be checked by nobody until the provider sees it,
+at which point the fan-out has already started. *Reply-to* is per campaign and
+untouched, which is the field that decides where an answer lands.
 
-**A typo in `mailer` fails loudly, on purpose.** A name that `config/mail.php`
-does not define throws at the send — on the public sign-up form that is a 500,
-not a silent skip. Falling back to the configured mailer would send the brand's
-mail through somebody else's account, which is the failure this whole section
-is about. Check the name against `config/mail.php` when you set it.
+**A typo in `mailer` sends nothing, on purpose.** A name that `config/mail.php`
+does not define is refused when the identity is resolved, before anything is
+rendered or stamped. Falling back to the configured mailer would send the
+brand's mail through somebody else's account, which is the failure this whole
+section is about. Check the name against `config/mail.php` when you set it.
 
 **Name both or neither.** A brand with a `mailer` and no `from_address` sends
-over its own transport with the host-wide From, and says so in the log once per
-process: that pair is what has to agree, and splitting it is the same failure
-with the halves swapped. An address without a mailer is fine — that is the
-ordinary case for the brand the global credentials belong to.
+nothing at all and says so in the log (since 2.2.0; 2.1.0 sent over the brand
+transport with the host-wide From). That pair is what has to agree, and
+splitting it is the same failure with the halves swapped. An address without a
+mailer is fine — that is the ordinary case for the brand the global credentials
+belong to.
 
 A host that keeps sender identities somewhere else rebinds one contract:
 
@@ -259,6 +264,12 @@ $this->app->bind(
     MyOwnResolver::class,   // resolve(?int $brandId): SenderIdentity
 );
 ```
+
+The rule itself lives in `goldnead/statamic-brand-context` since 1.8.0 —
+`Goldnead\BrandContext\Sending\SenderIdentity` and friends — because which
+address a brand sends under is a property of the brand, not of whichever addon
+happens to be posting. The contract above stays in this namespace so that a host
+can answer the question for marketing post alone.
 
 **List handles are unique across all brands** in both drivers. The public
 subscribe endpoint derives the brand from the list handle the form names — no

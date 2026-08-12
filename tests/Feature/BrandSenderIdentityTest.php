@@ -2,6 +2,7 @@
 
 use Goldnead\BrandContext\Facades\BrandContext;
 use Goldnead\BrandContext\Models\Brand;
+use Goldnead\BrandContext\Sending\SenderIdentity;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
@@ -9,7 +10,6 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
-use Goldnead\Marketing\Sending\SenderIdentity;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -267,20 +267,13 @@ it('never burns a brand\'s From into a cached mailer instance', function (): voi
         ->toBe('noreply@example.com'); // the host's own from, not brand A's
 });
 
-it('keeps mail.from out of the scoped overrides', function (): void {
-    $identity = new SenderIdentity(
-        mailer: 'marke_a',
-        fromAddress: 'noreply@marke-a.test',
-        fromName: 'Marke A',
-    );
-
-    // Named as a decision, not as an accident: see the test above for what
-    // adding `mail.from.address` here would cost.
-    expect(array_keys($identity->configOverrides()))
-        ->toBe(['marketing.from.email', 'marketing.from.name']);
-});
-
-it('warns, and still uses the brand transport, when a brand names a mailer but no address', function (): void {
+it('sends nothing at all when a brand names a mailer but no address', function (): void {
+    // Until 12.08.2026 this package was the odd one out: it kept the brand's
+    // transport and put the host-wide From on the message, which is the pair a
+    // relay verifying sending domains per account either refuses or rewrites to
+    // an identity that is not this brand's. The three sibling packages already
+    // refused it. The strictest reading wins, and this is where it is written
+    // down.
     Log::spy();
 
     $halb = Brand::create([
@@ -294,19 +287,118 @@ it('warns, and still uses the brand transport, when a brand names a mailer but n
     BrandContext::runFor($halb, fn () => app(SubscriptionService::class)
         ->subscribe($list, 'dora@example.com'));
 
-    // A second send for the same brand says nothing more: the warning is
+    // A second send for the same brand says nothing more: the line is
     // throttled, or a fan-out would write one copy per recipient.
     BrandContext::runFor($halb, fn () => app(SubscriptionService::class)
         ->subscribe($list, 'egon@example.com'));
 
-    // The brand's own transport, so the relay refuses an address it does not
-    // own — a loud failure instead of a quiet delivery under a foreign name.
-    expect(($this->mails)('marke_b'))->toHaveCount(2)
+    expect(($this->mails)('marke_b'))->toHaveCount(0)
         ->and(($this->mails)('global'))->toHaveCount(0);
 
-    Log::shouldHaveReceived('warning')
+    Log::shouldHaveReceived('error')
         ->withArgs(fn (string $m) => str_contains($m, 'halb') && str_contains($m, 'from_address'))
         ->once();
+
+    // And the subscription stays `pending` rather than 500-ing behind a public
+    // form: a person who is registered as unconfirmed and never gets a link is
+    // a worse outcome than one whose link is late.
+    expect(BrandContext::runFor($halb, fn () => Subscription::query()->where('email', 'dora@example.com')->exists()))
+        ->toBeTrue();
+});
+
+it('sends nothing when a brand names a mailer config/mail.php does not define', function (): void {
+    $tippfehler = Brand::create([
+        'handle' => 'tippfehler',
+        'name' => 'Tippfehler',
+        'settings' => ['mail' => ['from_address' => 'x@tippfehler.test', 'mailer' => 'scaleway_typo']],
+    ]);
+
+    $list = ($this->list)($tippfehler, 'liste-e');
+
+    BrandContext::runFor($tippfehler, fn () => app(SubscriptionService::class)
+        ->subscribe($list, 'frida@example.com'));
+
+    expect(($this->mails)('global'))->toHaveCount(0)
+        ->and(($this->mails)('marke_a'))->toHaveCount(0)
+        ->and(($this->mails)('marke_b'))->toHaveCount(0);
+});
+
+it('lets the brand address win over the one the campaign names', function (): void {
+    // The rule the sibling packages already had, and this one did not: the
+    // address is half of a pair with the transport, and only the brand row
+    // knows which addresses the relay account behind that transport owns.
+    Log::spy();
+
+    $list = BrandContext::runFor($this->brandA, function () {
+        app(MailingListRepository::class)->save(new MailingList(
+            handle: 'liste-a',
+            name: 'Liste A',
+            doubleOptIn: false,
+        ));
+
+        app(CampaignRepository::class)->save(new Campaign(
+            handle: 'kampagne-a',
+            name: 'Kampagne A',
+            subject: 'Neues von uns',
+            listHandle: 'liste-a',
+            content: '<p>Hallo.</p>',
+            fromEmail: 'redaktion@woanders.test',
+            fromName: 'Redaktion',
+        ));
+
+        return app(MailingListRepository::class)->find('liste-a');
+    });
+
+    BrandContext::runFor($this->brandA, function () use ($list) {
+        app(SubscriptionService::class)->subscribe($list, 'anna@example.com');
+
+        app(CampaignSender::class)->queue(app(CampaignRepository::class)->find('kampagne-a'));
+    });
+
+    // Two mails through marke_a: the confirmation is off (doubleOptIn: false),
+    // so this is the campaign alone.
+    expect(($this->mails)('marke_a')[0]->getOriginalMessage()->getFrom()[0]->getAddress())
+        ->toBe('noreply@marke-a.test');
+
+    Log::shouldHaveReceived('notice')
+        ->withArgs(fn (string $m) => str_contains($m, 'redaktion@woanders.test')
+            && str_contains($m, 'noreply@marke-a.test'))
+        ->once();
+});
+
+it('still honours the campaign address where no brand declares one', function (): void {
+    // Every single-brand install. Nothing about this changed, and that is the
+    // whole reason the rule above is safe to apply.
+    $plain = Brand::create(['handle' => 'schlicht', 'name' => 'Schlicht']);
+
+    $list = BrandContext::runFor($plain, function () {
+        app(MailingListRepository::class)->save(new MailingList(
+            handle: 'liste-c',
+            name: 'Liste C',
+            doubleOptIn: false,
+        ));
+
+        app(CampaignRepository::class)->save(new Campaign(
+            handle: 'kampagne-c',
+            name: 'Kampagne C',
+            subject: 'Neues von uns',
+            listHandle: 'liste-c',
+            content: '<p>Hallo.</p>',
+            fromEmail: 'redaktion@schlicht.test',
+            fromName: 'Redaktion',
+        ));
+
+        return app(MailingListRepository::class)->find('liste-c');
+    });
+
+    BrandContext::runFor($plain, function () use ($list) {
+        app(SubscriptionService::class)->subscribe($list, 'carla@example.com');
+
+        app(CampaignSender::class)->queue(app(CampaignRepository::class)->find('kampagne-c'));
+    });
+
+    expect(($this->mails)('global')[0]->getOriginalMessage()->getFrom()[0]->getAddress())
+        ->toBe('redaktion@schlicht.test');
 });
 
 it('refuses a queued mailable rather than losing the identity on the way', function (): void {
@@ -318,7 +410,7 @@ it('refuses a queued mailable rather than losing the identity on the way', funct
         }
     };
 
-    expect(fn () => app(BrandMailer::class)->send($this->brandA->id, 'anna@example.com', $queued))
+    expect(fn () => app(BrandMailer::class)->send($this->brandA->id, 'anna@example.com', null, $queued))
         ->toThrow(LogicException::class);
 });
 
@@ -327,11 +419,7 @@ it('lets the host application answer the question its own way', function (): voi
     {
         public function resolve(?int $brandId): SenderIdentity
         {
-            return new SenderIdentity(
-                mailer: 'marke_b',
-                fromAddress: 'host@example.com',
-                fromName: 'Host',
-            );
+            return SenderIdentity::of('marke_b', 'host@example.com', 'Host');
         }
     });
 

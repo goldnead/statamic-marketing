@@ -118,7 +118,19 @@ class CampaignSender
         // The brand in context, which for a test send from the CP is the brand
         // whose campaign the editor has open. A test mail that arrives from
         // another brand's address tests the wrong thing.
-        $this->mailer->send(null, $email, new CampaignMail($campaign, $rendered));
+        //
+        // Thrown rather than logged, unlike everywhere else this returns false:
+        // there is a person waiting for an answer in the Control Panel, and a
+        // test send that reports success while nothing left is worse than no
+        // test send. The sentence names the setting, because the person who can
+        // fix it is the one who just clicked the button.
+        if (! $this->mailer->send(null, $email, null, new CampaignMail($campaign, $rendered))) {
+            throw new InvalidArgumentException(
+                'This brand has no usable sender identity, so nothing was sent. Check '
+                .'settings.mail.from_address and settings.mail.mailer on the brand — the log has the '
+                .'exact reason.'
+            );
+        }
     }
 
     protected function assertComplete(Campaign $campaign): void

@@ -224,7 +224,21 @@ class SingleSend
 
             // Same brand the message row was stamped with, same identity the
             // list path uses. A sequence mail is a mail.
-            $this->mailer->send($brandId, $email, new CampaignMail($campaign, $rendered));
+            //
+            // `false` means the brand declared an identity and broke it half;
+            // nothing left, and the caller has to hear that rather than read a
+            // `sent` row. The reason is in the log, once per brand per window.
+            if (! $this->mailer->send($brandId, $email, null, new CampaignMail($campaign, $rendered))) {
+                $message->update([
+                    'status' => Message::STATUS_FAILED,
+                    'error' => 'No sender identity for this brand — see the log for the reason.',
+                ]);
+
+                return SingleSendResult::failed(
+                    'send_failed',
+                    'No sender identity for this brand — see the log for the reason.',
+                );
+            }
 
             // `now()` and never a zoned Carbon handed in from elsewhere:
             // Laravel's `datetime` cast serialises a zoned value without

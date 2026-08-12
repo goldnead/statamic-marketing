@@ -1,5 +1,49 @@
 # Changelog
 
+## 2.2.0 — 2026-08-12
+### Fixed
+
+- **A brand that named a mailer but no from-address kept sending**, over the brand's own transport
+  with the host-wide From. That is exactly the pair a relay verifying sending domains per account
+  refuses — or delivers under whichever identity the account does own, which is another brand's.
+  2.1.0 chose to warn and send anyway, on the grounds that a loud rejection beats a quiet
+  mis-delivery; the three sibling addons chose to refuse, which beats both. **It now refuses**: no
+  mail, an error line naming the brand and the setting, and the subscription stays `pending` so a
+  second attempt can rescue it once the brand row is fixed. A mailer name that `config/mail.php`
+  does not define is refused the same way, at resolution rather than at the send.
+
+- **`BrandMailer` still worked through `Config::set('marketing.from.*')` with a `finally`.** It held
+  only as long as every mailable read `marketing.from.*` and nothing else ever put a From on the
+  message — a rule enforced by nothing. The identity is now applied as values on the message.
+  `ConfirmSubscriptionMail` and `CampaignMail` only fill a From that is not already there.
+
+### Changed
+
+- **A campaign's `from_email` no longer beats the brand's own address.** The two sibling packages
+  disagreed about this: the `send_email` node in `statamic-automations` let the brand win, this
+  package let the campaign win. One of them had to be wrong, and it was the one that could put a
+  brand's transport behind an address it does not own — the address and the transport are one pair,
+  and only the brand row knows which addresses the relay account behind that transport owns. A
+  per-campaign address can be checked by nobody until the provider sees it, at which point the
+  fan-out has already started.
+
+  **Where no brand declares an address — every single-brand install — nothing changes**, and the
+  campaign's `from_email` applies exactly as before. Where one does, the dropped value is written to
+  the log once per pair per window, and the Control Panel field now says so instead of promising
+  "Defaults to the site sender". `reply_to` is untouched and still per campaign, which is the field
+  that decides where an answer lands.
+
+- **The five sender-identity classes moved to `goldnead/statamic-brand-context` 1.8.0**, which is
+  now required at `^1.8`. They were four byte-identical copies with four namespaces, and they had
+  already begun to drift — see the fix above. `Goldnead\Marketing\Contracts\SenderIdentityResolver`
+  stays as the per-package extension point (it extends the brand-context contract), as does
+  `Sending\BrandMailer`, which keeps `marketing.sending.mailer` as the default transport below the
+  brand. `Sending\SenderIdentity` is gone from this namespace; use
+  `Goldnead\BrandContext\Sending\SenderIdentity`, and build it with `::of()` rather than `new`.
+
+- `BrandMailer::send()` takes a recipient name (`send($brandId, $to, $toName, $mailable)`) and
+  returns whether the mail went out, matching the sibling packages.
+
 ## 2.1.0 — 2026-08-12
 
 ### Fixed — every brand now sends as itself, not as whoever the config named

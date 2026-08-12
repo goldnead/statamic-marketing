@@ -408,7 +408,23 @@ function destroy() {
                                     <Input v-model="fromName" :placeholder="__('Defaults to the site sender')" />
                                 </Field>
 
-                                <Field :label="__('From email')" :error="formErrors.from_email">
+                                <!--
+                                    The instructions are not decoration. Since
+                                    statamic-marketing 2.2.0 a brand that
+                                    declares settings.mail.from_address wins
+                                    against this field, and a field that is
+                                    silently ignored while its placeholder says
+                                    "Defaults to the site sender" is a lie the
+                                    editor cannot see. Same sentence as the
+                                    `from` field of the send_email node in
+                                    statamic-automations, because it is the same
+                                    rule.
+                                -->
+                                <Field
+                                    :label="__('From email')"
+                                    :error="formErrors.from_email"
+                                    :instructions="__('Ignored for a brand that declares its own settings.mail.from_address — the sending address has to match the relay account the brand sends through, and only the brand row knows which addresses that account owns. Reply-to is unaffected.')"
+                                >
                                     <Input v-model="fromEmail" type="email" :placeholder="__('Defaults to the site sender')" />
                                 </Field>
 

@@ -120,11 +120,34 @@ class SendMessageJob implements ShouldQueue
             // Resolved from the container here rather than injected into
             // `handle()`, so the signature every host and test already calls
             // stays as it is.
-            app(BrandMailer::class)->send(
+            $sent = app(BrandMailer::class)->send(
                 $message->brand_id === null ? null : (int) $message->brand_id,
                 (string) $subscription->email,
+                null,
                 new CampaignMail($campaign, $rendered),
             );
+
+            // A brand that declared a mail identity and then broke it half —
+            // a transport with no address, a mailer name `config/mail.php` does
+            // not define — sends nothing at all rather than under the host's
+            // own name. `false` is that answer, and it is not an exception
+            // because a fan-out has to keep going for the brands that are fine.
+            //
+            // Recorded as failed for the same reason a throw is: this recipient
+            // did not get the mail, so the row must not claim they did and the
+            // frequency cap below must not spend their budget. The reason is
+            // already in the log, once per brand per window; repeating it on
+            // every row of a fan-out would put it in the database too.
+            if (! $sent) {
+                $message->update([
+                    'status' => Message::STATUS_FAILED,
+                    'error' => 'No sender identity for this brand — see the log for the reason.',
+                ]);
+
+                $this->maybeFinalize($campaigns, $campaign->handle);
+
+                return;
+            }
 
             $message->update(['status' => Message::STATUS_SENT, 'sent_at' => now()]);
 

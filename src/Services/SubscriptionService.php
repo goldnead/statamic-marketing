@@ -185,9 +185,17 @@ class SubscriptionService
         // on a relay that verifies domains per account, undeliverable as sent.
         // `app()` rather than a constructor argument because this class has no
         // constructor and takes its collaborators the same way one line above.
+        // `false` — a brand that declared a mail identity and broke it half —
+        // leaves the subscription `pending` and writes the reason to the log
+        // once per brand per window. Deliberately not an exception: this runs
+        // behind a public form, and a 500 after the pending row was written
+        // leaves somebody registered as unconfirmed who will never get a link
+        // and cannot ask for one either. The pending row is the thing that can
+        // still be rescued by a second attempt once the brand row is fixed.
         app(BrandMailer::class)->send(
             $subscription->brand_id === null ? null : (int) $subscription->brand_id,
             (string) $subscription->email,
+            null,
             new ConfirmSubscriptionMail($list, $subscription),
         );
     }

@@ -2,8 +2,8 @@
 
 namespace Goldnead\Marketing\Tests;
 
+use Goldnead\BrandContext\Sending\SaidRecently;
 use Goldnead\Leadhub\ServiceProvider;
-use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
@@ -17,11 +17,11 @@ abstract class TestCase extends OrchestraTestCase
     {
         parent::setUp();
 
-        // The sender-identity resolver throttles its warnings in static state,
+        // The sender-identity layer throttles its log lines in static state,
         // which outlives a test. Brand ids are recycled by RefreshDatabase, so
-        // without this a warning suppressed in one test would be missing from
-        // the next one that expects it.
-        BrandSenderIdentity::forgetWarnings();
+        // without this a line suppressed in one test would be missing from the
+        // next one that expects it.
+        SaidRecently::forget();
 
         // Marketing runtime tables + LeadHub tables (hard dependency).
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
