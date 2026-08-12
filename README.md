@@ -201,6 +201,65 @@ Worth running once after any update that touched migrations, and in particular
 on an install that came from 1.2.1 or earlier through 1.6.1–1.6.3 — see the
 1.6.4 entry in `CHANGELOG.md`.
 
+### Every brand sends as itself
+
+A mail belongs to a brand, so the transport and the sender it goes out with
+belong to the brand too. Put them in `brands.settings.mail`:
+
+```php
+$brand->update(['settings' => ['mail' => [
+    'from_address' => 'noreply@chorgesucht.de',
+    'from_name'    => 'chorgesucht.de',   // defaults to the brand name
+    'mailer'       => 'scaleway_chorgesucht',  // a mailer from config/mail.php
+    'locale'       => 'de',               // the language its mail is written in
+]]]);
+```
+
+Campaigns, single sends, CP test mails and the double opt-in confirmation all
+go through that identity — the same one `config/mail.php` names, so the SMTP
+credentials stay in the environment and never reach the database, a backup or a
+CP export.
+
+**Why the mailer and not just the From.** A relay that verifies sending domains
+per account (Scaleway TEM, Postmark, SES) refuses — or silently replaces — a
+From it does not own. Sending brand A's newsletter confirmation through the
+account that only knows brand B is how a reader ends up with a confirmation for
+one newsletter under a different company's name. The two values have to be
+chosen together, which is why they live in one place and are resolved in one
+place.
+
+**Nothing changes for a single-brand install.** A brand with no
+`settings.mail` — which is every brand until someone fills it in — sends with
+`marketing.sending.mailer`, `marketing.from.*` and the application locale,
+exactly as before.
+
+**A campaign's own From still wins.** Fill in *From email* on a campaign and it
+overrides the brand address for that campaign; the transport stays the brand's.
+Explicit configuration beats a default — but on a relay that verifies domains
+per account, an address the brand's account does not own now fails visibly
+instead of being silently replaced. Leave the field empty unless you mean it.
+
+**A typo in `mailer` fails loudly, on purpose.** A name that `config/mail.php`
+does not define throws at the send — on the public sign-up form that is a 500,
+not a silent skip. Falling back to the configured mailer would send the brand's
+mail through somebody else's account, which is the failure this whole section
+is about. Check the name against `config/mail.php` when you set it.
+
+**Name both or neither.** A brand with a `mailer` and no `from_address` sends
+over its own transport with the host-wide From, and says so in the log once per
+process: that pair is what has to agree, and splitting it is the same failure
+with the halves swapped. An address without a mailer is fine — that is the
+ordinary case for the brand the global credentials belong to.
+
+A host that keeps sender identities somewhere else rebinds one contract:
+
+```php
+$this->app->bind(
+    \Goldnead\Marketing\Contracts\SenderIdentityResolver::class,
+    MyOwnResolver::class,   // resolve(?int $brandId): SenderIdentity
+);
+```
+
 **List handles are unique across all brands** in both drivers. The public
 subscribe endpoint derives the brand from the list handle the form names — no
 brand in the URL, no session, nothing for a visitor to get wrong — and that
@@ -212,7 +271,7 @@ refused with a message naming the brand that holds it.
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `storage.driver` | `flat` | `flat` (YAML in `content/marketing/`) or `eloquent` |
-| `sending.mailer` | app default | Laravel mailer for campaigns |
+| `sending.mailer` | app default | Laravel mailer for campaigns, and the fallback for brands that name none (see [Every brand sends as itself](#every-brand-sends-as-itself)) |
 | `sending.messages_per_minute` | `0` | Throttle for ESP rate limits (0 = off) |
 | `subscriptions.double_opt_in` | `true` | Default for new lists (per-list override) |
 | `unsubscribe.global_opt_out` | `false` | Also set LeadHub `do_not_contact` on unsubscribe |

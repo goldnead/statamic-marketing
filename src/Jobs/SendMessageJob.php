@@ -11,6 +11,7 @@ use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Events\MessageSent;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
@@ -19,7 +20,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class SendMessageJob implements ShouldQueue
@@ -112,9 +112,19 @@ class SendMessageJob implements ShouldQueue
         try {
             $rendered = $renderer->render($campaign, $list, $subscription, $message);
 
-            Mail::mailer(config('marketing.sending.mailer'))
-                ->to($subscription->email)
-                ->send(new CampaignMail($campaign, $rendered));
+            // As the brand the message belongs to — its transport, its From.
+            // `$message->brand_id` and not the brand in context: a queue worker
+            // has no request behind it, and the row is where the answer was
+            // written when the audience was snapshotted.
+            //
+            // Resolved from the container here rather than injected into
+            // `handle()`, so the signature every host and test already calls
+            // stays as it is.
+            app(BrandMailer::class)->send(
+                $message->brand_id === null ? null : (int) $message->brand_id,
+                (string) $subscription->email,
+                new CampaignMail($campaign, $rendered),
+            );
 
             $message->update(['status' => Message::STATUS_SENT, 'sent_at' => now()]);
 

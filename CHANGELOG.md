@@ -1,5 +1,100 @@
 # Changelog
 
+## 2.1.0 — 2026-08-12
+
+### Fixed — every brand now sends as itself, not as whoever the config named
+
+Four send paths — the campaign fan-out (`SendMessageJob`), the single send
+(`SingleSend`, which is also how the automations node sends), the CP test send
+and the double opt-in confirmation — each read `config('marketing.sending.mailer')`
+directly. That value is global. In a multi-brand install every brand therefore
+sent over the same transport, and with the same `marketing.from.*` sender.
+
+This is not cosmetic. A relay that verifies sending domains per account
+(Scaleway TEM, Postmark, SES with a verified identity) refuses a From it does
+not own, or replaces it with one it does. Measured on 12.08.2026 in the hub this
+addon runs in: the double opt-in confirmation for **chorgesucht's** newsletter
+went out through the **FamilyStack** Scaleway project, and arrived under
+FamilyStack's sender. A reader who asked one organisation for its newsletter got
+a confirmation from another one.
+
+The transport and the From now come from one place, together, per brand:
+
+```php
+$brand->update(['settings' => ['mail' => [
+    'from_address' => 'noreply@chorgesucht.de',
+    'from_name'    => 'chorgesucht.de',        // defaults to the brand name
+    'mailer'       => 'scaleway_chorgesucht',  // a mailer from config/mail.php
+    'locale'       => 'de',                    // the language its mail is in
+]]]);
+```
+
+The credentials stay in `config/mail.php` and the environment. Putting SMTP
+usernames and passwords into `settings` would carry them into the database,
+every backup and every CP export.
+
+**`locale` is part of the identity** because the subject line is. A German
+brand on an English installation was sending "Please confirm your subscription
+to …", which is the same defect wearing different clothes: the mail did not
+sound like the sender it claimed to be. The locale travels on the mailable
+(`Mailable::locale()`), so the application's own locale is untouched.
+
+### Added — `SenderIdentityResolver`, the extension point
+
+```php
+$this->app->bind(
+    \Goldnead\Marketing\Contracts\SenderIdentityResolver::class,
+    MyOwnResolver::class,   // resolve(?int $brandId): SenderIdentity
+);
+```
+
+The bundled `BrandSenderIdentity` reads `brands.settings.mail`. A host that
+keeps sender identities elsewhere replaces it without the addon knowing
+anything about the host — which is the point: the hub that found this bug has
+its own `BrandMail`, and the addon must not depend on it.
+
+### Nothing changes for a single-brand install
+
+A brand with no `settings.mail` — which is every brand until somebody fills one
+in — resolves to `marketing.sending.mailer`, `marketing.from.*` and the
+application locale. Byte for byte the previous behaviour, including when the
+brands table is missing, the brand row is gone, or a queue worker has no brand
+in context: all three mean "use the configured identity" rather than "fail".
+
+`BrandMailer` scopes its config overrides and restores them in a `finally`. A
+queue worker sends for more than one brand in one process, and a throwing send
+must not leave the next brand's mail holding the previous brand's From.
+
+Deliberately **not** scoped: `mail.from.*`. Laravel's `MailManager` reads it the
+first time a mailer name is resolved and burns it into the cached instance
+(`alwaysFrom`), so an override there outlives the window it was set in — the
+first brand to send would leave its address standing for every later message
+through that transport that sets no From of its own. Only `marketing.from.*` is
+touched, which both mailables read first anyway. A test pins this.
+
+### Two things worth knowing before you configure a brand
+
+**A campaign's own `from_email` still wins** over the brand identity. Explicit
+configuration beats a default, and now that the transport is the brand's, a
+foreign address fails at the relay instead of being silently replaced — a
+visible error rather than a quiet one. Leave the field empty unless you mean it.
+
+**A brand that names a `mailer` but no `from_address`** gets its own transport
+with the host-wide From, and a warning in the log (once per brand per process).
+That pair is what has to agree; splitting it is the same incident with the
+halves swapped. The other direction — an address without a mailer — is the
+ordinary case for the brand the global credentials belong to and stays silent.
+
+`settings.locale` on the brand is used when `settings.mail.locale` is absent.
+
+### Upgrading
+
+`SingleSend` and `CampaignSender` each take one new constructor argument
+(`BrandMailer`). Both are resolved from the container everywhere in this
+package; only a host that builds them with `new` has to add the argument.
+`SendMessageJob::handle()` and `SubscriptionService` are unchanged in shape —
+they resolve it from the container so that existing callers keep working.
+
 ## 2.0.1 — 2026-08-09
 
 ### Fixed — the sibling constraint excluded the new majors

@@ -10,10 +10,10 @@ use Goldnead\Marketing\Events\SubscriptionPending;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class SubscriptionService
 {
@@ -179,9 +179,17 @@ class SubscriptionService
             return;
         }
 
-        Mail::mailer(config('marketing.sending.mailer'))
-            ->to($subscription->email)
-            ->send(new ConfirmSubscriptionMail($list, $subscription));
+        // Through the brand's own transport and sender identity, never the
+        // global one. This mail names a list that belongs to exactly one brand;
+        // arriving from a different brand's address is both wrong to read and,
+        // on a relay that verifies domains per account, undeliverable as sent.
+        // `app()` rather than a constructor argument because this class has no
+        // constructor and takes its collaborators the same way one line above.
+        app(BrandMailer::class)->send(
+            $subscription->brand_id === null ? null : (int) $subscription->brand_id,
+            (string) $subscription->email,
+            new ConfirmSubscriptionMail($list, $subscription),
+        );
     }
 
     /**

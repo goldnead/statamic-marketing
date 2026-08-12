@@ -9,9 +9,9 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
-use Illuminate\Support\Facades\Mail;
 use InvalidArgumentException;
 
 class CampaignSender
@@ -20,6 +20,7 @@ class CampaignSender
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
         protected CampaignRenderer $renderer,
+        protected BrandMailer $mailer,
     ) {}
 
     /** Queue a campaign for immediate delivery. */
@@ -114,9 +115,10 @@ class CampaignSender
         $rendered = $this->renderer->render($campaign, $list, $subscription);
         $rendered->subject = '[Test] '.$rendered->subject;
 
-        Mail::mailer(config('marketing.sending.mailer'))
-            ->to($email)
-            ->send(new CampaignMail($campaign, $rendered));
+        // The brand in context, which for a test send from the CP is the brand
+        // whose campaign the editor has open. A test mail that arrives from
+        // another brand's address tests the wrong thing.
+        $this->mailer->send(null, $email, new CampaignMail($campaign, $rendered));
     }
 
     protected function assertComplete(Campaign $campaign): void

@@ -9,6 +9,7 @@ use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentCampaignRepository;
@@ -18,6 +19,7 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileCampaignRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
+use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
 use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
@@ -100,6 +102,13 @@ class ServiceProvider extends AddonServiceProvider
         // changes the limit at runtime (or a test that does) is answered by the
         // current value rather than by whatever was true at first resolution.
         $this->app->bind(FrequencyCapContract::class, DatabaseFrequencyCap::class);
+
+        // Who a marketing mail goes out as. Bound (not singleton) for the same
+        // reason as the cap: it reads brand rows and config on every call, and
+        // an identity resolved once at boot would outlive the brand it
+        // described. A host that keeps sender identities somewhere other than
+        // `brands.settings.mail` rebinds this contract in its own provider.
+        $this->app->bind(SenderIdentityResolver::class, BrandSenderIdentity::class);
 
         // Singletons so the bridges' boot guards hold across resolutions.
         $this->app->singleton(WebhookManagerBridge::class);

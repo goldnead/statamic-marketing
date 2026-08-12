@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Tests;
 
 use Goldnead\Leadhub\ServiceProvider;
+use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
@@ -15,6 +16,12 @@ abstract class TestCase extends OrchestraTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // The sender-identity resolver throttles its warnings in static state,
+        // which outlives a test. Brand ids are recycled by RefreshDatabase, so
+        // without this a warning suppressed in one test would be missing from
+        // the next one that expects it.
+        BrandSenderIdentity::forgetWarnings();
 
         // Marketing runtime tables + LeadHub tables (hard dependency).
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');

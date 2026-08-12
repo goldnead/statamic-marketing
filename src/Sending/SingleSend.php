@@ -16,7 +16,6 @@ use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
@@ -73,6 +72,7 @@ class SingleSend
         protected SuppressionGate $gate,
         protected FrequencyCap $cap,
         protected ContactRepository $contacts,
+        protected BrandMailer $mailer,
     ) {}
 
     /**
@@ -222,9 +222,9 @@ class SingleSend
         try {
             $rendered = $this->renderer->render($campaign, $list, $subscription, $message);
 
-            Mail::mailer(config('marketing.sending.mailer'))
-                ->to($email)
-                ->send(new CampaignMail($campaign, $rendered));
+            // Same brand the message row was stamped with, same identity the
+            // list path uses. A sequence mail is a mail.
+            $this->mailer->send($brandId, $email, new CampaignMail($campaign, $rendered));
 
             // `now()` and never a zoned Carbon handed in from elsewhere:
             // Laravel's `datetime` cast serialises a zoned value without

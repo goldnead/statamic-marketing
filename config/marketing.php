@@ -45,6 +45,12 @@ return [
     | chunk, and an optional per-minute throttle (0 = unthrottled) to respect
     | ESP rate limits.
     |
+    | `mailer` is the FALLBACK, not the last word. A brand that names its own
+    | transport in `brands.settings.mail.mailer` sends through that one, because
+    | a relay verifies sending domains per account and the account has to match
+    | the From. Brands that name none — every brand in a single-brand install —
+    | use the value here, unchanged. See README, "Every brand sends as itself".
+    |
     */
 
     'sending' => [
