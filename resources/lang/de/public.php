@@ -1,6 +1,19 @@
 <?php
 
 return [
+    /*
+     * Die Zwischenseite vor der Bestätigung. Sie existiert, weil ein Aufruf
+     * des Links noch keine Entscheidung ist: Link-Scanner in Mail-Gateways
+     * und Vorschaufunktionen öffnen jede URL in einer eingehenden Mail. Erst
+     * der Knopf ist die Einwilligung.
+     */
+    'confirm_title' => 'Anmeldung bestätigen',
+    'confirm_body' => 'Bitte bestätige mit einem Klick, dass du ":list" abonnieren möchtest.',
+    'confirm_button' => 'Anmeldung bestätigen',
+
+    'confirm_expired_title' => 'Der Link ist abgelaufen',
+    'confirm_expired_body' => 'Dieser Bestätigungslink ist nicht mehr gültig. Melde dich einfach noch einmal an, dann schicken wir dir einen neuen.',
+
     'confirmed_title' => 'Anmeldung bestätigt',
     'confirmed_body' => 'Du bist jetzt für ":list" angemeldet. Willkommen!',
     /*

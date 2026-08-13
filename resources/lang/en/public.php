@@ -1,6 +1,18 @@
 <?php
 
 return [
+    /*
+     * The page before the confirmation. It exists because opening a link is
+     * not yet a decision: link scanners on mail gateways and preview features
+     * fetch every URL in an incoming message. The button is the consent.
+     */
+    'confirm_title' => 'Confirm your subscription',
+    'confirm_body' => 'Please confirm with one click that you would like to subscribe to ":list".',
+    'confirm_button' => 'Confirm subscription',
+
+    'confirm_expired_title' => 'This link has expired',
+    'confirm_expired_body' => 'This confirmation link is no longer valid. Just sign up again and we will send you a new one.',
+
     'confirmed_title' => 'Subscription confirmed',
     'confirmed_body' => 'You are now subscribed to ":list". Welcome!',
     /*

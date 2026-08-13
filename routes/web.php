@@ -37,9 +37,27 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->name('marketing.subscribe')
         ->middleware(SetBrandFromListHandle::class.':list');
 
-    Route::get('/confirm/{token}', ConfirmController::class)
+    /*
+     * Confirmation is two routes, and the split is the point: a GET shows the
+     * link's state, a POST grants the consent. Mail gateways, virus scanners
+     * and messenger previews fetch every URL in an incoming message, and under
+     * a single GET each of those fetches subscribed somebody who had not yet
+     * decided. See ConfirmController.
+     *
+     * The brand is derived from `confirmation_token`, not `token`. Both
+     * address exactly one row across all brands, which is what makes the
+     * derivation safe; the confirmation token is the one this route carries.
+     */
+    Route::get('/confirm/{token}', [ConfirmController::class, 'show'])
         ->name('marketing.confirm')
-        ->middleware($brandFrom(Subscription::class, 'token', 'token'));
+        ->middleware($brandFrom(Subscription::class, 'confirmation_token', 'token'));
+
+    // Same page's button. CSRF applies normally — unlike the one-click
+    // unsubscribe below, this POST is only ever made by a browser that has
+    // just been served the form, never by a provider's robot.
+    Route::post('/confirm/{token}', [ConfirmController::class, 'store'])
+        ->name('marketing.confirm.post')
+        ->middleware($brandFrom(Subscription::class, 'confirmation_token', 'token'));
 
     Route::get('/unsubscribe/{token}', [UnsubscribeController::class, 'show'])
         ->name('marketing.unsubscribe')

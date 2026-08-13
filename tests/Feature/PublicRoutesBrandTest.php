@@ -24,11 +24,15 @@ beforeEach(function (): void {
     $this->brandA = Brand::create(['handle' => 'brand-a', 'name' => 'Brand A']);
     $this->brandB = Brand::create(['handle' => 'brand-b', 'name' => 'Brand B']);
 
+    // A pending row carries a live confirmation token; the long-lived `token`
+    // no longer opens the confirm route at all.
     $this->subA = BrandContext::runFor($this->brandA, fn () => Subscription::create([
         'list_handle' => 'newsletter',
         'email' => 'a@example.com',
         'status' => Subscription::STATUS_PENDING,
         'token' => Str::random(48),
+        'confirmation_token' => Str::random(48),
+        'confirmation_sent_at' => now(),
     ]));
 
     $this->subB = BrandContext::runFor($this->brandB, fn () => Subscription::create([
@@ -51,7 +55,11 @@ afterEach(function (): void {
 });
 
 it('confirms a subscription from a link opened without any session', function (): void {
-    $this->get('/!/marketing/confirm/'.$this->subA->token)->assertOk();
+    // Two requests, because confirming is a POST now. The GET is the page with
+    // the button and, crucially, changes nothing — see
+    // ConfirmationLinkTest for the test that holds that line.
+    $this->get('/!/marketing/confirm/'.$this->subA->confirmation_token)->assertOk();
+    $this->post('/!/marketing/confirm/'.$this->subA->confirmation_token)->assertOk();
 
     BrandContext::setCurrent($this->brandA);
     expect($this->subA->fresh()->status)->toBe(Subscription::STATUS_SUBSCRIBED);

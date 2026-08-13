@@ -50,7 +50,11 @@ class ConfirmSubscriptionMail extends Mailable
             ->view('marketing::mail.confirm', [
                 'list' => $this->list,
                 'subscription' => $this->subscription,
-                'confirmUrl' => route('marketing.confirm', ['token' => $this->subscription->token]),
+                // The confirmation token, not the long-lived one. They are
+                // separate values now precisely so that this link can expire
+                // and be spent without disturbing the unsubscribe link in
+                // every campaign footer.
+                'confirmUrl' => route('marketing.confirm', ['token' => $this->subscription->confirmation_token]),
             ]);
     }
 }

@@ -90,10 +90,15 @@ it('upgrades an install that still carries the wide index', function (): void {
         $table->unique(['brand_id', 'list_handle', 'email_normalized'], 'ms_brand_list_email_unique');
     });
 
+    // `confirmation_token` is spelled out because this insert goes round the
+    // model, and the column is NOT NULL — deliberately, so that its unique
+    // constrains every row rather than only the ones that happen to have a
+    // value. Nothing in the addon writes subscriptions this way; a fixture
+    // rebuilding an old schema by hand is the one place it happens.
     DB::table('marketing_subscriptions')->insert([
-        ['uuid' => 'u1', 'brand_id' => $this->brandA->id, 'list_handle' => 'newsletter', 'email' => 'Jane@Example.com', 'email_normalized' => 'jane@example.com', 'status' => 'subscribed', 'token' => 't1'],
-        ['uuid' => 'u2', 'brand_id' => $this->brandB->id, 'list_handle' => 'newsletter', 'email' => 'jane@example.com', 'email_normalized' => 'jane@example.com', 'status' => 'pending', 'token' => 't2'],
-        ['uuid' => 'u3', 'brand_id' => $this->brandA->id, 'list_handle' => 'offers', 'email' => 'bob@example.com', 'email_normalized' => 'bob@example.com', 'status' => 'subscribed', 'token' => 't3'],
+        ['uuid' => 'u1', 'brand_id' => $this->brandA->id, 'list_handle' => 'newsletter', 'email' => 'Jane@Example.com', 'email_normalized' => 'jane@example.com', 'status' => 'subscribed', 'token' => 't1', 'confirmation_token' => 'c1'],
+        ['uuid' => 'u2', 'brand_id' => $this->brandB->id, 'list_handle' => 'newsletter', 'email' => 'jane@example.com', 'email_normalized' => 'jane@example.com', 'status' => 'pending', 'token' => 't2', 'confirmation_token' => 'c2'],
+        ['uuid' => 'u3', 'brand_id' => $this->brandA->id, 'list_handle' => 'offers', 'email' => 'bob@example.com', 'email_normalized' => 'bob@example.com', 'status' => 'subscribed', 'token' => 't3', 'confirmation_token' => 'c3'],
     ]);
 
     migration()->up();

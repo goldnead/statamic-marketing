@@ -6,7 +6,9 @@ use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 beforeEach(function (): void {
     Mail::fake();
@@ -31,7 +33,9 @@ it('runs the double opt-in flow end to end', function (): void {
 
     expect($subscription)->not->toBeNull()
         ->and($subscription->status)->toBe(Subscription::STATUS_PENDING)
-        ->and($subscription->token)->not->toBeEmpty();
+        ->and($subscription->token)->not->toBeEmpty()
+        ->and($subscription->confirmation_token)->not->toBeEmpty()
+        ->and($subscription->confirmation_token)->not->toBe($subscription->token);
 
     Mail::assertSent(ConfirmSubscriptionMail::class, function (ConfirmSubscriptionMail $mail) use ($subscription) {
         return $mail->subscription->is($subscription) && $mail->hasTo('jane@example.com');
@@ -40,7 +44,11 @@ it('runs the double opt-in flow end to end', function (): void {
     // No LeadHub contact before confirmation.
     expect(LeadHub::findByEmail('jane@example.com'))->toBeNull();
 
-    $this->get(route('marketing.confirm', $subscription->token))
+    $this->get(route('marketing.confirm', $subscription->confirmation_token))
+        ->assertOk()
+        ->assertSee(__('marketing::public.confirm_button'));
+
+    $this->post(route('marketing.confirm.post', $subscription->confirmation_token))
         ->assertOk()
         ->assertSee(__('marketing::public.confirmed_title'));
 
@@ -90,6 +98,59 @@ it('is idempotent for already subscribed addresses', function (): void {
     expect($second->id)->toBe($first->id)
         ->and($second->status)->toBe(Subscription::STATUS_SUBSCRIBED)
         ->and(Subscription::forList('newsletter')->count())->toBe(1);
+});
+
+/**
+ * Two sign-ups for one address, arriving together.
+ *
+ * `subscribe()` looks the address up and then inserts it, and a public form
+ * walks into the gap between those two statements routinely — an impatient
+ * double-click, two tabs, a client prefetching the POST. The loser of that
+ * race used to get the consent unique thrown in its face: an unhandled
+ * exception, and a 500 with a stack trace on an anonymous endpoint, for having
+ * done nothing wrong.
+ *
+ * The competing insert is staged from inside the `creating` event, which is
+ * exactly the moment the real race happens — after this request decided the
+ * row was absent, before its own INSERT lands.
+ */
+it('answers a simultaneous sign-up of the same address instead of failing', function (): void {
+    $list = app(MailingListRepository::class)->find('newsletter');
+
+    $schonPassiert = false;
+
+    Subscription::creating(function (Subscription $subscription) use (&$schonPassiert) {
+        if ($schonPassiert) {
+            return;
+        }
+
+        $schonPassiert = true;
+
+        DB::table('marketing_subscriptions')->insert([
+            'uuid' => (string) Str::uuid(),
+            // The brand this request is writing into — the competing request
+            // is in the same one, which is what makes it a collision at all.
+            // Read from the context rather than from $subscription, because
+            // HasBrand stamps the model after this listener has run.
+            'brand_id' => $subscription->brand_id ?? app('brand-context')->currentId(),
+            'list_handle' => 'newsletter',
+            'email' => 'gleichzeitig@example.com',
+            'email_normalized' => 'gleichzeitig@example.com',
+            'uniqueness_key' => Subscription::uniquenessKeyFor('newsletter', 'gleichzeitig@example.com'),
+            'status' => Subscription::STATUS_PENDING,
+            'token' => Str::random(48),
+            'confirmation_token' => Str::random(48),
+            'subscribed_at' => now(),
+        ]);
+    });
+
+    $subscription = app(SubscriptionService::class)->subscribe($list, 'gleichzeitig@example.com');
+
+    // The winner's row is the right answer for both requests, and there is
+    // exactly one of it.
+    expect($subscription->exists)->toBeTrue()
+        ->and($subscription->email)->toBe('gleichzeitig@example.com')
+        ->and(Subscription::query()->where('email', 'gleichzeitig@example.com')->count())->toBe(1);
 });
 
 it('silently drops honeypot submissions', function (): void {

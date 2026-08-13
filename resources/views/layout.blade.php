@@ -11,6 +11,12 @@
         h1 { font-size: 22px; margin: 0 0 12px; }
         p { color: #52525b; line-height: 1.6; margin: 0; }
 
+        /* The double-opt-in button. Its own rule rather than a share of the
+           preference centre's, which is scoped to .prefs and left-aligned for
+           a form; this is one action under one centred sentence. */
+        .confirm { margin: 24px 0 0; }
+        .confirm .btn { display: inline-block; padding: 12px 28px; border: 0; border-radius: 8px; background: #18181b; color: #fff; font-size: 15px; font-family: inherit; cursor: pointer; }
+
         /* Preference centre. Left-aligned: the card's centred text is right for
            a single sentence and wrong for a list of choices. */
         .prefs { text-align: left; margin-top: 28px; }

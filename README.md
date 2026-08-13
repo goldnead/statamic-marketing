@@ -153,6 +153,36 @@ Or POST to `{{ marketing:subscribe_url }}` yourself (`email`, `list`, optional
 `first_name`, `last_name`, `_redirect`). JSON clients receive
 `{ "ok": true, "data": { "status": "pending|subscribed" } }`.
 
+### Sign-up is a public endpoint
+
+Anyone can type anyone's address into a sign-up form. That is not a flaw in the form, it is what a
+form is — but it means the confirmation mail is the one message this addon sends to a person who
+has not asked for it yet, from a domain whose reputation belongs to you.
+
+Three things follow, and all three are on by default.
+
+**Confirmation mail is limited per recipient**, not per sender. A per-IP limit on the website and a
+per-token limit on an API both count how fast a *sender* may act; neither can see that every one of
+those requests names the same victim. `Support\DeliveryIdentity` decides what "the same mailbox"
+means and is deliberately blunt about it — `Opfer@Gmail.com`, `opfer+1@gmail.com`,
+`o.p.f.e.r@gmail.com` and `opfer@googlemail.com` are one inbox and one budget. The consent identity
+(`EmailNormalizer`, the consent unique) is untouched and stays conservative, because merging two
+addresses there means merging two people's decisions.
+
+A withheld mail is silent — identical response, subscription still recorded as pending — so the
+limit cannot be used to ask whether an address is on a list. If the cache cannot count, nothing is
+sent.
+
+**The confirmation link is single-use, expiring, and its own token.** `confirmation_token` is
+rotated with every confirmation mail and spent on first use; `token` keeps serving unsubscribe and
+preference links for years, as it must. A link is refused once the subscription is anything other
+than pending, so an old confirmation cannot undo an unsubscribe.
+
+**Opening the link is not agreeing to it.** `GET /confirm/{token}` shows a button and changes
+nothing; `POST` confirms. Mail gateways and preview features fetch every URL in a message, and a
+subscription created by a scanner is both wrong and, because it carries a plausible timestamp,
+hard to tell from a real one afterwards.
+
 ## Multi-brand
 
 Optional, off by default. With `goldnead/statamic-brand-context` in multi-brand
@@ -287,6 +317,12 @@ refused with a message naming the brand that holds it.
 | `sending.mailer` | app default | Laravel mailer for campaigns, and the fallback for brands that name none (see [Every brand sends as itself](#every-brand-sends-as-itself)) |
 | `sending.messages_per_minute` | `0` | Throttle for ESP rate limits (0 = off) |
 | `subscriptions.double_opt_in` | `true` | Default for new lists (per-list override) |
+| `subscriptions.confirmation_throttle.enabled` | `true` | The per-RECIPIENT limit on confirmation mail (see [Sign-up is a public endpoint](#sign-up-is-a-public-endpoint)) |
+| `subscriptions.confirmation_throttle.store` | app default | Which cache store counts. A store that cannot increment atomically — including the `file` default — is refused, and then nothing is sent |
+| `subscriptions.confirmation_throttle.per_list` / `.per_list_window_minutes` | `1` / `60` | One confirmation per list per hour for one mailbox |
+| `subscriptions.confirmation_throttle.per_mailbox` / `.per_mailbox_window_minutes` | `5` / `1440` | The ceiling across every list and brand at once |
+| `subscriptions.confirmation_ttl_hours` | `168` | How long an unused confirmation link stays valid (0 = forever) |
+| `subscriptions.confirm_requires_post` | `true` | Confirming needs a button press, so link scanners cannot consent for the reader |
 | `unsubscribe.global_opt_out` | `false` | Also set LeadHub `do_not_contact` on unsubscribe |
 | `tracking.opens` / `tracking.clicks` | `true` | Toggle tracking |
 | `delivery.mail_headers` | `[]` | Per-message headers asking the provider not to rewrite links |

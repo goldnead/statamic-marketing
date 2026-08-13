@@ -86,11 +86,56 @@ return [
     | checked by the public subscribe endpoint: bots that fill it get a fake
     | success response and no subscription.
     |
+    | confirmation_throttle is the only limit in this stack keyed on the
+    | RECIPIENT. Everything else — the per-IP throttle on a website, the
+    | per-brand throttle on an API — bounds how fast a SENDER may act, and none
+    | of them can see that every one of those requests is aimed at the same
+    | person. A public form plus a verified sending domain is otherwise a way
+    | to have somebody else's mailbox filled with confirmation requests that
+    | carry your reputation.
+    |
+    | Two tiers: `per_list` is the tight one a real subscriber meets (they need
+    | one mail, and an hour is a fair wait to ask again), `per_mailbox` bounds
+    | everything at once so the tight limit cannot be walked across every list
+    | and every brand on the install. Set `enabled` to false only where the
+    | sign-up endpoint is not publicly reachable.
+    |
+    | confirmation_ttl_hours retires a confirmation link that was never used.
+    | 0 disables it. Seven days is long enough for a holiday and short enough
+    | that a link found in a backup years later is not a way in.
+    |
+    | confirm_requires_post decides whether opening the link is enough. It is
+    | not, by default: mail gateways scan links, and a scanned link used to
+    | mean a subscription nobody had agreed to, recorded with a timestamp that
+    | looked exactly like a real confirmation. Turning this off restores the
+    | one-click flow and, with it, that problem.
+    |
     */
 
     'subscriptions' => [
         'double_opt_in' => true,
         'honeypot' => 'website',
+
+        'confirmation_throttle' => [
+            'enabled' => env('MARKETING_CONFIRMATION_THROTTLE', true),
+
+            // Which cache store counts. Null uses the application default —
+            // and then checks it. A store that cannot increment atomically
+            // (the file driver, which is Laravel's own default) is refused
+            // rather than trusted: it reads, adds and writes back in three
+            // steps, so parallel sign-ups all read the same number and all
+            // pass, and it reports success whether or not the write landed.
+            // When the store is refused, NO confirmation mail is sent.
+            'store' => env('MARKETING_CONFIRMATION_THROTTLE_STORE'),
+            'per_list' => (int) env('MARKETING_CONFIRMATION_PER_LIST', 1),
+            'per_list_window_minutes' => (int) env('MARKETING_CONFIRMATION_PER_LIST_WINDOW', 60),
+            'per_mailbox' => (int) env('MARKETING_CONFIRMATION_PER_MAILBOX', 5),
+            'per_mailbox_window_minutes' => (int) env('MARKETING_CONFIRMATION_PER_MAILBOX_WINDOW', 1440),
+        ],
+
+        'confirmation_ttl_hours' => (int) env('MARKETING_CONFIRMATION_TTL_HOURS', 168),
+
+        'confirm_requires_post' => env('MARKETING_CONFIRM_REQUIRES_POST', true),
     ],
 
     /*

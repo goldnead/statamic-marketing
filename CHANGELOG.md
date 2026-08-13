@@ -1,5 +1,109 @@
 # Changelog
 
+## 2.4.0 — 2026-08-13
+### Security
+
+- **The sign-up endpoint could be used to send mail at somebody else.** Nothing in the stack
+  limited confirmation mail per RECIPIENT. A host throttles per client IP and an API throttles per
+  brand or per token; none of them can see that every one of those requests names the same victim.
+  With a public form in front and a verified sending domain behind, the effective ceiling on one
+  mailbox was however fast the endpoint would answer — from an address whose reputation belongs to
+  the sender, not the attacker.
+
+  `SubscriptionService::sendConfirmationMail()` now charges every confirmation against the
+  recipient's own budget: one per list per hour, five per mailbox per day, both configurable under
+  `subscriptions.confirmation_throttle`. It is the only limit here keyed on the recipient, and it
+  sits at the send rather than at an endpoint, so every route into a confirmation mail passes it.
+
+  The identity it counts by is new (`Support\DeliveryIdentity`) and deliberately more aggressive
+  than `EmailNormalizer`: it folds case, subaddress tags (`opfer+1@`), dots on Gmail, the
+  `googlemail.com` alias and NFKC compatibility forms, because all of those reach one inbox and a
+  limit keyed on the address as typed is bypassed by a two-character edit. The consent identity is
+  unchanged — merging addresses there would merge people's decisions.
+
+  A withheld mail is silent: same status, same body, same redirect as a sent one, so the limit
+  cannot be turned into a way of asking whether an address is on a list. The pending subscription
+  is kept, so a real subscriber is delayed rather than lost. If the cache cannot count, nothing is
+  sent — a rate limiter on a store that persists nothing counts to zero forever and permits
+  everything.
+
+- **The double-opt-in token came back to life after an unsubscribe, and never rotated.** One
+  `token` column served confirm, unsubscribe and the preference centre alike. It was written once
+  and never changed, and `confirmByToken()` refused a row that was already subscribed while saying
+  nothing about one that had unsubscribed. A confirmation link from any time in the past — still in
+  a mailbox, a backup, or a link scanner's history — therefore put a person who had left back onto
+  the list, without any act of theirs and with no new consent record to point at. The same value is
+  printed in the footer of every campaign, so it is also the most widely copied string the system
+  owns.
+
+  The confirmation link now has a column of its own (`confirmation_token`, NOT NULL and unique),
+  rotated with every confirmation mail and spent on first use through a conditional UPDATE, so two
+  simultaneous clicks confirm once. It expires after `subscriptions.confirmation_ttl_hours` (7 days
+  by default, 0 to disable), and it is refused for any row that is not pending. `token` keeps its
+  old meaning and its old value, so unsubscribe and preference links in campaigns already sent are
+  untouched.
+
+- **Opening the confirmation link is no longer the same as agreeing to it.** Mail gateways, virus
+  scanners and messenger previews fetch every URL in an incoming message, and each of those fetches
+  used to grant the consent — producing subscriptions nobody had agreed to, stamped with a time and
+  an address that look exactly like a real confirmation. `GET /confirm/{token}` now renders a page
+  with a button and changes nothing; `POST` performs it. Set
+  `subscriptions.confirm_requires_post=false` to restore the one-click flow, and the problem with
+  it.
+
+### Also fixed, found reviewing the above
+
+- **The limit refuses to run on a cache store that cannot count.** A rate limiter is only a limit
+  where `increment()` is one atomic step. The file driver — Laravel's own default — reads, adds and
+  writes back in three, so parallel sign-ups all read the same number and all pass, and it reports
+  success whether or not the write landed. `subscriptions.confirmation_throttle.store` names the
+  store; anything outside the known-atomic set withholds every confirmation mail and says so in the
+  log, rather than being trusted on the assumption that production is on Redis.
+
+- **A cache that is unreachable throws rather than answering zero**, which made an outage a 500 on
+  the public endpoint. Caught, reported, mail withheld.
+
+- **Re-arming a dead link through the sign-up form.** `confirmByToken()` refuses a link whose row is
+  not pending — and `status` is writable by anyone who can type an address into a public form.
+  Posting the address of a row that had unsubscribed flipped it back to `pending` while the
+  withheld mail returned before the token would have been rotated, so the old link was live again.
+  Reviving a row that had ended now clears `confirmation_sent_at` and `confirmation_used_at` in the
+  same write. A row that was already pending keeps its link untouched, or submitting a stranger's
+  address would be a way to break their sign-up.
+
+- **`"opfer"@example.com` was a second bucket for the same inbox.** A quoted local part passes
+  validation, is unquoted by the receiving server, and hashed differently — a free doubling of both
+  tiers for two characters. Unquoted and unescaped in `DeliveryIdentity` now.
+
+- **Two simultaneous sign-ups for one address 500'd.** `subscribe()` selects and then inserts, and a
+  double-click lands in the gap: the loser hit the consent unique and got an unhandled exception on
+  an anonymous endpoint. The violation is caught and the winner's row returned.
+
+- **An address with an RFC comment 500'd at send.** `jemand(kommentar)@example.com` passes the
+  default `email` rule and makes `Symfony\Component\Mime\Address` throw as the message reaches the
+  transport, well past anything that could catch it. The public endpoint validates
+  `email:rfc,filter`.
+
+### Known and deliberate
+
+The withheld mail is indistinguishable in status and body, but not in timing: the confirmation is
+built and sent inline, so a request that sent one is measurably slower than one that did not.
+Closing that means queueing the send, which changes how every install delivers this mail, so it is
+named rather than quietly half-fixed.
+
+`per_mailbox` bounds one mailbox across all lists, which means an attacker can also spend somebody
+else's daily budget and delay their genuine sign-up. That is inherent to any per-recipient limit;
+the alternative is no bound at all.
+
+### Upgrading
+
+One migration adds three columns to `marketing_subscriptions` and backfills them. Pending and
+subscribed rows keep a working link — a confirmation mail sent minutes before the upgrade still
+resolves. Rows that had unsubscribed, bounced or complained get a value that has never been
+anywhere, which is the point: every confirmation link previously issued to an address that has
+since left stops working at that line.
+
+
 ## 2.3.1 — 2026-08-13
 ### Fixed
 

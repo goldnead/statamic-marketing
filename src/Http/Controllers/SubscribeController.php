@@ -23,7 +23,14 @@ class SubscribeController extends Controller
         }
 
         $data = $request->validate([
-            'email' => ['required', 'email'],
+            // `filter` on top of the RFC check, because the RFC allows things
+            // the mail transport does not. `opfer(kommentar)@example.com` is a
+            // legal address with a comment in it; Laravel's default `email`
+            // accepts it, and Symfony's Address — built as the message is
+            // handed to the transport, well past any try/catch here — throws
+            // on it. The result was an uncaught 500 on an anonymous endpoint
+            // for an address that could never have been delivered to anyway.
+            'email' => ['required', 'email:rfc,filter', 'max:255'],
             'list' => ['required', 'string'],
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
