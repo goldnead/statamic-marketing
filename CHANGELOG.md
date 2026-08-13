@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.5.1 — 2026-08-14
+### Security
+
+- **2.5.0 closed the membership oracle for repeated attempts and left it open for a single
+  one.** The already-subscribed path charged the recipient throttle and stopped there, so it
+  never reached the suppression gate, the brand's sender identity or the transport. The moment
+  the installation could not send, an ordinary address answered `unavailable` while a
+  subscribed one still answered `sent` — one request, deterministic, no timing needed, and in
+  exactly the failure state `unavailable` exists for. Found by a critic run against the built
+  code a few hours after 2.5.0, measured rather than argued.
+
+  `coverForSilentPath()` now reaches the same verdict the real send would reach, by every route
+  that does not require putting a message on the wire: it charges the throttle, asks the
+  suppression gate (discarding the answer, keeping only whether the gate replied at all), and
+  resolves the brand's sender identity. `ConfirmationThrottleTest` runs the comparison with each
+  of those broken, with the subscribed address probed FIRST — the order that helps an attacker
+  most — instead of only in the good case.
+
+- **New `Sending\TransportHealth`.** Whether a relay will take a message cannot be asked
+  without giving it one, and the silent path has none, so a failed send is remembered for sixty
+  seconds and the silent path reads it. It changes only what the cover path answers, never what
+  a real sign-up is told, and it expires on its own so that a relay refusing one recipient does
+  not declare the installation broken for long.
+
+### Known limits
+
+Both of these close with the same change — queueing the confirmation send, so that no response
+knows a delivery outcome at all — and both are stated rather than papered over.
+
+- **Timing still distinguishes a real send from a withheld one.** The mailable is built and
+  handed to SMTP inline, so a request that sent one pays a round trip and a request that did
+  not does not.
+
+- **A dead relay is mirrored with a one-minute memory, not perfectly.** Once the installation
+  has hit the failure once, both paths answer alike. The first request after a quiet window
+  still slips: probe a subscribed address before any real send has failed, then a control
+  address, and the pair separates them. The other three reasons for `unavailable` — no usable
+  counter, an unreachable suppression gate, a half-declared sender identity — are mirrored
+  unconditionally, because all three can be asked without sending anything.
+
+
 ## 2.5.0 — 2026-08-14
 ### Changed — BREAKING for anything that read the sign-up response
 
@@ -33,6 +74,7 @@
   `sent` and then `throttled`. Making the cover story cost the same is what keeps it a cover
   story. It also closes a smaller hole on its own: a suppressed address could be pushed
   through the endpoint without limit.
+
 
 - **`status` is gone from the sign-up response**, in the JSON envelope (`data.status`) and in
   the session flash. It was `subscribed` against `pending` — the membership question, answered

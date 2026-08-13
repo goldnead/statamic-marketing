@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Services;
 
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Events\MarketingSubscribed;
 use Goldnead\Marketing\Events\MarketingUnsubscribed;
@@ -14,6 +15,7 @@ use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Marketing\Sending\ConfirmationResult;
 use Goldnead\Marketing\Sending\ConfirmationThrottle;
+use Goldnead\Marketing\Sending\TransportHealth;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -159,13 +161,30 @@ class SubscriptionService
     }
 
     /**
-     * Charge the recipient budget for a path that will send nothing and may not
-     * say why.
+     * The answer for a path that will send nothing and may not say why.
      *
      * Reached when the address is already subscribed. It has to be
-     * indistinguishable from an ordinary sign-up across repeated attempts, so
-     * it pays the same price and reports the same outcomes; see the comment at
-     * the call site and `ConfirmationResult`.
+     * indistinguishable from an ordinary sign-up, which means it cannot simply
+     * answer `sent` and stop: it has to reach the SAME verdict the real send
+     * would have reached, by every route that does not require actually putting
+     * a message on the wire.
+     *
+     * The first draft charged the throttle and nothing else, and a critic run
+     * on 14.08.2026 took it apart with one request. With the transport broken,
+     * an ordinary address answered `unavailable` and a subscribed one answered
+     * `sent` — membership, readable in a single call, in exactly the failure
+     * state `unavailable` was invented for. The lesson is the one already
+     * written in `ConfirmationResult` and applied too narrowly: the cover story
+     * has to cost the same as the real thing, and "the same" means every gate,
+     * not just the cheapest one.
+     *
+     * So all four reasons are mirrored here:
+     *
+     *   throttle          charged, same as the real path
+     *   suppression gate  asked; an unreachable gate is `unavailable` there too
+     *   sender identity   resolved; a half-declared brand sends nothing there too
+     *   transport         read from `TransportHealth`, because it is the one
+     *                     thing that cannot be asked without a message to send
      */
     protected function coverForSilentPath(MailingList $list, Subscription $subscription): ConfirmationResult
     {
@@ -176,7 +195,32 @@ class SubscriptionService
             return ConfirmationResult::sent();
         }
 
-        return $this->chargeRecipientBudget($list, $subscription) ?? ConfirmationResult::sent();
+        if ($withheld = $this->chargeRecipientBudget($list, $subscription)) {
+            return $withheld;
+        }
+
+        try {
+            // The ANSWER is discarded on purpose. Whether this address is
+            // suppressed may not leave here — only whether the gate could be
+            // asked at all, which is a property of the installation.
+            app(SuppressionGate::class)->isSuppressed((string) $subscription->email);
+        } catch (SuppressionCheckFailed $e) {
+            report($e);
+
+            return ConfirmationResult::unavailable();
+        }
+
+        $brandId = $subscription->brand_id === null ? null : (int) $subscription->brand_id;
+
+        if (! app(SenderIdentityResolver::class)->resolve($brandId)->maySend()) {
+            return ConfirmationResult::unavailable();
+        }
+
+        if (app(TransportHealth::class)->gestoert($brandId)) {
+            return ConfirmationResult::unavailable();
+        }
+
+        return ConfirmationResult::sent();
     }
 
     /**
@@ -526,6 +570,19 @@ class SubscriptionService
             );
         } catch (\Throwable $e) {
             report($e);
+
+            /*
+             * Kurz gemerkt, damit der stille Weg dieselbe Antwort geben kann.
+             *
+             * Ohne diese Notiz wäre „Adresse schon angemeldet" bei totem Relay
+             * die einzige Anmeldung, die noch `sent` bekommt, während jede
+             * andere `unavailable` bekommt — die Mitgliedschaftsfrage,
+             * beantwortet mit einer einzigen Anfrage. Begründung und Preis in
+             * `TransportHealth`.
+             */
+            app(TransportHealth::class)->melden(
+                $subscription->brand_id === null ? null : (int) $subscription->brand_id
+            );
 
             $sent = false;
         }

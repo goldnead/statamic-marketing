@@ -1,10 +1,15 @@
 <?php
 
+use Goldnead\BrandContext\Sending\SenderIdentity;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Sending\TransportHealth;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
+use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Goldnead\Suppression\Reasons;
 use Goldnead\Suppression\SuppressionService;
 use Illuminate\Cache\ArrayStore;
@@ -182,6 +187,107 @@ it('cannot be asked whether an address is already subscribed', function (): void
     expect($drinErste->json())->toBe($neuErste->json())
         ->and($drinZweite->json())->toBe($neuZweite->json())
         ->and($drinZweite->json('data.confirmation'))->toBe('throttled');
+});
+
+/**
+ * Dieselbe Frage, gestellt während die Installation nicht senden kann — und das
+ * ist der Fall, in dem die erste Fassung dieser Änderung durchgefallen ist.
+ *
+ * Ein Kritiker-Durchlauf am 14.08.2026 brauchte EINE Anfrage: der stille Weg
+ * lud nur die Drossel, lief also nie in Gate, Absenderidentität oder Transport
+ * und antwortete `sent`, während jede gewöhnliche Adresse `unavailable` bekam.
+ * Damit stand die Mitgliedschaft fest, ausgerechnet in dem Zustand, für den
+ * `unavailable` erfunden wurde.
+ *
+ * Diese beiden Gründe lassen sich auf dem stillen Weg direkt prüfen, ohne etwas
+ * zu verschicken, und sind deshalb bedingungslos gespiegelt. Der dritte,
+ * `no_counter`, ebenso — er steckt schon in `chargeRecipientBudget`. Der vierte
+ * ist der Transport, und der hat einen eigenen Test darunter, weil er einen
+ * eigenen, schwächeren Vertrag hat.
+ */
+it('cannot be asked about membership while the installation cannot send', function (string $stoerung): void {
+    $subscribed = 'schon.drin@gmail.com';
+
+    anmelden($subscribed);
+    app(SubscriptionService::class)->markSubscribed(
+        Subscription::query()->where('email', $subscribed)->first()
+    );
+    Cache::flush();
+
+    match ($stoerung) {
+        // Eine Marke, die eine Absenderidentität erklärt und sie halb lässt.
+        'absender' => app()->instance(SenderIdentityResolver::class, new class implements SenderIdentityResolver
+        {
+            public function resolve(?int $brandId): SenderIdentity
+            {
+                return SenderIdentity::refusing('from_address fehlt');
+            }
+        }),
+        // Ein Suppression-Gate, das nicht antworten kann.
+        'gate' => app()->instance(SuppressionGate::class, new class implements SuppressionGate
+        {
+            public function isSuppressed(string $email, ?int $brandId = null): bool
+            {
+                throw new SuppressionCheckFailed('Gate weg');
+            }
+
+            public function suppressedAmong(iterable $emails, ?int $brandId = null): array
+            {
+                throw new SuppressionCheckFailed('Gate weg');
+            }
+        }),
+    };
+
+    // Die angemeldete Adresse ZUERST, also in der Reihenfolge, die einem
+    // Angreifer am meisten nützt: der stille Weg darf sich nicht darauf
+    // verlassen können, dass vorher schon jemand gescheitert ist.
+    $drin = $this->postJson(route('marketing.subscribe'), ['list' => 'newsletter', 'email' => $subscribed]);
+    $neu = $this->postJson(route('marketing.subscribe'), ['list' => 'newsletter', 'email' => 'ganz.neu@gmail.com']);
+
+    expect($drin->json())->toBe($neu->json())
+        ->and($drin->json('data.confirmation'))->toBe('unavailable');
+})->with(['absender', 'gate']);
+
+/**
+ * Der Transport, und warum sein Vertrag schwächer ist.
+ *
+ * Ob ein Relay eine Nachricht annimmt, lässt sich nicht erfragen, ohne ihm eine
+ * zu geben — und auf dem stillen Weg gibt es keine. `TransportHealth` merkt sich
+ * deshalb einen Fehlschlag für eine Minute, und der stille Weg liest ihn.
+ *
+ * Was das garantiert: sobald die Installation EINMAL an einer echten Anmeldung
+ * gescheitert ist, antworten beide Wege gleich, für die Dauer des Fensters.
+ *
+ * Was es NICHT garantiert und was hier festgehalten wird, damit es niemand für
+ * gedeckt hält: die allererste Anfrage nach einem stillen Fenster. Wer eine
+ * angemeldete Adresse abfragt, BEVOR irgendein echter Versand gescheitert ist,
+ * bekommt `sent`, und eine Kontrollanfrage danach bekommt `unavailable`. Das
+ * schließt sich vollständig erst, wenn die Bestätigung in die Queue wandert und
+ * die Antwort damit überhaupt kein Versandergebnis mehr kennt — dieselbe
+ * Änderung, die auch den Laufzeitkanal schließt.
+ */
+it('mirrors a broken transport once the installation has hit it', function (): void {
+    $subscribed = 'schon.drin@gmail.com';
+
+    anmelden($subscribed);
+    app(SubscriptionService::class)->markSubscribed(
+        Subscription::query()->where('email', $subscribed)->first()
+    );
+    Cache::flush();
+
+    Mail::shouldReceive('mailer')->andReturnSelf();
+    Mail::shouldReceive('send')->andThrow(new TransportException('501'));
+
+    // Ein echter Versand scheitert und hinterlässt die Notiz.
+    $neu = $this->postJson(route('marketing.subscribe'), ['list' => 'newsletter', 'email' => 'ganz.neu@gmail.com']);
+    $drin = $this->postJson(route('marketing.subscribe'), ['list' => 'newsletter', 'email' => $subscribed]);
+
+    expect($neu->json('data.confirmation'))->toBe('unavailable')
+        ->and($drin->json())->toBe($neu->json());
+
+    // Und nach dem Fenster ist die Notiz weg, ohne dass etwas hängen bleibt.
+    $this->travel(61)->seconds();
+    expect(app(TransportHealth::class)->gestoert(null))->toBeFalse();
 });
 
 /**

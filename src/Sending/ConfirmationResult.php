@@ -37,12 +37,29 @@ namespace Goldnead\Marketing\Sending;
  *   suppressed           Saying so discloses a bounce or a complaint, which is
  *                        a fact about the person's mailbox and their behaviour.
  *
- * Both of them must also be indistinguishable ACROSS REPEATED ATTEMPTS, which
- * is why `SubscriptionService` charges the recipient throttle on those paths
- * too even though they send nothing. Without that, two probes separate them:
- * the silent paths would answer SENT forever while an ordinary address flips to
- * THROTTLED on the second try. The cover story has to cost the same as the real
- * thing or it is not a cover story.
+ * Both of them must also reach the SAME verdict an ordinary sign-up reaches,
+ * not merely start from the same word. `SubscriptionService::coverForSilentPath()`
+ * therefore walks every gate the real send walks: it charges the recipient
+ * throttle, asks the suppression gate (and throws away the answer, keeping only
+ * whether the gate could be asked), and resolves the brand's sender identity.
+ * The cover story has to cost the same as the real thing or it is not a cover
+ * story.
+ *
+ * That lesson was learned twice. The first draft charged the throttle and
+ * nothing else, which held for repeated attempts and fell apart in one request
+ * as soon as the installation could not send: an ordinary address answered
+ * UNAVAILABLE and a subscribed one still answered SENT. The field built the
+ * oracle in precisely the state it was invented for.
+ *
+ * **One gate stays weaker, and it is named rather than hidden.** Whether a
+ * relay will accept a message cannot be asked without giving it one, and the
+ * silent path has none. `Sending\TransportHealth` closes most of it — a failed
+ * send is remembered for a minute and the silent path reads it — but the first
+ * request after a quiet window still slips through: probe a subscribed address
+ * before any real send has failed, then a control address, and the pair
+ * separates them. It closes completely only when the confirmation is queued,
+ * because then no response knows a delivery outcome at all. That is the same
+ * change that closes the timing channel below.
  *
  * `retryAfterMinutes` is the CONFIGURED WINDOW, never the time remaining.
  * Remaining time would say how long ago the earlier attempt was, down to the
