@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.4.1 — 2026-08-13
+### Fixed
+
+- **A relay that refuses the recipient answered the sign-up form with a 500.** `BrandMailer` reports
+  a broken brand identity by returning `false`, and `sendConfirmationMail()` was written around that
+  — but the transport does not return, it THROWS. An address that passes `email:rfc,filter` and
+  every check this addon makes can still be rejected at RCPT time (`501 5.1.3 … not a valid
+  RFC-5322 address`), and Symfony's SMTP client raised that straight out through the public
+  endpoint, after the pending row had already been written.
+
+  Found by pointing the live endpoint at `x@example.invalid`, not in review. The send is wrapped
+  and reported now, which is what the comment above it already promised: somebody who typed their
+  address into a form gets an answer, and the delivery problem goes to whoever reads the logs.
+
+
 ## 2.4.0 — 2026-08-13
 ### Security
 

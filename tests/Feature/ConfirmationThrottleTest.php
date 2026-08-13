@@ -10,6 +10,7 @@ use Illuminate\Cache\RateLimiter;
 use Illuminate\Cache\Repository;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter as RateLimiterFacade;
+use Symfony\Component\Mailer\Exception\TransportException;
 
 /**
  * The mail cannon, closed.
@@ -216,6 +217,29 @@ it('counts on a store that does increment atomically', function (): void {
     anmelden('opfer+2@gmail.com');
 
     Mail::assertSent(ConfirmSubscriptionMail::class, 1);
+});
+
+/**
+ * A relay that refuses the recipient may not become a 500 on a public form.
+ *
+ * Found against the live system, not in review: `x@example.invalid` passes
+ * `email:rfc,filter` and every check this addon makes, and Scaleway answers
+ * `501 5.1.3 … not a valid RFC-5322 address` at RCPT time. Symfony's SMTP
+ * client throws, and before this the exception went all the way out — an
+ * anonymous endpoint answering a typo with a stack trace, after the pending
+ * row was already written.
+ */
+it('answers rather than throwing when the transport refuses the recipient', function (): void {
+    Mail::shouldReceive('mailer')->andReturnSelf();
+    Mail::shouldReceive('send')->andThrow(new TransportException(
+        'Expected response code "250/251/252" but got code "501".'
+    ));
+
+    anmelden('abgelehnt@example.invalid')->assertRedirect();
+
+    // Und die Zeile steht, damit ein zweiter Versuch sie noch retten kann.
+    expect(Subscription::query()->where('email', 'abgelehnt@example.invalid')->first()->status)
+        ->toBe(Subscription::STATUS_PENDING);
 });
 
 it('can be switched off where the endpoint is not public', function (): void {

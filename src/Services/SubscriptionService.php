@@ -412,12 +412,32 @@ class SubscriptionService
         // leaves somebody registered as unconfirmed who will never get a link
         // and cannot ask for one either. The pending row is the thing that can
         // still be rescued by a second attempt once the brand row is fixed.
-        app(BrandMailer::class)->send(
-            $subscription->brand_id === null ? null : (int) $subscription->brand_id,
-            (string) $subscription->email,
-            null,
-            new ConfirmSubscriptionMail($list, $subscription),
-        );
+        //
+        // The try/catch closes the half of that promise the return value never
+        // covered. `BrandMailer` answers a broken brand identity with `false`,
+        // but the transport itself THROWS: a relay that refuses the recipient
+        // at RCPT time — `501 5.1.3 … not a valid RFC-5322 address` for an
+        // address that passed every validator on the way in — comes back as an
+        // exception from deep inside Symfony's SMTP client, straight through
+        // this method and out as a 500 on an anonymous endpoint. Measured
+        // against the live relay, not imagined.
+        //
+        // Swallowed rather than raised, for exactly the reason stated above:
+        // the person is already written down as pending, and answering their
+        // sign-up with a stack trace helps nobody. `report()` puts it in front
+        // of whoever watches the logs, which is where a delivery problem
+        // belongs — not in the face of somebody who typed their address into a
+        // form.
+        try {
+            app(BrandMailer::class)->send(
+                $subscription->brand_id === null ? null : (int) $subscription->brand_id,
+                (string) $subscription->email,
+                null,
+                new ConfirmSubscriptionMail($list, $subscription),
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
