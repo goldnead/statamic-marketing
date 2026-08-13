@@ -212,3 +212,35 @@ it('ignores header entries that could not become a header', function (): void {
     expect(DeliveryHeaders::configured())
         ->toBe(['X-Good' => 'yes', 'X-Numeric' => '0']);
 });
+
+/**
+ * Ein `href` ist nicht dasselbe wie ein Link.
+ *
+ * Bis 2.3.0 traf die Umschreibung jedes `href` im Dokument, also auch das
+ * `<link rel="stylesheet">` im Kopf einer echten Vorlage. Am 13.08.2026 an
+ * Adrian Goldners Newsletter-Layout gemessen: die Schriftart lief über den
+ * Klickzähler. Jeder Mailclient, der die Schrift lädt, zählte damit einen
+ * Klick auf eine Kampagne, die niemand angeklickt hatte — und die Typografie
+ * der Mail hing daran, dass die signierte Weiterleitung funktioniert.
+ */
+it('rewrites anchors only, never a stylesheet or an image', function (): void {
+    $html = renderWithLinks(implode(' ', [
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Test">',
+        '<img src="https://example.com/bild.png">',
+        '<a href="https://example.com/news">News</a>',
+    ]));
+
+    expect($html)->toContain('href="https://fonts.googleapis.com/css2?family=Test"')
+        ->and($html)->toContain('src="https://example.com/bild.png"');
+
+    // Und der Anker selbst geht weiterhin über den Zähler.
+    expect($html)->toContain('/c/'.$this->message->uuid);
+});
+
+it('keeps the other attributes of the anchor it rewrites', function (): void {
+    $html = renderWithLinks('<a class="cta" href="https://example.com/news" style="color:#2f6b4f;">News</a>');
+
+    expect($html)->toContain('class="cta"')
+        ->and($html)->toContain('style="color:#2f6b4f;"')
+        ->and($html)->toContain('/c/'.$this->message->uuid);
+});

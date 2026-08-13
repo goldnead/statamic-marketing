@@ -25,10 +25,20 @@ class CampaignMail extends Mailable
     {
         $this->decideSender();
 
+        // Die Abmelde-URL geht in die Ansicht, nicht in den Renderer: eine
+        // Mailable rendert ihre Ansichten in der Sprache der Empfängerin, ein
+        // Renderer läuft in der Sprache der Anwendung. Und es ist die
+        // Ein-Klick-Adresse, nicht der Fußzeilen-Link — der zeigt auf das
+        // Preference Center, wo ein Klick niemanden abmeldet.
+        $einKlick = $this->rendered->oneClickUnsubscribeUrl;
+
         $mail = $this
             ->subject($this->rendered->subject)
             ->html($this->rendered->html)
-            ->text('marketing::mail.text', ['textContent' => $this->rendered->text]);
+            ->text('marketing::mail.text', [
+                'textContent' => $this->rendered->text,
+                'unsubscribeUrl' => ($einKlick && $einKlick !== '#') ? $einKlick : null,
+            ]);
 
         if ($this->campaign->replyTo) {
             $mail->replyTo($this->campaign->replyTo);

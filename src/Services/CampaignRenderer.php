@@ -7,6 +7,7 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\PreferenceLink;
@@ -101,7 +102,7 @@ class CampaignRenderer
         return new RenderedMail(
             subject: $subject,
             html: $html,
-            text: $this->toText($content, $variables['unsubscribe_url']),
+            text: $this->toText($content),
             unsubscribeUrl: $variables['unsubscribe_url'],
             oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
@@ -387,8 +388,9 @@ class CampaignRenderer
     }
 
     /**
-     * Rewrite every absolute http(s) link to a signed tracking redirect. The
-     * self-service links and anchors/mailto/tel are left untouched.
+     * Rewrite every absolute http(s) link IN AN ANCHOR to a signed tracking
+     * redirect. Self-service links, mailto/tel and every other kind of
+     * reference are left untouched.
      *
      * Unsubscribe, confirm and the preference page all carry their token in
      * the path and are the routes a reader has to be able to reach when
@@ -397,14 +399,25 @@ class CampaignRenderer
      * link plus an appended parameter is a 403, which would leave someone
      * unable to unsubscribe or to change what they receive.
      *
+     * `<a …>` and nothing else. Until 2.3.0 this matched any `href` in the
+     * document, which in a real layout is not only links: a
+     * `<link rel="stylesheet" href="https://fonts.googleapis.com/…">` in the
+     * head of Adrian Goldner's newsletter template was rewritten onto the click
+     * counter, measured on 13.08.2026. Two consequences, both bad. Every mail
+     * client that loads the web font counted a click on a campaign nobody had
+     * clicked, so the click rate measured the readers' font settings. And the
+     * stylesheet only arrived at all because the redirect happened to work —
+     * a signature check that failed, or a provider appending a parameter,
+     * would have taken the typography of the mail with it.
+     *
      * @param  list<string>  $selfService  prefixes from {@see selfServiceUrls()}
      */
     protected function rewriteLinks(string $html, Message $message, array $selfService = []): string
     {
         return (string) preg_replace_callback(
-            '/href="(https?:\/\/[^"]+)"/i',
+            '/<a\s([^>]*?)href="(https?:\/\/[^"]+)"/i',
             function (array $matches) use ($message, $selfService) {
-                $url = html_entity_decode($matches[1]);
+                $url = html_entity_decode($matches[2]);
 
                 if ($this->isSelfServiceLink($url, $selfService)) {
                     return $matches[0];
@@ -415,7 +428,7 @@ class CampaignRenderer
                     'url' => $url,
                 ]);
 
-                return 'href="'.e($tracked).'"';
+                return '<a '.$matches[1].'href="'.e($tracked).'"';
             },
             $html,
         );
@@ -458,16 +471,29 @@ class CampaignRenderer
         return $html.$pixel;
     }
 
-    /** Plain-text alternative derived from the rendered content. */
-    protected function toText(string $contentHtml, string $unsubscribeUrl): string
+    /**
+     * Plain-text alternative derived from the rendered content.
+     *
+     * The unsubscribe line is NOT appended here any more. It is written by the
+     * text view of {@see CampaignMail}, and moving it
+     * there fixed two things at once that could not be fixed here:
+     *
+     *  - **The language.** This method runs at render time, before the mailable
+     *    exists, so `__()` answered in the application locale — English on a
+     *    host whose `APP_LOCALE` is `en`, in a German campaign, every time. A
+     *    Mailable renders its views inside the recipient's locale, so the same
+     *    sentence in the view comes out in the language the brand writes in.
+     *  - **The address.** It used the footer link, which resolves to the
+     *    preference centre wherever that sibling is installed — a page of
+     *    checkboxes on which one click unsubscribes nobody. The text part of a
+     *    marketing mail has to carry the link that ends the subscription by
+     *    itself, and that is the one-click URL the `List-Unsubscribe` header
+     *    already uses.
+     */
+    protected function toText(string $contentHtml): string
     {
         $text = preg_replace('/<(br|\/p|\/h[1-6]|\/div|\/li)>/i', "\n", $contentHtml);
-        $text = trim(html_entity_decode(strip_tags((string) $text)));
 
-        if ($unsubscribeUrl && $unsubscribeUrl !== '#') {
-            $text .= "\n\n".__('Unsubscribe').': '.$unsubscribeUrl;
-        }
-
-        return $text;
+        return trim(html_entity_decode(strip_tags((string) $text)));
     }
 }

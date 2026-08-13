@@ -3,6 +3,13 @@
 return [
     'confirmed_title' => 'Subscription confirmed',
     'confirmed_body' => 'You are now subscribed to ":list". Welcome!',
+    /*
+     * The line in the text part of a campaign. It lives in the mailable's view
+     * rather than in the renderer, so it arrives in the recipient's language
+     * instead of the application's.
+     */
+    'unsubscribe_text' => 'Unsubscribe',
+
     'unsubscribed_title' => 'Unsubscribed',
     'unsubscribed_body' => 'You have been removed from ":list". You will not receive further emails from this list.',
 

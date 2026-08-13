@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.3.0 — 2026-08-13
+### Fixed
+
+- **The text part of a campaign carried the wrong unsubscribe link, in the wrong language.**
+  `CampaignRenderer::toText()` appended the FOOTER link, which resolves to the preference centre
+  wherever that sibling is installed — a page of checkboxes on which one click unsubscribes nobody.
+  A reader of the `text/plain` alternative was therefore offered no way out that works by itself,
+  while the HTML part next to it had one. And because the line was built at render time, `__()`
+  answered in the application locale: a German campaign on a host with `APP_LOCALE=en` said
+  "Unsubscribe".
+
+  The line now lives in the mailable's text view (`marketing::mail.text`), which a Mailable renders
+  inside the recipient's locale, and it carries `one_click_unsubscribe_url` — the same address the
+  RFC 8058 `List-Unsubscribe` header uses. New translation key `marketing::public.unsubscribe_text`.
+  `RenderedMail->text` is now the content alone; a host that renders it itself keeps exactly what it
+  had, minus a line it did not choose.
+
+- **Click tracking rewrote every `href`, not only links.** The regex matched any `href` in the
+  document, so a `<link rel="stylesheet" href="https://fonts.googleapis.com/…">` in the head of a
+  real template went through the signed click redirect — measured on 13.08.2026 on a live newsletter
+  layout. Every mail client that loaded the web font counted a click on a campaign nobody had
+  clicked, so the click rate measured the readers' font settings; and the typography of the mail
+  depended on a signed redirect surviving whatever a provider appends to it. Anchors only now, with
+  their other attributes preserved.
+
+
 ## 2.2.0 — 2026-08-12
 ### Fixed
 

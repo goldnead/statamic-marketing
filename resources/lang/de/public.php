@@ -3,6 +3,13 @@
 return [
     'confirmed_title' => 'Anmeldung bestätigt',
     'confirmed_body' => 'Du bist jetzt für ":list" angemeldet. Willkommen!',
+    /*
+     * Die Zeile im Textteil einer Kampagne. Sie steht in der Ansicht der
+     * Mailable und nicht im Renderer, damit sie in der Sprache der Marke
+     * ankommt statt in der der Anwendung.
+     */
+    'unsubscribe_text' => 'Abmelden',
+
     'unsubscribed_title' => 'Abgemeldet',
     'unsubscribed_body' => 'Du wurdest von ":list" abgemeldet und erhältst keine weiteren E-Mails aus dieser Liste.',
 
