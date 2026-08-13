@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Models;
 
 use Goldnead\BrandContext\Concerns\HasBrand;
 use Goldnead\Leadhub\Support\EmailNormalizer;
+use Goldnead\Marketing\Sending\ConfirmationResult;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -77,6 +78,21 @@ class Subscription extends Model
     public const STATUS_BOUNCED = 'bounced';
 
     public const STATUS_COMPLAINED = 'complained';
+
+    /**
+     * What happened to the confirmation mail for THIS request, set by
+     * `SubscriptionService::subscribe()` and never persisted.
+     *
+     * A declared property rather than an attribute, deliberately: Eloquent's
+     * `__set` only fires for undeclared ones, so this can never end up in
+     * `getAttributes()`, in `toArray()`, in a mass assignment or in a column
+     * that does not exist. It belongs to the request, not to the row — the same
+     * address subscribing again tomorrow gets a different answer, and a row
+     * read back out of the database has no answer at all.
+     *
+     * Null on any subscription that did not come from a sign-up call.
+     */
+    public ?ConfirmationResult $confirmation = null;
 
     protected $table = 'marketing_subscriptions';
 

@@ -165,11 +165,16 @@ it('silently drops honeypot submissions', function (): void {
     Mail::assertNothingSent();
 });
 
+/**
+ * The envelope carries what happened to the CONFIRMATION MAIL, never the
+ * subscription's status. `pending` against `subscribed` answered the membership
+ * question on an endpoint anybody may post to; see `ConfirmationResult`.
+ */
 it('returns a JSON envelope for JSON clients', function (): void {
     $this->postJson(route('marketing.subscribe'), [
         'list' => 'newsletter',
         'email' => 'json@example.com',
-    ])->assertOk()->assertJson(['ok' => true, 'data' => ['status' => 'pending']]);
+    ])->assertOk()->assertExactJson(['ok' => true, 'data' => ['confirmation' => 'sent']]);
 });
 
 it('404s for an unknown list', function (): void {

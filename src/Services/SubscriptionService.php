@@ -12,6 +12,7 @@ use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
+use Goldnead\Marketing\Sending\ConfirmationResult;
 use Goldnead\Marketing\Sending\ConfirmationThrottle;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
@@ -44,7 +45,23 @@ class SubscriptionService
             ->where('uniqueness_key', Subscription::uniquenessKeyFor($list->handle, $email))
             ->first();
 
+        /*
+         * Already on the list. No row to write, no mail to send — and not a
+         * word about either, because "this address is already subscribed" is
+         * the one thing a public form may never answer.
+         *
+         * The throttle is charged anyway, and that is the whole point of this
+         * branch rather than an oversight. `$subscription->confirmation` is
+         * about to be read by a website and shown to a stranger; if this path
+         * answered SENT forever while an ordinary address flipped to THROTTLED
+         * on the second attempt, then two submissions would separate "already
+         * subscribed" from "not subscribed" — the oracle, rebuilt out of the
+         * very field added to stop lying to people. Costing the same is what
+         * makes the two indistinguishable.
+         */
         if ($subscription?->isSubscribed()) {
+            $subscription->confirmation = $this->coverForSilentPath($list, $subscription);
+
             return $subscription;
         }
 
@@ -117,17 +134,96 @@ class SubscriptionService
                 throw $e;
             }
 
+            // The winner of the race is inside `sendConfirmationMail()` right
+            // now. Saying "sent" is the truth about this address, and it is
+            // the same answer the winner will give.
+            $subscription->confirmation = ConfirmationResult::sent();
+
             return $subscription;
         }
 
         if ($list->usesDoubleOptIn() && ! ($options['skip_confirmation'] ?? false)) {
-            $this->sendConfirmationMail($list, $subscription);
+            $subscription->confirmation = $this->sendConfirmationMail($list, $subscription);
             event(new SubscriptionPending($subscription));
 
             return $subscription;
         }
 
-        return $this->markSubscribed($subscription, (array) ($options['meta'] ?? []));
+        // No confirmation mail exists on this path — a single-opt-in list, or
+        // an editor adding somebody they vouch for. Nothing was withheld, so
+        // there is nothing to report.
+        $subscription = $this->markSubscribed($subscription, (array) ($options['meta'] ?? []));
+        $subscription->confirmation = ConfirmationResult::sent();
+
+        return $subscription;
+    }
+
+    /**
+     * Charge the recipient budget for a path that will send nothing and may not
+     * say why.
+     *
+     * Reached when the address is already subscribed. It has to be
+     * indistinguishable from an ordinary sign-up across repeated attempts, so
+     * it pays the same price and reports the same outcomes; see the comment at
+     * the call site and `ConfirmationResult`.
+     */
+    protected function coverForSilentPath(MailingList $list, Subscription $subscription): ConfirmationResult
+    {
+        // A list without double opt-in has no confirmation mail to withhold in
+        // the first place, so there is nothing here to hide and no budget that
+        // would mean anything.
+        if (! $list->usesDoubleOptIn()) {
+            return ConfirmationResult::sent();
+        }
+
+        return $this->chargeRecipientBudget($list, $subscription) ?? ConfirmationResult::sent();
+    }
+
+    /**
+     * How much double-opt-in mail this mailbox has already been made to
+     * receive. Null when the send may proceed.
+     */
+    protected function chargeRecipientBudget(MailingList $list, Subscription $subscription): ?ConfirmationResult
+    {
+        $throttle = app(ConfirmationThrottle::class);
+
+        try {
+            $withheld = $throttle->charge((string) $subscription->email, $list->handle);
+        } catch (\Throwable $e) {
+            /*
+             * A cache that is unreachable THROWS; it does not answer zero. An
+             * uncaught Redis timeout here would be a 500 on an anonymous
+             * endpoint, after the pending row was already written. Not knowing
+             * is not permission, so the mail is withheld rather than sent — and
+             * the caller is told the installation could not send, which is true
+             * of every address alike and therefore discloses nothing.
+             */
+            report($e);
+
+            return ConfirmationResult::unavailable();
+        }
+
+        if ($withheld === null) {
+            return null;
+        }
+
+        if ($withheld === ConfirmationThrottle::WITHHELD_NO_COUNTER) {
+            Log::warning(
+                'Marketing withheld a confirmation mail on list ['.$list->handle.']: no usable counter. '
+                .'The pending subscription was kept.',
+                ['reason' => $withheld, 'list' => $list->handle]
+            );
+
+            return ConfirmationResult::unavailable();
+        }
+
+        Log::warning(
+            'Marketing withheld a confirmation mail on list ['.$list->handle.']: '.$withheld
+            .'. The pending subscription was kept.',
+            ['reason' => $withheld, 'list' => $list->handle]
+        );
+
+        return ConfirmationResult::throttled($throttle->windowMinutes($withheld));
     }
 
     /**
@@ -319,9 +415,48 @@ class SubscriptionService
      * something, and recording it is right; sending to them is not. If the
      * suppression is later released, the pending row is there and the ordinary
      * flow resumes.
+     *
+     * The return value is what the sign-up may be told; `ConfirmationResult`
+     * carries the whole argument about which of the three answers a case gets
+     * and why. Two rules govern this method:
+     *
+     *   1. Nothing that is specific to the PERSON leaves here. A suppressed
+     *      address gets the same SENT as a mail that really went out.
+     *   2. Everything that is true of the INSTALLATION does leave here. A hub
+     *      that cannot count, cannot resolve its brand's sender or cannot reach
+     *      its relay is not a secret, and hiding it is how sign-ups were lost
+     *      in silence until 2.5.0.
      */
-    public function sendConfirmationMail(MailingList $list, Subscription $subscription): void
+    public function sendConfirmationMail(MailingList $list, Subscription $subscription): ConfirmationResult
     {
+        /*
+         * The recipient budget is charged FIRST, ahead of the suppression gate,
+         * and the order is load-bearing.
+         *
+         * Suppression is silent by design: a blocked address gets the ordinary
+         * SENT so that the form cannot be used to ask "did this mailbox bounce
+         * or complain". Charged second, the gate would return before the
+         * counter ever moved, so a suppressed address would answer SENT to
+         * every attempt while an ordinary one flipped to THROTTLED on the
+         * second — and the silence would be undone by exactly two probes.
+         * Charging first makes the two sequences identical.
+         *
+         * It also closes a smaller hole on its own merits: until 2.5.0 a
+         * suppressed address cost nothing at all, so it could be pushed through
+         * this endpoint without limit.
+         *
+         * What none of this hides is TIMING. The mailable is built and handed
+         * to SMTP inline, so a request that really sent one pays a round trip
+         * and a withheld one does not. Anybody willing to measure tens of
+         * milliseconds can still ask "was a mail actually sent here", and
+         * through the gate below, "is this address blocked". That is the
+         * residual, stated rather than papered over; closing it means queueing
+         * the send, which changes how every install delivers this mail.
+         */
+        if ($withheld = $this->chargeRecipientBudget($list, $subscription)) {
+            return $withheld;
+        }
+
         try {
             if (app(SuppressionGate::class)->isSuppressed((string) $subscription->email)) {
                 Log::info(
@@ -329,64 +464,18 @@ class SubscriptionService
                     .$list->handle.']; the pending subscription was kept.'
                 );
 
-                return;
+                // SENT, and this is the one deliberate untruth in the method.
+                // "This address is blocked" is a fact about a person's mailbox
+                // and their past behaviour, and a public form may not answer it.
+                return ConfirmationResult::sent();
             }
         } catch (SuppressionCheckFailed $e) {
             // Not knowing is not permission — the mail is withheld, not sent.
+            // A failing gate is a property of the installation, not of the
+            // address, so unlike the branch above it may be reported outwards.
             report($e);
 
-            return;
-        }
-
-        /*
-         * How much of this one mailbox has already been asked to confirm.
-         *
-         * Everything in front of this counts senders: the websites throttle
-         * per client IP, the hub per brand at 120 a minute. None of them can
-         * see that all 120 are aimed at the same person. This is the only
-         * place in the stack that knows the recipient, which is why the limit
-         * lives here rather than at any of the three endpoints that lead to
-         * it.
-         *
-         * Withheld silently, and that is deliberate rather than lazy. The
-         * caller gets the identical status and the identical body whether the
-         * mail went out or not, so nothing an attacker READS distinguishes the
-         * two — the same reason the suppression gate above says nothing
-         * either. The pending row survives, so a genuine subscriber whose hour
-         * has not passed is delayed rather than lost.
-         *
-         * What this does NOT hide is timing: the mailable is built and sent
-         * inline, so a request that actually sent one pays an SMTP round trip
-         * and a withheld one does not. Anybody willing to measure tens of
-         * milliseconds can still ask "was this mailbox asked recently", and
-         * through the suppression gate above, "is this address blocked". That
-         * is worth knowing rather than papering over; closing it means queueing
-         * the send, which is a change to how every install delivers this mail.
-         */
-        try {
-            $withheld = app(ConfirmationThrottle::class)->charge((string) $subscription->email, $list->handle);
-        } catch (\Throwable $e) {
-            /*
-             * A cache that is unreachable THROWS; it does not answer zero. An
-             * uncaught Redis timeout here would be a 500 on an anonymous
-             * endpoint, after the pending row was already written — the exact
-             * failure the comment further down refuses for the mail transport,
-             * reintroduced one line above it. Not knowing is still not
-             * permission, so the mail is withheld rather than sent.
-             */
-            report($e);
-
-            return;
-        }
-
-        if ($withheld) {
-            Log::warning(
-                'Marketing withheld a confirmation mail on list ['.$list->handle.']: '.$withheld
-                .'. The pending subscription was kept.',
-                ['reason' => $withheld, 'list' => $list->handle]
-            );
-
-            return;
+            return ConfirmationResult::unavailable();
         }
 
         /*
@@ -429,7 +518,7 @@ class SubscriptionService
         // belongs — not in the face of somebody who typed their address into a
         // form.
         try {
-            app(BrandMailer::class)->send(
+            $sent = app(BrandMailer::class)->send(
                 $subscription->brand_id === null ? null : (int) $subscription->brand_id,
                 (string) $subscription->email,
                 null,
@@ -437,7 +526,15 @@ class SubscriptionService
             );
         } catch (\Throwable $e) {
             report($e);
+
+            $sent = false;
         }
+
+        // Both failures above are properties of this installation — a brand row
+        // with half a sender identity, a relay that would not take the message.
+        // Neither says anything about the person, and both used to end here in
+        // silence while the sign-up was told to go and check an empty inbox.
+        return $sent ? ConfirmationResult::sent() : ConfirmationResult::unavailable();
     }
 
     /**

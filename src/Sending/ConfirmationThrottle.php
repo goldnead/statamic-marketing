@@ -157,6 +157,25 @@ class ConfirmationThrottle
     }
 
     /**
+     * How long the tier that withheld this send counts for, in minutes.
+     *
+     * The CONFIGURED WINDOW, deliberately not the time still to run on the
+     * counter. A caller that repeats this to a visitor ("try again in an hour")
+     * would otherwise be repeating how long ago the previous attempt was, to
+     * the second — which is a much finer answer to "has anybody touched this
+     * mailbox lately" than the coarse fact of being throttled at all. The
+     * window is a constant of the installation and says nothing about anyone.
+     */
+    public function windowMinutes(string $reason): ?int
+    {
+        return match ($reason) {
+            self::WITHHELD_PER_LIST => (int) config('marketing.subscriptions.confirmation_throttle.per_list_window_minutes', 60),
+            self::WITHHELD_PER_MAILBOX => (int) config('marketing.subscriptions.confirmation_throttle.per_mailbox_window_minutes', 1440),
+            default => null,
+        };
+    }
+
+    /**
      * A limiter on a store that can actually count, or null.
      *
      * Built here rather than taken from the `RateLimiter` facade, because that

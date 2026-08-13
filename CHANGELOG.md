@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.5.0 — 2026-08-14
+### Changed — BREAKING for anything that read the sign-up response
+
+- **A sign-up is told whether a confirmation mail is actually coming.** 2.4.0 made a withheld
+  mail byte-identical to a sent one and called that a feature, because a difference could be
+  used to ask whether an address is on a list. The reasoning was right about the danger and
+  wrong about the price: on 13.08.2026 a real sign-up on gldnr.studio got "check your inbox"
+  while the recipient throttle held the mail back. The person is still `pending`, never got
+  anything, and the only trace was one line in a log nobody watches. The likeliest next move
+  for somebody in that position is to sign up again — which trips the same throttle. The state
+  is self-reinforcing and invisible from the outside.
+
+  `SubscriptionService::subscribe()` now hands back a `Sending\ConfirmationResult` on the
+  returned model (`$subscription->confirmation`, a declared property, never an attribute and
+  never persisted), and both the public form endpoint and any host API report it:
+
+  | value | meaning |
+  | --- | --- |
+  | `sent` | a confirmation is on its way — and the cover for the two silent cases below |
+  | `throttled` | none right now, this MAILBOX was asked recently; `retry_after_minutes` says how long the window is |
+  | `unavailable` | none right now, this INSTALLATION could not send one |
+
+  The line between them is one question: would knowing it tell a stranger something about the
+  PERSON? "Already subscribed" and "suppressed" would, so both keep answering `sent`.
+  "Somebody asked for this mailbox in the last hour" would not — it is a statement about a
+  moment in time, and the person who most often triggers it is the visitor themselves.
+
+- **The recipient budget is charged before the suppression gate, and on the already-subscribed
+  path too.** Both of those paths send nothing and say nothing, and until now both cost
+  nothing either — so two submissions separated them from an ordinary address, which answers
+  `sent` and then `throttled`. Making the cover story cost the same is what keeps it a cover
+  story. It also closes a smaller hole on its own: a suppressed address could be pushed
+  through the endpoint without limit.
+
+- **`status` is gone from the sign-up response**, in the JSON envelope (`data.status`) and in
+  the session flash. It was `subscribed` against `pending` — the membership question, answered
+  for free at an endpoint anybody may post to, in a field nobody had asked for. The envelope
+  now carries `data.confirmation` and optionally `data.retry_after_minutes`. A host that
+  rendered `session('marketing.subscribed')` still gets a string; it now reads `sent`,
+  `throttled` or `unavailable`.
+
+### Known limit
+
+- **Timing still distinguishes a real send from a withheld one.** The mailable is built and
+  handed to SMTP inline, so a request that sent one pays a round trip and a request that did
+  not does not. That channel predates this release and is unchanged by it; closing it means
+  queueing the confirmation, which changes how every install delivers this mail. Stated here
+  rather than papered over.
+
+
 ## 2.4.1 — 2026-08-13
 ### Fixed
 

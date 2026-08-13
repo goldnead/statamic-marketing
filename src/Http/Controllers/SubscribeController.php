@@ -3,7 +3,7 @@
 namespace Goldnead\Marketing\Http\Controllers;
 
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
-use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Sending\ConfirmationResult;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -19,7 +19,7 @@ class SubscribeController extends Controller
 
         // Bots that fill the honeypot get a believable success and nothing else.
         if ($honeypot && $request->filled($honeypot)) {
-            return $this->respond($request, Subscription::STATUS_PENDING);
+            return $this->respond($request, ConfirmationResult::sent());
         }
 
         $data = $request->validate([
@@ -50,19 +50,33 @@ class SubscribeController extends Controller
             ['source' => 'form'],
         );
 
-        return $this->respond($request, $subscription->status);
+        return $this->respond($request, $subscription->confirmation ?? ConfirmationResult::sent());
     }
 
-    protected function respond(Request $request, string $status)
+    /**
+     * What the visitor is told.
+     *
+     * Until 2.5.0 this answered with the subscription's own `status`, which is
+     * `subscribed` for an address already on the list and `pending` for one
+     * that is not — a membership oracle in a field nobody meant as one, on an
+     * endpoint anybody may post to. It also meant a withheld mail and a sent
+     * one were the same word, so a visitor was told to check an inbox that
+     * would stay empty; that happened for real on 13.08.2026.
+     *
+     * `ConfirmationResult` is what replaces it, and it is deliberately the ONLY
+     * thing that leaves here. Adding the status back "for the template" would
+     * reopen the oracle, whatever the template then does with it.
+     */
+    protected function respond(Request $request, ConfirmationResult $confirmation)
     {
         if ($request->expectsJson()) {
-            return response()->json(['ok' => true, 'data' => ['status' => $status]]);
+            return response()->json(['ok' => true, 'data' => $confirmation->toArray()]);
         }
 
         if ($redirect = $request->input('_redirect')) {
             return redirect()->to($redirect);
         }
 
-        return back()->with('marketing.subscribed', $status);
+        return back()->with('marketing.subscribed', $confirmation->outcome);
     }
 }

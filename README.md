@@ -151,7 +151,24 @@ minute).
 
 Or POST to `{{ marketing:subscribe_url }}` yourself (`email`, `list`, optional
 `first_name`, `last_name`, `_redirect`). JSON clients receive
-`{ "ok": true, "data": { "status": "pending|subscribed" } }`.
+`{ "ok": true, "data": { "confirmation": "sent|throttled|unavailable" } }`, plus
+`retry_after_minutes` when the answer is `throttled`. Server-rendered forms get
+the same word in `session('marketing.subscribed')`.
+
+**The answer is about the MAIL, not about the subscription.** `sent` means a
+confirmation is on its way — and it is also what an address that is already
+subscribed or currently suppressed gets, because neither of those may be
+disclosed at a public endpoint. `throttled` means this mailbox was asked
+recently and none is going out right now; `unavailable` means this installation
+could not send one. Both of the last two are true of a person who would
+otherwise be told to go and watch an empty inbox, which is what happened before
+2.5.0 and what this field exists to stop.
+
+The subscription's own `status` is deliberately not in the response. It answered
+`subscribed` against `pending`, which is the membership question — and the shape
+of a form that can be used to ask it about anybody. `Sending\ConfirmationResult`
+carries the whole argument, including what the field still leaks and why that is
+the cheaper of the two prices.
 
 ### Sign-up is a public endpoint
 
@@ -169,9 +186,15 @@ means and is deliberately blunt about it — `Opfer@Gmail.com`, `opfer+1@gmail.c
 (`EmailNormalizer`, the consent unique) is untouched and stays conservative, because merging two
 addresses there means merging two people's decisions.
 
-A withheld mail is silent — identical response, subscription still recorded as pending — so the
-limit cannot be used to ask whether an address is on a list. If the cache cannot count, nothing is
-sent.
+A withheld mail says so (`confirmation: throttled`) and the subscription is still recorded as
+pending. Until 2.5.0 it said nothing at all, on the reasoning that any difference could be used to
+ask whether an address is on a list — which cost a real person their sign-up on 13.08.2026 and
+bought less than it looked like: "somebody asked for this mailbox in the last hour" is a statement
+about a moment, and after the first submission that somebody is the visitor. What is NOT disclosed,
+and is the reason the budget is charged before the suppression gate and on the already-subscribed
+path as well, is anything about the person: those two answer `sent` and cost the same, so no
+sequence of submissions separates them. If the cache cannot count, nothing is sent and the answer
+is `unavailable`.
 
 **The confirmation link is single-use, expiring, and its own token.** `confirmation_token` is
 rotated with every confirmation mail and spent on first use; `token` keeps serving unsubscribe and
