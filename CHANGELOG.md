@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.1 — 2026-08-13
+### Fixed
+
+- **Blade escaped the `text/plain` part.** `{{ }}` runs `e()` whatever the output is for, so a
+  campaign whose body says "Musik & Chor" arrived as "Musik &amp; Chor" in the text alternative —
+  and `toText()` had decoded those entities on the line before, deliberately. There is no HTML to
+  escape into in a text part. `{!! !!}` now, with a test.
+
+
 ## 2.3.0 — 2026-08-13
 ### Fixed
 

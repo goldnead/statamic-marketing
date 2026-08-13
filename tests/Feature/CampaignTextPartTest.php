@@ -132,3 +132,22 @@ it('keeps the rendered text free of the unsubscribe line itself', function (): v
 
     expect($rendered->text)->toBe('Erste Ausgabe.');
 });
+
+/**
+ * In einer Textdatei gibt es nichts zu entkommen.
+ *
+ * Blade escapt `{{ }}` grundsätzlich, auch wenn das Ergebnis nie in HTML
+ * landet: aus „Musik & Chor" wird „Musik &amp; Chor". Der Renderer löst
+ * Entitäten eine Zeile vorher ausdrücklich auf — die Ansicht hat das wieder
+ * zurückgedreht.
+ */
+it('does not html-escape the text part', function (): void {
+    $this->campaign->content = '<p>Musik &amp; Chor, "in Anführungszeichen".</p>';
+
+    $text = textteil();
+
+    expect($text)->toContain('Musik & Chor')
+        ->and($text)->toContain('"in Anführungszeichen"')
+        ->and($text)->not->toContain('&amp;')
+        ->and($text)->not->toContain('&quot;');
+});
