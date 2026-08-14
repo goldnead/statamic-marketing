@@ -1,5 +1,61 @@
 # Changelog
 
+## 2.8.0 — 2026-08-15
+
+### Added — jede Mail steht jetzt am Kontakt
+
+Die Kontaktseite beantwortet „wer ist das und was läuft mit dieser Person".
+Was diese Person von uns bekommen hat, stand bisher nicht darin: die Fakten
+lagen vollständig in `marketing_messages`, nach Nachricht sortiert, also genau
+dort, wo niemand nachsieht, der einen Menschen ansieht.
+
+Versendet, geöffnet, geklickt, Bounce, Beschwerde: jedes davon schreibt jetzt
+einen Eintrag auf die LeadHub-Zeitleiste des Empfängers, mit Betreff, Kampagne
+und Liste als lesbare Zeilen statt als Payload-Dump.
+
+Zwei Eigenschaften tragen das Ganze, und beide betreffen nicht den guten Fall:
+
+- **Ein Tracking-Pixel darf keinen CRM-Datensatz anlegen.** Zu einer Adresse
+  ohne Kontakt wird nichts geschrieben, auch nicht angelegt.
+- **Nichts auf diesem Weg darf aus einer zugestellten Mail einen Fehler
+  machen.** Der Weg hängt am Sendepfad und an zwei öffentlichen
+  Tracking-Endpunkten; er fängt alles und protokolliert gedrosselt.
+
+Abschaltbar über `marketing.timeline.enabled`, einschränkbar auf einzelne Arten
+über `marketing.timeline.types` — fünfzigtausend Empfänger und pro Öffnung eine
+Zeile am Kontakt ist ein legitimer Wunsch, das nicht zu wollen.
+
+### Added — Öffnungen, die eine Maschine gemacht hat, heißen jetzt so
+
+Apple Mail lädt das Zählpixel für jede zugestellte Nachricht vor, ob gelesen
+oder nicht; Sicherheits-Gateways wie Mimecast oder Proofpoint ebenso. Als
+Lektüre verbucht sagt das aus, jemand habe eine Mail angesehen, die niemand
+geöffnet hat.
+
+Exakt unterscheiden lässt sich das nicht — Apples Mail Privacy Protection ist
+gebaut, um ununterscheidbar zu sein. `Support\MachineOpen` ist deshalb eine
+Heuristik, und die Richtung ihres Zweifels ist die Entscheidung: ein
+unbekannter Client zählt als Mensch. Einen echten Leser als Maschine zu führen
+ist der Fehler, der das Ganze schlechter macht als gar nichts.
+
+Bewusst nicht als Maschine gezählt: Gmails Bildproxy. Der lädt beim
+tatsächlichen Öffnen, seine Anfrage *ist* eine Lektüre.
+
+- **Die Zähler bleiben, wie sie waren.** `opens` zählt weiter alles. Der
+  Bericht vergleicht diese Kampagne mit jeder früheren; „Öffnungen" hier still
+  neu zu definieren sähe aus wie ein Einbruch, den es nie gab.
+- **Gespeichert wird die Antwort, nicht das Material.** Kein User-Agent, keine
+  IP — die Spalte `machine` auf `marketing_message_events` und sonst nichts.
+- Neues Ereignis `MessageOpenedByHuman`: hinter einem Scanner-Postfach ist die
+  erste Öffnung praktisch immer die der Maschine, `MessageOpened` hat dann
+  gefeuert und feuert nicht wieder. Ohne das zweite Ereignis stünde am Kontakt
+  für immer „vorgeladen" und nie einmal, dass die Person gelesen hat.
+
+### Fixed
+
+- Die Vorschau im Vorlagen-Editor benutzt jetzt ein benanntes Token statt
+  `bg-white`, damit der Rahmen im dunklen CP nicht weiß aufblitzt.
+
 ## 2.7.2 — 2026-08-14
 
 ### Docs — `| default:` rettet eine Anrede ohne Vornamen nicht

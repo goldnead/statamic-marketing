@@ -166,6 +166,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Timeline — the mails on a LeadHub contact's record
+    |--------------------------------------------------------------------------
+    |
+    | Every mail this addon sends is written onto the recipient's LeadHub
+    | timeline, so the question "what has this person had from us, and did they
+    | read it" is answerable where somebody actually asks it — on the contact.
+    |
+    | Nothing is written for an address with no contact: a tracking pixel must
+    | not be able to create a CRM record.
+    |
+    | `types` narrows what is written. An installation sending to fifty thousand
+    | people may not want a row per open on every contact; leaving it empty
+    | means all six kinds. The constants are on
+    | `Integrations\Leadhub\TimelineRecorder`.
+    |
+    */
+
+    'timeline' => [
+        'enabled' => true,
+        'types' => [],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Delivery — surviving a provider that rewrites the links
     |--------------------------------------------------------------------------
     |

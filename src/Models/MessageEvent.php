@@ -24,6 +24,7 @@ class MessageEvent extends Model
     protected $guarded = [];
 
     protected $casts = [
+        'machine' => 'boolean',
         'meta' => 'array',
     ];
 

@@ -13,6 +13,7 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
 use Goldnead\Marketing\Integrations\Leadhub\ContactSubscriptionsPanel;
+use Goldnead\Marketing\Integrations\Leadhub\TimelineRecorder;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentCampaignRepository;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentEmailTemplateRepository;
@@ -115,6 +116,11 @@ class ServiceProvider extends AddonServiceProvider
         // Singletons so the bridges' boot guards hold across resolutions.
         $this->app->singleton(WebhookManagerBridge::class);
         $this->app->singleton(AutomationsBridge::class);
+
+        // Singleton so the per-request campaign memo inside it is actually a
+        // memo: a send fires one event per recipient, and a repository lookup
+        // per mail would be a query per mail.
+        $this->app->singleton(TimelineRecorder::class);
     }
 
     public function boot(): void
@@ -182,6 +188,11 @@ class ServiceProvider extends AddonServiceProvider
                 ->boot($this->app->make('events'));
 
             $this->registerContactPanel();
+
+            // The mail events onto the contact's timeline. Subscribed here with
+            // the other sibling wiring, and for the same reason: LeadHub's
+            // container bindings only exist once its provider has booted.
+            $this->app->make(TimelineRecorder::class)->subscribe($this->app->make('events'));
         };
 
         $this->app->booted(function () use ($boot): void {

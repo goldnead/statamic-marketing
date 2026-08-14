@@ -8,10 +8,13 @@ use Illuminate\Routing\Controller;
 
 class TrackingController extends Controller
 {
-    public function open(string $uuid, TrackingService $tracking)
+    public function open(Request $request, string $uuid, TrackingService $tracking)
     {
         if (config('marketing.tracking.opens', true)) {
-            $tracking->recordOpen($uuid);
+            // The user agent is handed over, used once to decide whether this
+            // was a person, and never stored — no agent, no IP. See
+            // Support\MachineOpen for what that decision is worth.
+            $tracking->recordOpen($uuid, $request->userAgent());
         }
 
         return response(TrackingService::pixel(), 200, [

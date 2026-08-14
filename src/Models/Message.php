@@ -17,6 +17,16 @@ use Illuminate\Support\Str;
  * @property string $email The address this message was addressed to, kept even
  *                         if the subscription is later corrected or deleted.
  * @property string|null $campaign_handle The campaign this delivery belongs to.
+ * @property int $opens How often the tracking pixel was fetched for this
+ *                      message — by anybody, person or prefetcher. The report
+ *                      compares this against every earlier campaign, so it
+ *                      counts everything and always has;
+ *                      `marketing_message_events.machine` is where the
+ *                      distinction lives.
+ * @property int $clicks How often a tracked link in this message was followed.
+ * @property Carbon|null $sent_at When this message left, or null while it has not.
+ * @property-read Subscription|null $subscription The
+ *               sign-up this delivery was made against.
  *                                        NULL means it belongs to none — a
  *                                        template send, which names its mail in
  *                                        `template_handle` instead. Exactly one

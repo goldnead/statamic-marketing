@@ -297,13 +297,13 @@ function destroy() {
 
                     <div
                         v-if="previewHtml"
-                        class="mx-auto overflow-hidden rounded-lg border border-gray-200 bg-white transition-[max-width] dark:border-gray-800"
+                        class="marketing-email-canvas mx-auto overflow-hidden rounded-lg border border-gray-200 transition-[max-width] dark:border-gray-800"
                         :class="previewWidth === 'mobile' ? 'max-w-[390px]' : 'max-w-full'"
                     >
                         <iframe
                             :srcdoc="previewHtml"
                             :sandbox="previewSandbox"
-                            class="h-[640px] w-full border-0 bg-white"
+                            class="marketing-email-canvas h-[640px] w-full border-0"
                             :title="__('marketing::templates.preview')"
                             data-marketing-template-preview
                         ></iframe>

@@ -15,9 +15,24 @@
 @source "../views/**/*.blade.php";
 
 @layer addon-theme {
-    /* Reserved for Marketing theme tokens (CSS variables). Nothing yet. */
+    /* The paper an email preview is rendered on.
+     *
+     * Deliberately NOT a Control Panel surface token, and deliberately named
+     * rather than written as a bare colour utility at the call sites. The frame
+     * shows what the recipient's mail client will show, and that is a white
+     * page whether or not the editor runs the Control Panel in dark mode.
+     * Tinting it with the CP's surface token would misrepresent the mail — and
+     * an unnamed literal there reads as a forgotten dark-mode variant, which is
+     * exactly what the linter is right to flag. Same token, same reasoning, as
+     * `--sa-email-canvas` in goldnead/statamic-automations. */
+    :root {
+        --marketing-email-canvas: var(--color-white, #ffffff);
+    }
 }
 
 @layer addon-utilities {
-    /* Reserved for Marketing utility classes. Nothing yet. */
+    /* The frame around an email preview, and the frame itself. */
+    .marketing-email-canvas {
+        background: var(--marketing-email-canvas);
+    }
 }
