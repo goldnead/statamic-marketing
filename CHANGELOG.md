@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.6.1 — 2026-08-14
+
+### Fixed — die Vorschau kannte eine andere Platzhalter-Liste als der Versand
+
+2.6.0 lieferte der Vorschau eine von Hand geschriebene Liste von Variablen. Sie
+war am Tag ihrer Entstehung in beide Richtungen falsch: sie bot `list_name` an,
+das kein Versand je geliefert hat, und ihr fehlten `preheader`, `campaign.*` und
+`list.*`, die jeder Versand liefert.
+
+Aufgefallen an Adrians FamilyStack-Layout: dessen versteckte Vorschauzeile
+benutzt `{{ preheader }}` und blieb in der Vorschau leer, obwohl sie in
+Produktion gefüllt ist. Die andere Richtung ist die teurere — ein Platzhalter,
+der in der Vorschau gut aussieht und im Postfach als Lücke ankommt.
+
+Die Vorschau fragt jetzt `CampaignRenderer::archiveVariables()`, also die
+entpersonalisierte Variablenliste des Renderers selbst. Damit können die beiden
+nicht mehr auseinanderlaufen, und ein Test vergleicht sie Schlüssel für
+Schlüssel.
+
+### Added — die Liste der Platzhalter steht im Editor, und Tippfehler fallen auf
+
+Unter dem Code steht aufklappbar, welche Platzhalter es gibt. Dazu ein dritter
+Befund: **ein Platzhalter, den niemand füllt**, wird als Warnung genannt.
+Antlers löst eine unbekannte Variable zur leeren Zeichenkette auf — `{{ list_name }}`
+bleibt still leer, in der Vorschau wie im Postfach, und das einzige Symptom ist
+eine Lücke, wo ein Wort stehen sollte.
+
+Bewusst zurückhaltend: alles, was kein schlichtes `{{ name }}` oder
+`{{ name.unter }}` ist, bleibt unangetastet. Antlers-Bedingungen, Tags und
+`noparse` wohnen in denselben Klammern, und eine Warnung, die auf korrektem
+Markup feuert, ist der Weg, auf dem Warnungen aufhören, gelesen zu werden.
+
 ## 2.6.0 — 2026-08-14
 
 Beides aus Adrians Fragen beim Durchgang durch den Hub.

@@ -49,6 +49,7 @@ class TemplateController extends Controller
             'storeUrl' => cp_route('marketing.templates.store'),
             'starterHtml' => EmailTemplate::fallback()->html,
             'previewUrl' => cp_route('marketing.templates.preview'),
+            'availableVariables' => app(TemplatePreview::class)->availableVariables(),
         ]);
     }
 
@@ -119,6 +120,7 @@ class TemplateController extends Controller
             'template' => $template->toArray(),
             'updateUrl' => cp_route('marketing.templates.update', $handle),
             'previewUrl' => cp_route('marketing.templates.preview'),
+            'availableVariables' => app(TemplatePreview::class)->availableVariables(),
             'deleteUrl' => cp_route('marketing.templates.destroy', $handle),
         ]);
     }

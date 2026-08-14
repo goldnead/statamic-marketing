@@ -2,6 +2,8 @@
 
 namespace Goldnead\Marketing\Services;
 
+use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Data\MailingList;
 use Statamic\Facades\Antlers;
 
 /**
@@ -21,19 +23,115 @@ use Statamic\Facades\Antlers;
  */
 class TemplatePreview
 {
-    /** Rendered with these, so nothing in the preview is a real person's data. */
-    public const SAMPLE = [
-        'subject' => 'Ein Beispiel-Betreff',
-        'list_name' => 'Beispiel-Verteiler',
-        'first_name' => 'Maria',
-        'last_name' => 'Beispiel',
-        'name' => 'Maria Beispiel',
-        'email' => 'maria@example.com',
-        'unsubscribe_url' => '#unsubscribe',
-        'one_click_unsubscribe_url' => '#unsubscribe',
-        'preferences_url' => '#preferences',
-        'archive_url' => '#archive',
-        'web_version_url' => '#archive',
+    public function __construct(protected CampaignRenderer $renderer) {}
+
+    /**
+     * The variables a layout may use, with stand-in values.
+     *
+     * Asked of {@see CampaignRenderer}, never listed here. A hand-written list
+     * beside the renderer is a second answer to "which variables exist", and it
+     * was already wrong on the day it was written: it offered `list_name`,
+     * which no send has ever provided, and left out `preheader`, `campaign.*`
+     * and `list.*`, which every send does. Both directions cost the same
+     * afternoon — a placeholder that looks dead in the preview and works in
+     * production, or one that looks fine and renders empty in the inbox.
+     *
+     * `archiveVariables()` and not `variables()`: it is the renderer's own
+     * depersonalised set, built for the public archive page, which is exactly
+     * what a preview needs — every variable present, no recipient in any of them.
+     *
+     * @return array<string, mixed>
+     */
+    public function variables(): array
+    {
+        return $this->renderer->archiveVariables(
+            new Campaign(
+                handle: 'beispiel-kampagne',
+                name: __('marketing::templates.sample_campaign'),
+                subject: __('marketing::templates.sample_subject'),
+                preheader: __('marketing::templates.sample_preheader'),
+            ),
+            new MailingList(
+                handle: 'beispiel-verteiler',
+                name: __('marketing::templates.sample_list'),
+            ),
+        );
+    }
+
+    /**
+     * Every variable a layout may print, as the dotted names it prints them by.
+     *
+     * Flattened one level, because that is how they are written: the renderer
+     * hands `campaign` as an array and a template says `{{ campaign.name }}`.
+     *
+     * @return array<int, string>
+     */
+    public function availableVariables(): array
+    {
+        $names = ['content'];
+
+        foreach ($this->variables() as $key => $value) {
+            if (is_array($value)) {
+                foreach (array_keys($value) as $sub) {
+                    $names[] = $key.'.'.$sub;
+                }
+
+                continue;
+            }
+
+            $names[] = $key;
+        }
+
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * Placeholders the layout prints that no send will fill in.
+     *
+     * The failure this catches is the quiet one: Antlers resolves an unknown
+     * variable to the empty string, so `{{ list_name }}` — which looks entirely
+     * plausible and does not exist — renders as nothing, in the preview and in
+     * the inbox alike, and the only symptom is a gap where a word should be.
+     *
+     * Deliberately conservative. Anything that is not a plain `{{ name }}` or
+     * `{{ name.sub }}` is left alone: Antlers conditionals, tags, modifiers and
+     * `noparse` all live in the same braces, and a warning that fires on
+     * correct markup is how warnings stop being read.
+     *
+     * @return array<int, string>
+     */
+    protected function unknownVariables(string $html): array
+    {
+        $known = $this->availableVariables();
+        $unknown = [];
+
+        preg_match_all('/\{\{\s*([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)?)\s*\}\}/i', $html, $matches);
+
+        foreach ($matches[1] as $name) {
+            // A parent whose children are offered is itself a legitimate write
+            // in Antlers (`{{ campaign }}`…), and the control words are not
+            // variables at all.
+            if (in_array($name, $known, true) || in_array(strtolower($name), self::CONTROL_WORDS, true)) {
+                continue;
+            }
+
+            if (in_array($name.'.', array_map(fn ($k) => substr($k, 0, strpos($k, '.') + 1) ?: $k, $known), true)) {
+                continue;
+            }
+
+            $unknown[$name] = true;
+        }
+
+        return array_keys($unknown);
+    }
+
+    /** Antlers' own words, which are not variables and must never be flagged. */
+    protected const CONTROL_WORDS = [
+        'if', 'elseif', 'else', 'endif', 'unless', 'endunless',
+        'noparse', 'endnoparse', 'foreach', 'endforeach', 'loop', 'endloop',
+        'slot', 'endslot', 'partial', 'endpartial', 'now', 'current_date',
     ];
 
     /**
@@ -58,7 +156,7 @@ class TemplatePreview
 
         try {
             return [
-                'html' => (string) Antlers::parse($html, array_merge(self::SAMPLE, [
+                'html' => (string) Antlers::parse($html, array_merge($this->variables(), [
                     'content' => $this->sampleContent(),
                 ])),
                 'error' => null,
@@ -92,6 +190,17 @@ class TemplatePreview
             $findings[] = [
                 'level' => 'warning',
                 'message' => __('marketing::templates.finding_no_unsubscribe'),
+            ];
+        }
+
+        $unknown = $this->unknownVariables($html);
+
+        if ($unknown !== []) {
+            $findings[] = [
+                'level' => 'warning',
+                'message' => __('marketing::templates.finding_unknown_variables', [
+                    'names' => implode(', ', array_map(fn ($n) => '{{ '.$n.' }}', $unknown)),
+                ]),
             ];
         }
 

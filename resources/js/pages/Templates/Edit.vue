@@ -13,6 +13,10 @@ const props = defineProps([
     'deleteUrl',     // DELETE endpoint (edit only)
     'starterHtml',   // string — prefill on create
     'previewUrl',    // POST endpoint that renders the layout being typed
+    // Every placeholder a send fills in, as the dotted names a layout prints
+    // them by. Comes from the renderer itself, so the list cannot drift from
+    // what an actual campaign provides.
+    'availableVariables',
 ]);
 
 const isCreating = computed(() => ! props.updateUrl);
@@ -23,8 +27,14 @@ const html = ref(props.template?.html ?? props.starterHtml ?? '');
 
 const showDeleteConfirm = ref(false);
 
-// Kept in script so Vue's template compiler never sees the Antlers braces.
+// Kept in script so Vue's template compiler never sees the Antlers braces —
+// a literal `}}` in the template closes the mustache the compiler is reading.
 const contentTag = '{{ content }}';
+
+/** One placeholder as it is written in a layout. Built here for the same reason. */
+function placeholder(name) {
+    return '{{ ' + name + ' }}';
+}
 const unsubscribeTag = '{{ unsubscribe_url }}';
 
 // A rejected template used to look like a dead Save button: the response came
@@ -238,8 +248,24 @@ function destroy() {
                     </Field>
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ __('marketing::templates.layout_instructions') }}
-                        <code v-text="contentTag"></code> · <code v-text="unsubscribeTag"></code>
                     </p>
+
+                    <!-- The list, rather than two examples in a sentence. The
+                         placeholders are the whole vocabulary of a layout, and
+                         guessing at one that sounds right produces a gap in the
+                         mail and no error anywhere. -->
+                    <details class="mt-3">
+                        <summary class="cursor-pointer text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {{ __('marketing::templates.available_variables') }}
+                        </summary>
+                        <div class="mt-2 flex flex-wrap gap-1" data-marketing-template-variables>
+                            <code
+                                v-for="name in (availableVariables || [])"
+                                :key="name"
+                                class="rounded bg-gray-100 px-1.5 py-0.5 text-2xs dark:bg-gray-800"
+                             v-text="placeholder(name)"></code>
+                        </div>
+                    </details>
                 </Card>
             </Panel>
 
