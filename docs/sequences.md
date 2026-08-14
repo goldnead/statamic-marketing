@@ -84,6 +84,19 @@ Without the email-templates package installed, template mode still resolves
 against marketing's own template repository. A slug that answers to neither
 fails with a message naming the missing package, rather than a fatal error.
 
+## The shipped template
+
+`Newsletter Welcome Series` in the automations template catalog builds the graph
+for you: a *Subscriber Confirmed* trigger set to enroll each person once, a
+mail, three days, a second mail. Both mails are `marketing.send_email` in
+campaign mode with the **campaign left empty**, because the catalog cannot name
+a campaign that does not exist in your site yet. Write the two mails as
+campaigns, leave them in draft, pick them on the two nodes, then enable.
+
+Until 2.7.1 that template used the neutral `send_email` and was therefore an
+example of the exact thing this page warns about. It no longer is; nothing else
+in the catalog sends to a subscriber through the neutral node.
+
 ## Setting one up
 
 1. Write each mail — as an ordinary **campaign** left in draft, or as an

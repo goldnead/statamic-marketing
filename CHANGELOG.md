@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.7.1 — 2026-08-14
+
+### Fixed — die mitgelieferte Willkommensserie baute den Defekt, vor dem dieses Addon warnt
+
+Die Katalogvorlage `marketing_welcome_series` hängte zwei Werbemails an den
+domänenneutralen `send_email` aus `statamic-automations`: keine Einwilligung,
+keine Sperrliste, kein Opt-out, kein Frequenz-Deckel, kein Abmeldelink, keine
+Anbieterkennzeichnung. Zwei Verzeichnisse weiter, in `docs/sequences.md`, steht
+seit 1.12.0, dass genau das nicht geht.
+
+Eine Vorlage ist der Weg, den jemand als Erstes geht. Wer sie nahm, baute den
+Fehler mit gutem Gewissen, weil er die Vorlage des Herstellers benutzt hat —
+zweimal ist er so entstanden.
+
+Jetzt `marketing.send_email` im **Kampagnenmodus**, Kampagne leer: der Katalog
+kann keine Kampagne benennen, die es im Zielsystem noch nicht gibt, also wählt
+sie die Site. Die Automation kommt ohnehin ausgeschaltet an, und ein Knoten ohne
+Kampagne sagt es beim Drücken von „Test", statt still ungeprüft zu senden.
+Vorlagenmodus wäre der kürzere Weg und ist gemessen der schlechtere: dort
+bekommt der Renderer eine Kampagne mit leerem `content`, und der `text/plain`-
+Teil entsteht aus genau diesem Feld.
+
+Dazu Wiedereintritt `ignore` (es gibt nur ein Willkommen) und Beschriftungen an
+den beiden Mail-Knoten. Die englischen Platzhaltertexte sind mit den Knoten weg;
+eine Kampagne bringt ihren eigenen Text mit.
+
+Der Abmelde-Alarm und die „Kampagne verschickt"-Nachricht bleiben auf dem
+neutralen Knoten und an einer Admin-Adresse. Das ist, wofür er da ist — und seit
+`statamic-automations` 2.4.0 verweigert er den anderen Fall von sich aus.
+
 ## 2.7.0 — 2026-08-14
 
 Aus Adrians Frage, warum es zweierlei „Templates" gibt und was die
