@@ -55,6 +55,59 @@ it('contributes the marketing templates to the automations catalog', function ()
     }
 });
 
+/**
+ * The shipped welcome series is the first sequence most people will ever build,
+ * and until 2.6.2 it built the defect this addon documents: two marketing mails
+ * on the orchestrator's domain-neutral `send_email`, which asks for no consent
+ * and carries no unsubscribe link.
+ */
+it('builds the welcome series on the marketing send node, never on the neutral one', function (): void {
+    $template = app(TemplateRegistry::class)->get('marketing_welcome_series');
+
+    $mails = collect($template['nodes'])->whereIn('node_key', ['welcome', 'followup']);
+
+    expect($mails)->toHaveCount(2);
+
+    foreach ($mails as $node) {
+        expect($node['type'])->toBe(SendMarketingEmailAction::handle());
+    }
+
+    expect(collect($template['nodes'])->pluck('type'))->not->toContain('send_email');
+});
+
+it('leaves the welcome series campaigns for the installing site to pick', function (): void {
+    $template = app(TemplateRegistry::class)->get('marketing_welcome_series');
+
+    foreach (collect($template['nodes'])->whereIn('node_key', ['welcome', 'followup']) as $node) {
+        // Campaign mode with nothing chosen yet: the catalog cannot name a
+        // campaign that does not exist in the target site. An unset campaign
+        // fails loudly on Test; a template mode default would send a mail with
+        // an empty text part.
+        expect($node['config'])->toHaveKey('campaign')
+            ->and($node['config']['campaign'])->toBeNull()
+            ->and($node['config'])->not->toHaveKey('body');
+    }
+});
+
+it('welcomes each person once', function (): void {
+    $template = app(TemplateRegistry::class)->get('marketing_welcome_series');
+
+    $trigger = collect($template['nodes'])->firstWhere('node_key', 'trigger');
+
+    expect($trigger['config']['_restart_policy'])->toBe('ignore');
+});
+
+it('keeps the team notifications on the neutral node, addressed to the team', function (): void {
+    $registry = app(TemplateRegistry::class);
+
+    foreach (['marketing_unsubscribe_alert', 'marketing_campaign_sent_notification'] as $handle) {
+        $notify = collect($registry->get($handle)['nodes'])->firstWhere('node_key', 'notify');
+
+        expect($notify['type'])->toBe('send_email')
+            ->and($notify['config']['to'])->toBe('admin@example.com');
+    }
+});
+
 it('runs an automation when a subscriber confirms', function (): void {
     Mail::fake();
 
