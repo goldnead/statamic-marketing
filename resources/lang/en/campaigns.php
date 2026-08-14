@@ -1,6 +1,18 @@
 <?php
 
 return [
+    'content_unused' => 'This campaign sends a finished mail, so the text below is not used. Switch to “Text you write” to send your own words.',
+    'content_instructions' => 'The words of the mail. The layout puts them into its frame.',
+    'sends_label' => 'What this campaign sends',
+    'mode_own_text' => 'Text you write',
+    'mode_ready_made' => 'A finished mail',
+    'mode_own_text_help' => 'You write the text below, and it is placed into the layout you choose.',
+    'mode_ready_made_help' => 'The campaign sends a stored Email Template as it is — subject and text come from there, and the text below is not used.',
+    'layout_default' => 'The built-in default layout',
+    'layout_label' => 'Layout',
+    'layout_no_hole' => 'This layout never prints the campaign text, so the mail would go out with the frame and none of your words in it. Add {{ content }} to the layout, or choose another one.',
+    'ready_made_label' => 'Email template',
+    'choose_ready_made' => 'Choose a mail...',
     'title' => 'Campaigns',
     'name' => 'Name',
     'handle' => 'Handle',

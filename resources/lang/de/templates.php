@@ -1,15 +1,19 @@
 <?php
 
 return [
-    'title' => 'E-Mail-Vorlagen',
+    'title' => 'Layouts',
+    'title_one' => 'Layout',
+    'intro' => 'Ein Layout ist der Umschlag, in dem eine Kampagne verschickt wird: Kopf, Fuß, Farben und das Loch, in das der Kampagnentext kommt. Es ist nicht die Mail selbst — eine fertige Mail mit eigenem Betreff und Text ist eine Email-Vorlage und steht unter „Email templates“.',
     'name' => 'Name',
     'handle' => 'Handle',
     'html' => 'HTML-Layout',
-    'create' => 'Vorlage erstellen',
+    'create' => 'Layout anlegen',
+    'delete' => 'Layout löschen',
+    'delete_confirm' => 'Dieses Layout löschen? Kampagnen, die es benutzen, fallen auf das eingebaute Standard-Layout zurück.',
     'finding_unknown_variables' => 'Diese Platzhalter füllt niemand, sie bleiben leer: :names. Schreibweise mit der Liste der verfügbaren Platzhalter unten abgleichen.',
     'available_variables' => 'Platzhalter, die du benutzen kannst',
-    'finding_no_content' => 'Diese Vorlage gibt {{ content }} nirgends aus. Eine Kampagne damit kommt leer an — der Rahmen um nichts.',
-    'finding_no_unsubscribe' => 'Diese Vorlage hat keinen Abmeldelink. Eine Werbekampagne braucht einen, eine transaktionale Vorlage nicht.',
+    'finding_no_content' => 'Dieses Layout gibt {{ content }} nirgends aus. Eine Kampagne damit kommt leer an — der Rahmen um nichts.',
+    'finding_no_unsubscribe' => 'Dieses Layout hat keinen Abmeldelink. Eine Werbekampagne braucht einen, ein transaktionales Layout nicht.',
     'sample_campaign' => 'Eine Beispiel-Kampagne',
     'sample_subject' => 'Ein Beispiel-Betreff',
     'sample_preheader' => 'Die Zeile, die Postfächer neben dem Betreff zeigen.',

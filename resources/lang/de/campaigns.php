@@ -1,6 +1,18 @@
 <?php
 
 return [
+    'content_unused' => 'Diese Kampagne verschickt eine fertige Mail, der Text unten wird also nicht benutzt. Auf „Text, den du schreibst“ umschalten, um eigene Worte zu verschicken.',
+    'content_instructions' => 'Die Worte der Mail. Das Layout setzt sie in seinen Rahmen.',
+    'sends_label' => 'Was diese Kampagne verschickt',
+    'mode_own_text' => 'Text, den du schreibst',
+    'mode_ready_made' => 'Eine fertige Mail',
+    'mode_own_text_help' => 'Du schreibst den Text unten, und er kommt in das Layout, das du wählst.',
+    'mode_ready_made_help' => 'Die Kampagne verschickt eine gespeicherte Email-Vorlage, wie sie ist — Betreff und Text kommen von dort, der Text unten wird nicht benutzt.',
+    'layout_default' => 'Das eingebaute Standard-Layout',
+    'layout_label' => 'Layout',
+    'layout_no_hole' => 'Dieses Layout gibt den Kampagnentext nirgends aus. Die Mail ginge mit dem Rahmen raus und ohne deine Worte darin. Füge {{ content }} ins Layout ein oder wähle ein anderes.',
+    'ready_made_label' => 'Email-Vorlage',
+    'choose_ready_made' => 'Mail wählen ...',
     'title' => 'Kampagnen',
     'name' => 'Name',
     'handle' => 'Handle',

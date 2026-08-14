@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.7.0 — 2026-08-14
+
+Aus Adrians Frage, warum es zweierlei „Templates" gibt und was die
+FamilyStack-Mails im Template-Feld einer Kampagne zu suchen haben.
+
+### Fixed — eine Kampagne konnte ihren eigenen Text stillschweigend wegwerfen
+
+Das Feld hieß „Template" und die Liste darunter enthielt zweierlei: die
+**Umschläge**, in denen eine Kampagne verschickt wird, und die **fertigen
+Mails** mit eigenem Betreff und Text aus dem email-templates-Addon.
+
+Wer das Zweite wählte, machte es zum *Layout* der Kampagne. Eine fertige Mail
+hat aber kein `{{ content }}`-Loch — also wurde der Kampagnentext nicht
+eingesetzt, sondern fiel weg. Geschrieben, versendet, und in keinem Postfach
+angekommen. Kein Fehler, keine Meldung.
+
+Das sind zwei Fragen, also sind es jetzt zwei Bedienelemente: **„Was diese
+Kampagne verschickt"** (eigener Text / eine fertige Mail) und darunter je nach
+Antwort ein **Layout** oder eine **Email-Vorlage**. Gespeichert wird weiterhin
+dasselbe Feld — der Versandweg, die API und jede bestehende Kampagne sind
+unberührt.
+
+Dazu sagt der Editor jetzt, **bevor** etwas rausgeht, wenn das gewählte Layout
+den Text nirgends ausgibt.
+
+### Changed — „Templates" heißt im Marketing jetzt „Layouts"
+
+Ein Wort für zwei Dinge war die Hälfte der Verwirrung. Was unter Marketing liegt,
+ist der Umschlag: Kopf, Fuß, Farben, das Loch für den Text. Die fertige Mail mit
+eigenem Betreff heißt weiterhin Email-Vorlage und hat ihren eigenen Menüpunkt.
+
+### Added — der Kampagnentext wird geschrieben, nicht getippt
+
+Der Inhalt lag in einer Textarea voller `<p>`-Tags. Das ist kein Schreiben, und
+es ist nicht das, was dieses Control Panel sonst verlangt: eine Email-Vorlage
+wird in Bard bearbeitet, und eine Kampagne ist dieselbe Art Text von derselben
+Person. Jetzt derselbe Editor, mit denselben Knöpfen.
+
+**Die Spalte ändert sich nicht.** `save_html` ist an, das Feld gibt einen
+HTML-String heraus und nimmt einen entgegen; `campaigns.content` enthält
+weiterhin genau das, was es vorher enthielt. Eine Kampagne aus der API, aus
+einem Import oder aus der Zeit vor diesem Release öffnet sich im Editor und
+speichert wieder heraus — ohne Migration und ohne einen selbstgebauten
+Konverter. Ein Test hält den Rundlauf fest, samt der Antlers-Platzhalter: eine
+kaputte Anrede geht an den ganzen Verteiler.
+
+
 ## 2.6.1 — 2026-08-14
 
 ### Fixed — die Vorschau kannte eine andere Platzhalter-Liste als der Versand

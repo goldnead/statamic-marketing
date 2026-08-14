@@ -180,10 +180,10 @@ function destroy() {
 </script>
 
 <template>
-    <Head :title="[isCreating ? __('Create template') : template.name, __('Templates'), __('Marketing')]" />
+    <Head :title="[isCreating ? __('marketing::templates.create') : template.name, __('marketing::templates.title'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto" data-max-width-wrapper>
-        <Header :title="isCreating ? __('Create template') : name" icon="template-theme-design-layout">
+        <Header :title="isCreating ? __('marketing::templates.create') : name" icon="template-theme-design-layout">
             <Button
                 v-if="deleteUrl"
                 :text="__('Delete')"
@@ -318,8 +318,8 @@ function destroy() {
 
         <ConfirmationModal
             :open="showDeleteConfirm"
-            :title="__('Delete template')"
-            :body-text="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
+            :title="__('marketing::templates.delete')"
+            :body-text="__('marketing::templates.delete_confirm')"
             danger
             :button-text="__('Delete')"
             @cancel="showDeleteConfirm = false"

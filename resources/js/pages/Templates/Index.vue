@@ -41,20 +41,20 @@ function destroy() {
 </script>
 
 <template>
-    <Head :title="[__('Templates'), __('Marketing')]" />
+    <Head :title="[__('marketing::templates.title'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="__('Templates')" icon="template-theme-design-layout">
+        <Header :title="__('marketing::templates.title')" icon="template-theme-design-layout">
             <Button
                 v-if="canManage"
                 :href="createUrl"
-                :text="__('Create template')"
+                :text="__('marketing::templates.create')"
                 variant="primary"
             />
         </Header>
 
         <p class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
-            {{ __('Templates provide the HTML layout wrapped around campaign content.') }}
+            {{ __('marketing::templates.intro') }}
         </p>
 
         <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
@@ -98,8 +98,8 @@ function destroy() {
 
         <ConfirmationModal
             :open="templateToDelete !== null"
-            :title="__('Delete template')"
-            :body-text="__('Delete this template? Campaigns using it will fall back to the built-in default layout.')"
+            :title="__('marketing::templates.delete')"
+            :body-text="__('marketing::templates.delete_confirm')"
             danger
             :button-text="__('Delete')"
             @cancel="templateToDelete = null"

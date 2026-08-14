@@ -16,6 +16,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
+use Goldnead\Marketing\Support\CampaignContentField;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -82,9 +83,13 @@ class CampaignController extends Controller
         return Inertia::render('marketing::Campaigns/Edit', [
             'campaign' => null,
             'storeUrl' => cp_route('marketing.campaigns.store'),
+            // The publish form for the campaign text: field definitions, the
+            // value as Bard wants it, and the fieldtype metadata.
+            'contentField' => app(CampaignContentField::class)->forEditing(null),
             'lists' => $this->listOptions(),
             'segments' => $this->segmentOptions(),
-            'templates' => $this->templateOptions(),
+            'layouts' => $this->layoutOptions(),
+            'readyMades' => $this->readyMadeOptions(),
             'mailClasses' => $this->mailClassOptions(),
             'frequencyCap' => $this->frequencyCapSummary(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
@@ -132,7 +137,7 @@ class CampaignController extends Controller
             listHandle: $data['list'] ?? null,
             segmentHandle: $data['segment'] ?? null,
             templateHandle: $data['template'] ?? null,
-            content: $data['content'] ?? '',
+            content: app(CampaignContentField::class)->fromForm($data['content'] ?? ''),
             mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
         );
 
@@ -259,9 +264,11 @@ class CampaignController extends Controller
             'showUrl' => cp_route('marketing.campaigns.show', $handle),
             'lists' => $this->listOptions(),
             'segments' => $this->segmentOptions(),
-            'templates' => $this->templateOptions(),
+            'layouts' => $this->layoutOptions(),
+            'readyMades' => $this->readyMadeOptions(),
             'mailClasses' => $this->mailClassOptions(),
             'frequencyCap' => $this->frequencyCapSummary(),
+            'contentField' => app(CampaignContentField::class)->forEditing($campaign->content),
             'editable' => $campaign->isEditable(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
         ]);
@@ -290,7 +297,7 @@ class CampaignController extends Controller
         $campaign->listHandle = $data['list'] ?? null;
         $campaign->segmentHandle = $data['segment'] ?? null;
         $campaign->templateHandle = $data['template'] ?? null;
-        $campaign->content = $data['content'] ?? '';
+        $campaign->content = app(CampaignContentField::class)->fromForm($data['content'] ?? '');
         $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
 
         $this->campaigns->save($campaign);
@@ -452,7 +459,11 @@ class CampaignController extends Controller
             'list' => ['nullable', 'string'],
             'segment' => ['nullable', 'string'],
             'template' => ['nullable', 'string'],
-            'content' => ['nullable', 'string'],
+            // Either a string (API, import, anything that posts plain HTML) or
+            // the Bard document the publish form submits. What gets stored is
+            // always a string — see CampaignContentField::fromForm().
+            'content' => ['nullable'],
+            'content.*' => ['nullable'],
         ]);
     }
 
@@ -495,27 +506,59 @@ class CampaignController extends Controller
             ->all();
     }
 
-    protected function templateOptions(): array
+    /**
+     * The layouts a campaign can be sent in — the envelopes, and nothing else.
+     *
+     * Until 2.7.0 this list also carried the managed email-template entries, so
+     * one select offered two different kinds of thing under one word. Choosing
+     * a finished mail there made it the campaign's *layout*, and because a
+     * finished mail has no `{{ content }}` hole, the campaign's own text was
+     * dropped without a word. Adrian found it by opening the select and asking
+     * what the FamilyStack mails were doing in it.
+     *
+     * `has_content_hole` travels with each option so the editor can say, before
+     * anything is sent, that this layout would swallow the text.
+     *
+     * @return array<int, array{value: string, label: string, has_content_hole: bool}>
+     */
+    protected function layoutOptions(): array
     {
-        $options = $this->templates->all()
-            ->map(fn ($template) => ['value' => $template->handle, 'label' => $template->name])
+        return $this->templates->all()
+            ->map(fn ($template) => [
+                'value' => $template->handle,
+                'label' => $template->name,
+                'has_content_hole' => $this->hasContentHole($template->html),
+            ])
             ->values()
             ->all();
+    }
 
-        $seen = collect($options)->pluck('value')->all();
+    /**
+     * The finished mails a campaign can send instead of writing its own.
+     *
+     * A separate list, and a separate control on screen. Both still write into
+     * the same stored `template` handle — the send path is unchanged and old
+     * campaigns keep resolving exactly as they did.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    protected function readyMadeOptions(): array
+    {
+        $layouts = collect($this->layoutOptions())->pluck('value')->all();
 
-        // When the optional email-templates addon is installed, offer its
-        // managed template entries too (referenced by slug). A slug
-        // already served by a marketing template is skipped so the select never
-        // shows a duplicate option; at render time the managed entry wins.
-        foreach ($this->emailTemplateEntryOptions() as $option) {
-            if (! in_array($option['value'], $seen, true)) {
-                $options[] = $option;
-                $seen[] = $option['value'];
-            }
-        }
+        // A slug that is already a layout stays a layout: at render time the
+        // managed entry wins, so offering it in both lists would be offering
+        // the same choice twice with two different meanings.
+        return collect($this->emailTemplateEntryOptions())
+            ->reject(fn ($option) => in_array($option['value'], $layouts, true))
+            ->values()
+            ->all();
+    }
 
-        return $options;
+    /** Does this layout leave a hole for the campaign text? */
+    protected function hasContentHole(string $html): bool
+    {
+        return (bool) preg_match('/\{\{\s*content\s*\}\}/', $html);
     }
 
     /**

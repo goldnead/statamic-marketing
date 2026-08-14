@@ -1,11 +1,15 @@
 <?php
 
 return [
-    'title' => 'Email Templates',
+    'title' => 'Layouts',
+    'title_one' => 'Layout',
+    'intro' => 'A layout is the envelope a campaign is sent in: header, footer, colours, and the hole the campaign text is placed into. It is not the mail itself — a finished mail with its own subject and text is an Email Template, under „Email templates“.',
     'name' => 'Name',
     'handle' => 'Handle',
     'html' => 'HTML layout',
-    'create' => 'Create template',
+    'create' => 'Create layout',
+    'delete' => 'Delete layout',
+    'delete_confirm' => 'Delete this layout? Campaigns using it fall back to the built-in default layout.',
     'finding_unknown_variables' => 'These placeholders are filled in by nothing and render as empty: :names. Check the spelling against the list of available placeholders below.',
     'available_variables' => 'Placeholders you can use',
     'finding_no_content' => 'This layout never prints {{ content }}, so a campaign sent with it arrives empty — the frame around nothing.',

@@ -3,7 +3,8 @@ import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
     Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea,
-    ConfirmationModal, Text, CommandPaletteItem,
+    ConfirmationModal, Text, CommandPaletteItem, ToggleGroup, ToggleItem,
+    Alert, PublishContainer, PublishFieldsProvider, PublishFields,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -20,7 +21,16 @@ const props = defineProps([
     'showUrl',         // report page (edit only)
     'lists',           // [{ value, label }]
     'segments',        // [{ value, label, members_count }] — empty if LeadHub lacks segments
-    'templates',       // [{ value, label }]
+    // Envelopes: the HTML a campaign's own text is placed into. Each carries
+    // `has_content_hole`, so the editor can say before anything is sent that a
+    // layout would swallow the text.
+    'layouts',         // [{ value, label, has_content_hole }]
+    // Finished mails — subject and text of their own — that a campaign can send
+    // instead of writing anything. A separate list because they are a different
+    // kind of thing; one select for both is what made this screen confusing.
+    'readyMades',      // [{ value, label }]
+    // The publish form for the campaign text: { blueprint, values, meta }.
+    'contentField',
     'mailClasses',     // [{ value, label }] — marketing/transactional/digest/reminder
     'frequencyCap',    // { enabled, max, window_hours }
     'editable',        // bool (edit only)
@@ -42,7 +52,17 @@ const template = ref(props.campaign?.template || '');
 const fromName = ref(props.campaign?.from_name || '');
 const fromEmail = ref(props.campaign?.from_email || '');
 const replyTo = ref(props.campaign?.reply_to || '');
-const content = ref(props.campaign?.content || '');
+// The publish form's own value bag. Bard hands back a ProseMirror document, and
+// the server turns it into the HTML string the column holds — the conversion is
+// Statamic's, in both directions, so nothing here has to know about either shape.
+const contentValues = ref({ ...(props.contentField?.values ?? {}) });
+
+// One tab, one section, one field — but read out of the blueprint rather than
+// assumed, so adding a second field later is a change in one place.
+const contentFields = computed(
+    () => props.contentField?.blueprint?.tabs?.[0]?.sections?.[0]?.fields ?? [],
+);
+
 // Defaults to marketing, which is the only value that is subject to the cap.
 // Opting a campaign out is an act; leaving this alone never is.
 const mailClass = ref(props.campaign?.mail_class || 'marketing');
@@ -77,10 +97,47 @@ const listOptions = computed(() => [
     ...(props.lists || []),
 ]);
 
-const templateOptions = computed(() => [
-    { value: '', label: __('Default (built-in)') },
-    ...(props.templates || []),
-]);
+// Which of the two things this campaign sends. Not stored: derived from the
+// handle, because a handle that names a finished mail can only mean one of them.
+// Keeping it out of the record is what makes this a pure UI change — the send
+// path, the API and every existing campaign are untouched.
+const mode = ref(
+    (props.readyMades || []).some((option) => option.value === (props.campaign?.template || ''))
+        ? 'ready_made'
+        : 'own_text',
+);
+
+// No empty option: the Select shows its placeholder for an empty value and the
+// option would never be seen. The meaning goes on the placeholder instead, where
+// it is read — "no layout chosen" and "the built-in layout" are the same thing,
+// and the screen has to say which.
+const layoutOptions = computed(() => props.layouts || []);
+
+const readyMadeOptions = computed(() => props.readyMades || []);
+
+function switchMode(next) {
+    if (! next || next === mode.value) return;
+
+    // The handle means different things in the two modes, so carrying it across
+    // would silently turn a layout into a mail or the other way round.
+    template.value = '';
+    mode.value = next;
+}
+
+/**
+ * The layout that is chosen has no hole for the text.
+ *
+ * The failure this warns about is silent and total: the campaign is written,
+ * the send succeeds, and every recipient gets the layout with none of the text
+ * in it.
+ */
+const layoutSwallowsContent = computed(() => {
+    if (mode.value !== 'own_text' || ! template.value) return false;
+
+    const chosen = (props.layouts || []).find((option) => option.value === template.value);
+
+    return chosen ? chosen.has_content_hole === false : false;
+});
 
 const hasSegments = computed(() => (props.segments || []).length > 0);
 
@@ -123,7 +180,7 @@ function payload() {
         from_name: fromName.value || null,
         from_email: fromEmail.value || null,
         reply_to: replyTo.value || null,
-        content: content.value || null,
+        content: contentValues.value.content ?? null,
         mail_class: mailClass.value || null,
     };
 }
@@ -132,6 +189,13 @@ function payload() {
 // errors, nothing was saved, and the screen looked exactly as before — so a
 // rejected campaign handle read as a dead Save button.
 const formErrors = ref({});
+
+// The server's rejection of the text, keyed the way the publish form expects it.
+// Declared next to `formErrors` and not next to the value it belongs to, because
+// the one it belongs to is read before this file declares the errors.
+const contentErrors = computed(() =>
+    formErrors.value.content ? { content: [formErrors.value.content] } : {}
+);
 
 // Every key below is rendered next to the field it belongs to. A key that is
 // not in this list has no field to sit at — it goes into the summary above the
@@ -297,14 +361,42 @@ function destroy() {
 
                     <Panel :heading="__('Content')">
                         <Card>
-                            <Field :error="formErrors.content">
-                                <Textarea
-                                    v-model="content"
-                                    rows="18"
-                                    class="font-mono text-sm"
-                                    :placeholder="__('Write your email content...')"
-                                />
-                            </Field>
+                            <!-- Written in the same editor as an email template,
+                                 because it is the same kind of writing done by
+                                 the same person. `save_html` is on, so what
+                                 leaves this field is the HTML string the column
+                                 has always held — see Support\CampaignContentField. -->
+                            <Alert v-if="mode === 'ready_made'" variant="default" class="mb-3" data-marketing-campaign-content-unused>
+                                {{ __('marketing::campaigns.content_unused') }}
+                            </Alert>
+
+                            <PublishContainer
+                                v-if="contentField"
+                                name="campaign-content"
+                                :blueprint="contentField.blueprint"
+                                :meta="contentField.meta"
+                                :model-value="contentValues"
+                                :errors="contentErrors"
+                                @update:model-value="contentValues = $event"
+                            >
+                                <!-- Provider then renderer: `PublishFields`
+                                     draws whatever the surrounding provider put
+                                     in context, and has no props of its own. -->
+                                <PublishFieldsProvider :fields="contentFields">
+                                    <PublishFields />
+                                </PublishFieldsProvider>
+                            </PublishContainer>
+
+                            <!-- The server's rejection of the text, at the
+                                 field it belongs to. The publish container gets
+                                 the same message for its own field state; this
+                                 line is what a reader actually sees. -->
+                            <p
+                                v-if="formErrors.content"
+                                class="mt-1 text-sm text-red-600 dark:text-red-400"
+                                data-marketing-campaign-content-error
+                            >{{ formErrors.content }}</p>
+
                             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                                 {{ __('Antlers variables are available:') }}
                                 <code v-text="antlersHint"></code>
@@ -378,8 +470,62 @@ function destroy() {
                                     </p>
                                 </Field>
 
-                                <Field :label="__('Template')" :error="formErrors.template">
-                                    <Select v-model="template" :options="templateOptions" />
+                                <!-- Two things used to share one select called
+                                     "Template": the envelope a campaign is sent
+                                     in, and a finished mail with its own
+                                     subject and text. Choosing the second made
+                                     it the campaign's layout, and since a
+                                     finished mail has no hole for the text, the
+                                     campaign's own words were dropped in
+                                     silence. They are two questions, so they
+                                     are two controls. -->
+                                <Field :label="__('marketing::campaigns.sends_label')">
+                                    <ToggleGroup
+                                        :model-value="mode"
+                                        size="sm"
+                                        :aria-label="__('marketing::campaigns.sends_label')"
+                                        data-marketing-campaign-mode
+                                        @update:model-value="switchMode"
+                                    >
+                                        <ToggleItem value="own_text" :label="__('marketing::campaigns.mode_own_text')" />
+                                        <ToggleItem value="ready_made" :label="__('marketing::campaigns.mode_ready_made')" />
+                                    </ToggleGroup>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ mode === 'own_text'
+                                            ? __('marketing::campaigns.mode_own_text_help')
+                                            : __('marketing::campaigns.mode_ready_made_help') }}
+                                    </p>
+                                </Field>
+
+                                <Field
+                                    v-if="mode === 'own_text'"
+                                    :label="__('marketing::campaigns.layout_label')"
+                                    :error="formErrors.template"
+                                >
+                                    <Select
+                                        v-model="template"
+                                        :options="layoutOptions"
+                                        :placeholder="__('marketing::campaigns.layout_default')"
+                                        data-marketing-campaign-layout
+                                    />
+                                    <p
+                                        v-if="layoutSwallowsContent"
+                                        class="mt-1 text-sm text-red-600 dark:text-red-400"
+                                        data-marketing-campaign-layout-warning
+                                    >{{ __('marketing::campaigns.layout_no_hole') }}</p>
+                                </Field>
+
+                                <Field
+                                    v-else
+                                    :label="__('marketing::campaigns.ready_made_label')"
+                                    :error="formErrors.template"
+                                >
+                                    <Select
+                                        v-model="template"
+                                        :options="readyMadeOptions"
+                                        :placeholder="__('marketing::campaigns.choose_ready_made')"
+                                        data-marketing-campaign-ready-made
+                                    />
                                 </Field>
 
                                 <!-- The frequency-cap classification. Sits with
