@@ -24,6 +24,12 @@ Think Mailcoach, but native to Statamic and built on top of
 - **Campaigns** composed in Antlers (`{{ first_name }}`, `{{ name }}`,
   `{{ email }}`, `{{ unsubscribe_url }}`, …), wrapped in reusable **email
   templates**, with preview, test send, scheduling, and send-now.
+  Write greetings so they survive a subscriber who never gave a first name:
+  `{{ first_name }}` renders **empty** on a send, and `| default:` does not
+  catch it (the modifier does not treat an empty string as missing). Use
+  `Hallo {{ first_name or "du" }},` or an `{{ if first_name }}…{{ /if }}`.
+  The neutral word in `archive.neutral_name` applies to the public archive
+  page only, never to the mail.
 - **Segment targeting**: optionally narrow a campaign's audience to a **LeadHub
   segment** (with a live member count in the CP). The audience is `subscribed
   list members ∩ segment members`, resolved at send time — the segment only

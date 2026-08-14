@@ -82,10 +82,16 @@ class AutomationTemplates
      * shipping two English placeholder mails inside a graph only produced
      * mails nobody edited. One warning survives from them: write greetings so
      * they hold for a subscriber with no first name. `{{ first_name }}` renders
-     * empty on a real send (the neutral word is an archive-page courtesy, not
-     * a send-path one), and an unquoted `{{ first_name | default:du }}` renders
-     * empty too, because Antlers reads the bare parameter as a variable name.
-     * Quote it: `{{ first_name | default:'du' }}`.
+     * **empty** on a real send — the neutral word in `archiveVariables()` is a
+     * courtesy for the public archive page, not for the send path — and
+     * `| default:` does not save it. Measured against the running renderer on
+     * 14.08.2026: `{{ leer | default:'du' }}` renders empty, quoted or not,
+     * while `{{ vorhanden | default:'x' }}` returns the value, so the modifier
+     * runs and simply does not treat an empty string as missing. The two
+     * spellings that do hold:
+     *
+     *     Hallo {{ first_name or "du" }},
+     *     Hallo {{ if first_name }}{{ first_name }}{{ else }}du{{ /if }},
      */
     protected static function welcomeSeries(): array
     {
