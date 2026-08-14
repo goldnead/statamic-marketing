@@ -14,11 +14,13 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\CampaignContentField;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use InvalidArgumentException;
@@ -148,58 +150,283 @@ class CampaignController extends Controller
             ->with('success', __('marketing::campaigns.flashes.created'));
     }
 
-    public function show(Request $request, string $handle, CampaignStats $stats)
+    /**
+     * The campaign report: what happened, and with whom.
+     *
+     * One screen with five tabs, and only the open one is paid for. The
+     * overview tab computes the figures and the timeline; a person tab
+     * paginates its own rows and computes nothing else. The alternative —
+     * shipping all five payloads on every request — would have made a report
+     * of a fifty-thousand-recipient campaign five times as expensive to look
+     * at as it is to read.
+     *
+     * The tab lives in the query string, so a reload lands where the reader
+     * was, a link can be shared into a particular tab, and the pager of each
+     * tab has a page number that belongs to it.
+     */
+    public function show(Request $request, string $handle, CampaignStats $stats, CampaignReport $report)
     {
         $this->authorizeOrFail($request, 'view marketing');
 
         $campaign = $this->campaigns->find($handle);
         abort_unless($campaign, 404);
 
-        $messages = Message::forCampaign($handle)
-            ->with('subscription')
-            ->orderByDesc('id')
-            ->paginate(50)
-            ->withQueryString();
+        $tab = $report->tab($this->queryString($request, 'tab'));
+        $status = $report->status($this->queryString($request, 'status'));
+        $canManage = $this->userCan($request, 'manage marketing campaigns');
 
-        $rows = collect($messages->items())->map(fn (Message $message) => [
-            'id' => $message->uuid,
-            'email' => $message->email,
-            'status' => $message->status,
-            'sent_at' => $message->sent_at?->toIso8601String(),
-            'opens' => $message->opens,
-            'clicks' => $message->clicks,
-        ])->all();
+        $payload = $tab === CampaignReport::TAB_OVERVIEW
+            ? $this->overviewPayload($campaign, $stats, $report)
+            : $this->tabPayload($campaign, $report, $tab, $status, $canManage);
 
-        $columns = collect([
-            Column::make('email')->label(__('marketing::subscribers.email')),
-            Column::make('status')->label(__('marketing::campaigns.status')),
-            Column::make('sent_at')->label(__('marketing::campaigns.sent_at')),
-            Column::make('opens')->label(__('marketing::campaigns.opens')),
-            Column::make('clicks')->label(__('marketing::campaigns.clicks')),
-        ])->map(fn ($c) => $c->toArray())->all();
-
-        return Inertia::render('marketing::Campaigns/Show', [
+        return Inertia::render('marketing::Campaigns/Show', $payload + [
             'campaign' => $campaign->toArray(),
-            'stats' => $stats->forCampaign($campaign),
-            'messages' => $rows,
-            'columns' => $columns,
-            'pagination' => [
-                'current_page' => $messages->currentPage(),
-                'last_page' => $messages->lastPage(),
-                'total' => $messages->total(),
-            ],
+            'tab' => $tab,
+            'tabs' => $this->reportTabs(),
+            'statuses' => $this->statusOptions(),
+            'filters' => ['status' => $status],
             'editUrl' => cp_route('marketing.campaigns.edit', $handle),
             'editable' => $campaign->isEditable(),
+            // `marketing.archive.show` is only registered when the archive is
+            // switched on (`routes/web.php`), and the archive ships **off**.
+            // Building the URL unconditionally therefore threw
+            // `RouteNotFoundException` — a 500 on the campaign screen of every
+            // install that never enabled the archive, which is the default one.
+            //
+            // The `enabled` default here said `true` while the config file says
+            // `false`, so the screen also offered a control the route behind it
+            // did not have.
             'archive' => [
-                'enabled' => (bool) config('marketing.archive.enabled', true),
+                'enabled' => (bool) config('marketing.archive.enabled', false),
                 'released' => $campaign->inArchive,
                 'live' => $campaign->isArchived(),
                 'sendable_only' => ! $campaign->sentAt,
-                'url' => route('marketing.archive.show', ['marketingCampaign' => $campaign->handle]),
+                'url' => Route::has('marketing.archive.show')
+                    ? route('marketing.archive.show', ['marketingCampaign' => $campaign->handle])
+                    : null,
                 'update_url' => cp_route('marketing.campaigns.archive', $handle),
             ],
-            'canManage' => $this->userCan($request, 'manage marketing campaigns'),
+            'canManage' => $canManage,
         ]);
+    }
+
+    /**
+     * The overview tab: the figures, the split test, and the campaign as a
+     * sequence of moments.
+     *
+     * `stats` is {@see CampaignStats} untouched — the same keys, counted the
+     * same way, comparable with every campaign that came before. `humanOpens`
+     * sits beside it rather than inside it, because it is a new question, not
+     * a correction of an old answer.
+     *
+     * @return array<string, mixed>
+     */
+    protected function overviewPayload(Campaign $campaign, CampaignStats $stats, CampaignReport $report): array
+    {
+        $figures = $stats->forCampaign($campaign);
+
+        return [
+            'stats' => $figures,
+            'humanOpens' => $report->humanOpens($campaign->handle, $figures),
+            'timeline' => $report->timeline($campaign),
+            'rows' => [],
+            'columns' => [],
+            'pagination' => null,
+            'urlBreakdown' => null,
+            'exportUrl' => null,
+        ];
+    }
+
+    /**
+     * One person tab: fifty rows, their columns, and a way to take them away.
+     *
+     * @return array<string, mixed>
+     */
+    protected function tabPayload(
+        Campaign $campaign,
+        CampaignReport $report,
+        string $tab,
+        ?string $status,
+        bool $canManage,
+    ): array {
+        $withErrors = $tab === CampaignReport::TAB_DELIVERY && $report->hasErrors($campaign->handle);
+        $fields = $report->fields($tab, $withErrors);
+
+        $page = $report->queryFor($tab, $campaign->handle, $status)
+            ->paginate(CampaignReport::PER_PAGE)
+            ->withQueryString();
+
+        return [
+            'stats' => null,
+            'humanOpens' => null,
+            'timeline' => null,
+            'rows' => $report->rowsFor($tab, collect($page->items())),
+            'columns' => collect($fields)
+                ->map(fn (string $label, string $key) => Column::make($key)->label($label)->toArray())
+                ->values()
+                ->all(),
+            'pagination' => [
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
+                'total' => $page->total(),
+            ],
+            'urlBreakdown' => $tab === CampaignReport::TAB_CLICKS
+                ? $report->urlBreakdown($campaign->handle)
+                : null,
+            // Offered only to somebody who could already have exported it by
+            // hand. Reading a report is `view marketing`; taking a file of
+            // addresses off the server is a different act.
+            'exportUrl' => $canManage
+                ? cp_route('marketing.campaigns.export', $campaign->handle)
+                : null,
+        ];
+    }
+
+    /**
+     * The rows of one tab as a CSV, streamed.
+     *
+     * Same query, same order, same filter as the screen — it goes through
+     * {@see CampaignReport::queryFor()} exactly as the page does, so the file
+     * cannot describe a different selection than the one the reader was
+     * looking at.
+     *
+     * Written out in chunks rather than collected first. A campaign can have
+     * fifty thousand recipients, and an export that builds the whole table in
+     * memory before sending a byte is an out-of-memory error waiting for the
+     * first large campaign.
+     *
+     * The header carries the field keys, not their German labels: this file is
+     * read by a program at least as often as by a person, and the sibling CRM's
+     * export already established the convention (see LeadHub's ExportService).
+     * The BOM is there for the other half of that audience — without it Excel
+     * reads UTF-8 as Latin-1 and every umlaut in the file is wrong.
+     */
+    public function export(Request $request, string $handle, CampaignReport $report)
+    {
+        $this->authorizeOrFail($request, 'manage marketing campaigns');
+
+        // Spelled out rather than `abort_unless($campaign, 404)` like its older
+        // neighbours, for the reason archive() gives: `abort()` is `never`, so
+        // the analyser narrows the type here instead of being handed the
+        // truthiness of an object as a bool. The nine call sites that do it the
+        // other way are in the baseline; new code does not join them.
+        if (! $this->campaigns->find($handle)) {
+            abort(404);
+        }
+
+        $tab = $report->tab($this->queryString($request, 'tab'));
+
+        // The overview has figures, not rows. So does an unknown tab name,
+        // which `tab()` resolves to the overview.
+        abort_if($tab === CampaignReport::TAB_OVERVIEW, 404);
+
+        $status = $report->status($this->queryString($request, 'status'));
+        $fields = array_keys($report->fields($tab));
+        $query = $report->queryFor($tab, $handle, $status);
+
+        $filename = $handle.'-'.$tab.'-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($report, $tab, $fields, $query) {
+            $out = fopen('php://output', 'w');
+
+            if ($out === false) {
+                return;
+            }
+
+            fwrite($out, "\xEF\xBB\xBF");
+
+            // `escape: ''` on every write. PHP 8.4 deprecates omitting it —
+            // an export that logged a deprecation per row would be the loudest
+            // thing in the log — and the empty string is also the correct
+            // answer: RFC 4180 has no escape character, only doubled quotes,
+            // and it is the default PHP is moving to.
+            fputcsv($out, [...$fields, 'contact_url'], escape: '');
+
+            $query->chunk(500, function ($models) use ($report, $tab, $fields, $out) {
+                foreach ($report->rowsFor($tab, $models) as $row) {
+                    fputcsv($out, [
+                        ...array_map(fn (string $field) => $this->csvValue($row[$field] ?? null), $fields),
+                        $this->csvValue($row['contact_url'] ?? null),
+                    ], escape: '');
+                }
+
+                flush();
+            });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * A cell, as a string. `null` is an empty cell, not the word "null".
+     *
+     * A leading `=`, `+`, `-`, `@`, tab or carriage return is neutralised with
+     * a leading apostrophe, because Excel and LibreOffice execute such a cell
+     * as a formula the moment the file is opened — and the person opening it
+     * is the one with `manage marketing campaigns`. The name fields come
+     * straight from a public sign-up form, so a stranger picks their own
+     * content for them; the BOM this export writes makes sure the spreadsheet
+     * treats the file as a table rather than plain text, which is what makes
+     * the route reliable rather than theoretical.
+     *
+     * The apostrophe is the spreadsheet's own "this is text" marker: it is
+     * consumed on import and does not become part of the value.
+     */
+    protected function csvValue(mixed $value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        $value = (string) $value;
+
+        if ($value !== '' && str_contains("=+-@\t\r", $value[0])) {
+            return "'".$value;
+        }
+
+        return $value;
+    }
+
+    /**
+     * A scalar query-string value, or null.
+     *
+     * `?tab[]=x` hands `input()` an array, and a controller that passed that
+     * on to a string parameter would be a TypeError on a URL anybody can type.
+     */
+    protected function queryString(Request $request, string $key): ?string
+    {
+        $value = $request->query($key);
+
+        return is_string($value) ? $value : null;
+    }
+
+    /**
+     * @return array<int, array{name: string, label: string}>
+     */
+    protected function reportTabs(): array
+    {
+        return array_map(fn (string $tab) => [
+            'name' => $tab,
+            'label' => (string) __('marketing::campaigns.report.tabs.'.$tab),
+        ], CampaignReport::TABS);
+    }
+
+    /**
+     * @return array<int, array{value: string, label: string}>
+     */
+    protected function statusOptions(): array
+    {
+        return [
+            ['value' => '', 'label' => (string) __('marketing::campaigns.report.all_statuses')],
+            ...array_map(fn (string $status) => [
+                'value' => $status,
+                'label' => (string) __('marketing::campaigns.message_statuses.'.$status),
+            ], CampaignReport::STATUSES),
+        ];
     }
 
     /**

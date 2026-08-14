@@ -1,6 +1,7 @@
 <?php
 
 use Goldnead\Marketing\Support\PreferenceLink;
+use Goldnead\Marketing\Tests\ArchiveOffTestCase;
 use Goldnead\Marketing\Tests\Integration\SiblingsTestCase;
 use Goldnead\Marketing\Tests\MigrationPathTestCase;
 use Goldnead\Marketing\Tests\TestCase;
@@ -8,6 +9,10 @@ use Illuminate\Support\Facades\Route;
 
 uses(TestCase::class)->in('Feature', 'Unit');
 uses(SiblingsTestCase::class)->in('Integration');
+
+// The addon as it ships: TestCase switches the archive on for everything else,
+// so nothing in the rest of the suite ever meets the default configuration.
+uses(ArchiveOffTestCase::class)->in('ShippedDefaults');
 
 // The migration tests drive migrations by hand, against a database of their
 // own — see MigrationPathTestCase. The rest of the suite meets a database that

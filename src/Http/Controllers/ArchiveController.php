@@ -144,7 +144,7 @@ class ArchiveController extends Controller
 
     protected function enabled(): bool
     {
-        return (bool) config('marketing.archive.enabled', true);
+        return (bool) config('marketing.archive.enabled', false);
     }
 
     protected function urlFor(Campaign $campaign): string

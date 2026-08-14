@@ -31,6 +31,15 @@
             themselves when the addons are not installed, so they are a no-op
             in the default suite; run scripts/test-siblings.sh to exercise them.
         -->
+        <!--
+            The addon as it ships. Every other suite runs a configuration the
+            addon does not ship — TestCase turns the archive on so the archive
+            can be tested at all — and that is how a 500 on the campaign screen
+            of a default install stayed invisible through a green suite.
+        -->
+        <testsuite name="ShippedDefaults">
+            <directory suffix="Test.php">./tests/ShippedDefaults</directory>
+        </testsuite>
         <testsuite name="Integration">
             <directory suffix="Test.php">./tests/Integration</directory>
         </testsuite>

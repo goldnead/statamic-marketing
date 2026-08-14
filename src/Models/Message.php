@@ -4,6 +4,8 @@ namespace Goldnead\Marketing\Models;
 
 use Goldnead\BrandContext\Concerns\HasBrand;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
@@ -25,6 +27,23 @@ use Illuminate\Support\Str;
  *                      distinction lives.
  * @property int $clicks How often a tracked link in this message was followed.
  * @property Carbon|null $sent_at When this message left, or null while it has not.
+ * @property string $status One of the STATUS_* constants below. Declared here
+ *                          because the campaign report branches on it and
+ *                          renders it as a badge.
+ * @property string|null $error Why this delivery did not happen, as the mailer
+ *                              reported it. Written on failure since the first
+ *                              migration and, until the campaign report, never
+ *                              shown anywhere — "why did this one fail" was
+ *                              answerable only by opening the database.
+ * @property Carbon|null $first_opened_at The first time the pixel was fetched
+ *                                        for this message, by anybody. A click
+ *                                        sets it too: a followed link implies
+ *                                        the mail was open, even where images
+ *                                        never loaded.
+ * @property Carbon|null $last_opened_at The most recent such fetch.
+ * @property Carbon|null $first_clicked_at The first time a tracked link in this
+ *                                         message was followed.
+ * @property Carbon|null $last_clicked_at The most recent one.
  * @property-read Subscription|null $subscription The
  *               sign-up this delivery was made against.
  *                                        NULL means it belongs to none — a
@@ -85,12 +104,14 @@ class Message extends Model
         });
     }
 
-    public function subscription()
+    /** @return BelongsTo<Subscription, $this> */
+    public function subscription(): BelongsTo
     {
         return $this->belongsTo(Subscription::class);
     }
 
-    public function events()
+    /** @return HasMany<MessageEvent, $this> */
+    public function events(): HasMany
     {
         return $this->hasMany(MessageEvent::class);
     }

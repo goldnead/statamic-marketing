@@ -1,5 +1,72 @@
 # Changelog
 
+## 2.9.0 — 2026-08-15
+
+### Added — der Kampagnen-Bericht
+
+Die Kampagnenseite zeigte eine Handvoll Kacheln und eine flache Empfängerliste.
+Was mit einer Kampagne passiert ist und **bei wem**, stand nirgends: die einzige
+Leseabfrage auf `marketing_message_events` im ganzen Addon war die
+Abmelde-Zählung.
+
+Jetzt fünf Reiter, jeder mit den Personen dahinter:
+
+- **Übersicht** — Kennzahlen, A/B-Varianten und eine Zeitleiste von geplant bis
+  zur letzten Aktivität. Eine Station, die nicht stattgefunden hat, fehlt, statt
+  leer dazustehen.
+- **Zustellbarkeit** — filterbar nach Status. Bei einem Fehlversand steht jetzt
+  der Grund dabei; die Spalte lag seit je in der Datenbank und wurde nie
+  gezeigt.
+- **Öffnungen** — wer, wann zuerst, wie oft, und wie viel davon Maschine war.
+- **Klicks** — wer, wann, welcher Link, dazu die Aufschlüsselung nach Link.
+- **Abmeldungen** — wer und wann.
+
+Jede Zeile verlinkt auf den LeadHub-Kontakt, wenn es einen gibt, und legt
+niemals einen an. Je Reiter ein CSV-Export derselben Auswahl, gestreamt und an
+`manage marketing campaigns` gebunden.
+
+**Ein Klick zählt als Mensch**, und das musste er: unter Apples Mail Privacy
+Protection holt der Proxy das Zählpixel für jede zugestellte Nachricht, die
+einzige verzeichnete Öffnung ist also die der Maschine. Nur Öffnungen zu zählen
+meldete „von niemandem gelesen" für eine Kampagne, durch die jemand geklickt hat
+— während der Hinweis direkt darunter sagt, dass genau der Klick einen Menschen
+beweist. Aus demselben Grund listet der Öffnungen-Reiter jetzt nach
+`first_opened_at` statt nach dem Zähler: wer Bilder blockiert und klickt, hat
+`opens = 0` und fehlte in einem Reiter, dessen erste Spalte dieser Zeitstempel
+ist.
+
+Die alten Zahlen aus `CampaignStats` bleiben unverändert, damit jeder Vergleich
+mit einer früheren Kampagne gültig bleibt. Die neuen stehen daneben, mit eigenem
+Namen.
+
+### Fixed — die Kampagnenseite antwortete auf jeder Standardinstallation 500
+
+`marketing.archive.show` wird nur registriert, wenn das Archiv angeschaltet ist,
+und ausgeliefert ist es **aus**. Die Seite baute den Link trotzdem unbedingt:
+`RouteNotFoundException`, also 500 statt fehlendem Link — seit das Archiv
+existiert.
+
+Unsichtbar geblieben, weil der Testaufbau das Archiv für die **gesamte** Suite
+anschaltet. Kein Test hat je die ausgelieferte Konfiguration betreten. Dafür
+gibt es jetzt eine eigene Suite `ShippedDefaults`; ohne den Fix fallen dort
+sechs von sieben Tests um.
+
+### Fixed — Kleinigkeiten, die einen Leser in die Irre führen
+
+- Die Zeitleiste konnte sich selbst widersprechen. „Versand gestartet" ist die
+  einzige abgeleitete Station (nichts zeichnet den Sendebeginn auf), und bei
+  nachträglich geschriebenen Nachrichten stand „Versendet 12. August, Versand
+  gestartet 15. August". Die Station entfällt jetzt, statt eine unmögliche
+  Reihenfolge zu drucken.
+- Der CSV-Export neutralisiert eine führende Formel. Die Namensfelder kommen aus
+  dem öffentlichen Anmeldeformular, ein Fremder wählt ihren Inhalt also selbst,
+  und Excel führt eine Zelle mit `=` beim Öffnen aus — bei der Person, die das
+  Recht auf den Export hat.
+- Der Hinweis zu Maschinen-Öffnungen steht auf jedem Reiter, der eine
+  Öffnungszahl zeigt, und auf keinem leeren.
+- Leerer Reiter: eine Meldung statt zwei. Und eine Kampagne ohne Datum trägt
+  keinen einsamen Trennpunkt hinter dem Betreff mehr.
+
 ## 2.8.0 — 2026-08-15
 
 ### Added — jede Mail steht jetzt am Kontakt

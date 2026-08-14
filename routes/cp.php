@@ -30,6 +30,12 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
         Route::get('/create', [CampaignController::class, 'create'])->name('create');
         Route::post('/', [CampaignController::class, 'store'])->name('store');
         Route::get('/{handle}', [CampaignController::class, 'show'])->name('show');
+        // The rows of one report tab as a CSV. Its own route rather than a
+        // format on `show`, because it is a different permission: reading the
+        // report is `view marketing`, taking a file of addresses off the server
+        // is `manage marketing campaigns`. Which tab, and which filter, travel
+        // in the query string — the same ones the screen was showing.
+        Route::get('/{handle}/export', [CampaignController::class, 'export'])->name('export');
         Route::get('/{handle}/edit', [CampaignController::class, 'edit'])->name('edit');
         Route::patch('/{handle}', [CampaignController::class, 'update'])->name('update');
         Route::delete('/{handle}', [CampaignController::class, 'destroy'])->name('destroy');

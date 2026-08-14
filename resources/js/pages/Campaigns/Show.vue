@@ -3,17 +3,26 @@ import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
     Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Switch, Field, Text,
+    Select, Tabs, TabList, TabTrigger, TabContent,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
                      //   list, template, content, status, scheduled_at, sent_at, archive }
-    'stats',         // { recipients, sent, failed, skipped, pending, opened, open_rate,
-                     //   clicked, click_rate, bounced, unsubscribed,
+    'tab',           // 'overview' | 'delivery' | 'opens' | 'clicks' | 'unsubscribes'
+    'tabs',          // [{ name, label }]
+    'stats',         // overview only: { recipients, sent, failed, skipped, pending, opened,
+                     //   open_rate, clicked, click_rate, bounced, unsubscribed,
                      //   variants: { a: {...same, sample_size}, b: {...} } — empty unless A/B }
-    'messages',      // [{ id, email, status, sent_at, opens, clicks }]
+    'humanOpens',    // overview only: { human, machine_only, human_rate }
+    'timeline',      // overview only: [{ key, at }] — only the stations that happened
+    'rows',          // person tabs: [{ email, name, contact_url, ...tab-specific }]
     'columns',       // Array<Column>
-    'pagination',    // { current_page, last_page, total }
+    'pagination',    // person tabs: { current_page, last_page, total }
+    'statuses',      // [{ value, label }] for the delivery filter
+    'filters',       // { status }
+    'urlBreakdown',  // clicks tab: [{ url, clicks, people }]
+    'exportUrl',     // person tabs, `manage marketing campaigns` only
     'editUrl',       // string
     'editable',      // bool
     'archive',       // { enabled, released, live, sendable_only, url, update_url }
@@ -56,7 +65,69 @@ function toggleArchive(value) {
     });
 }
 
-const statTiles = computed(() => [
+// -- Tabs -----------------------------------------------------------------
+//
+// Each tab is a server round trip, because each one is a different query over
+// a table that can hold fifty thousand rows per campaign. The active tab is
+// therefore in the URL rather than in local state: a reload lands where the
+// reader was, a shared link opens on the tab it was shared from, and the pager
+// below belongs to the tab it is under.
+
+const activeTab = ref(props.tab);
+watch(() => props.tab, (value) => { activeTab.value = value; });
+
+const status = ref(props.filters?.status || '');
+watch(() => props.filters?.status, (value) => { status.value = value || ''; });
+
+const isOverview = computed(() => props.tab === 'overview');
+const showsStatusFilter = computed(() => props.tab === 'delivery');
+
+function query({ tab = props.tab, page = 1, withStatus = true } = {}) {
+    const params = {};
+    if (tab !== 'overview') params.tab = tab;
+    if (withStatus && tab === 'delivery' && status.value) params.status = status.value;
+    if (page > 1) params.page = page;
+    return params;
+}
+
+function visit(params) {
+    router.get(window.location.pathname, params, {
+        preserveState: true,
+        preserveScroll: true,
+    });
+}
+
+function selectTab(tab) {
+    if (! tab || tab === props.tab) return;
+    activeTab.value = tab;
+    // The page number belongs to the tab that was showing it, and the status
+    // filter belongs to Delivery. Neither travels to the next tab.
+    visit(query({ tab, withStatus: tab === 'delivery' }));
+}
+
+function applyFilters() {
+    visit(query());
+}
+
+function goToPage(page) {
+    if (! props.pagination) return;
+    if (page < 1 || page > props.pagination.last_page) return;
+    visit(query({ page }));
+}
+
+// The same selection the reader is looking at, as a file. Built from the
+// current tab and filter rather than from a URL the server pre-baked, so the
+// two cannot drift apart.
+const exportHref = computed(() => {
+    if (! props.exportUrl || isOverview.value) return null;
+    const params = new URLSearchParams({ tab: props.tab });
+    if (props.tab === 'delivery' && status.value) params.set('status', status.value);
+    return `${props.exportUrl}?${params.toString()}`;
+});
+
+// -- Figures ---------------------------------------------------------------
+
+const statTiles = computed(() => props.stats ? [
     { label: __('Recipients'), value: props.stats.recipients },
     { label: __('Sent'), value: props.stats.sent },
     { label: __('Open rate'), value: `${props.stats.open_rate}%` },
@@ -68,14 +139,38 @@ const statTiles = computed(() => [
     // install that caps nothing is noise; a missing one on the report where it
     // did happen is people the tiles do not account for.
     ...(props.stats.capped ? [{ label: __('Capped'), value: props.stats.capped }] : []),
-]);
+] : []);
+
+// The open figures, told apart. `stats.opened` is unchanged and still counts
+// every fetch of the pixel — it is what every earlier campaign was measured
+// with. The human number sits next to it rather than replacing it, and the
+// note underneath says why the two differ.
+const openTiles = computed(() => {
+    if (! props.stats || ! props.humanOpens) return [];
+
+    return [
+        { label: __('marketing::campaigns.report.opens_total'), value: props.stats.opened },
+        { label: __('marketing::campaigns.report.opens_human'), value: props.humanOpens.human },
+        { label: __('marketing::campaigns.report.opens_human_rate'), value: `${props.humanOpens.human_rate}%` },
+        // Hidden where there is none, like the Capped tile: a nought here says
+        // nothing, and its absence is not a claim.
+        ...(props.humanOpens.machine_only
+            ? [{ label: __('marketing::campaigns.report.opens_machine_only'), value: props.humanOpens.machine_only }]
+            : []),
+    ];
+});
 
 // One row per A/B variant. Empty for every campaign that is not a split test,
 // so the whole block disappears rather than showing an empty table.
-const variantRows = computed(() => Object.entries(props.stats.variants || {}).map(([variant, s]) => ({
+const variantRows = computed(() => Object.entries(props.stats?.variants || {}).map(([variant, s]) => ({
     variant,
     subject: variant === 'b' ? props.campaign.variant_subject : props.campaign.subject,
     ...s,
+})));
+
+const timelineStations = computed(() => (props.timeline || []).map((station) => ({
+    ...station,
+    label: __(`marketing::campaigns.report.timeline.${station.key}`),
 })));
 
 function campaignStatusColor(status) {
@@ -94,24 +189,35 @@ function messageStatusColor(status) {
         failed: 'red',
         skipped: 'default',
         bounced: 'red',
+        capped: 'orange',
     }[status] || 'default';
+}
+
+function messageStatusLabel(status) {
+    return __(`marketing::campaigns.message_statuses.${status}`);
 }
 
 function formatDate(value) {
     return value ? new Date(value).toLocaleString() : '—';
 }
+/**
+ * The date half of the subline, or nothing at all.
+ *
+ * A campaign that was neither sent nor scheduled has no date to report, and
+ * an empty span here is what left a separator dangling above.
+ */
+const subline = computed(() => {
+    if (props.campaign.sent_at) {
+        return `${__('Sent')} ${formatDate(props.campaign.sent_at)}`;
+    }
 
-function goToPage(page) {
-    if (page < 1 || page > props.pagination.last_page) return;
-    router.get(window.location.pathname, page > 1 ? { page } : {}, {
-        preserveState: true,
-        preserveScroll: true,
-    });
-}
+    if (props.campaign.scheduled_at) {
+        return `${__('Scheduled for')} ${formatDate(props.campaign.scheduled_at)}`;
+    }
 
-function reloadPage() {
-    router.reload({ preserveScroll: true });
-}
+    return '';
+});
+
 </script>
 
 <template>
@@ -123,10 +229,15 @@ function reloadPage() {
             <Button v-if="editable" :href="editUrl" :text="__('Edit')" variant="default" />
         </Header>
 
-        <p class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
-            <span v-if="campaign.subject">{{ campaign.subject }} · </span>
-            <span v-if="campaign.sent_at">{{ __('Sent') }} {{ formatDate(campaign.sent_at) }}</span>
-            <span v-else-if="campaign.scheduled_at">{{ __('Scheduled for') }} {{ formatDate(campaign.scheduled_at) }}</span>
+        <!-- The separator belongs to the part that follows it, not to the
+             subject. A draft has a subject and no date, and carrying the dot
+             with the subject left "Entwurf ·" standing on the page with
+             nothing after it — the same dangling-separator wrongness the
+             timeline entries were fixed for. -->
+        <p v-if="campaign.subject || subline" class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
+            <span v-if="campaign.subject">{{ campaign.subject }}</span>
+            <span v-if="campaign.subject && subline"> · </span>
+            <span v-if="subline">{{ subline }}</span>
         </p>
 
         <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
@@ -137,7 +248,8 @@ function reloadPage() {
 
         <!-- Web archive. Not on the edit form: that form closes when the
              campaign is sent, which is when this question actually gets
-             asked. -->
+             asked. Above the tabs rather than inside one, because it is a
+             decision about the campaign, not a facet of its report. -->
         <Panel v-if="showsArchivePanel" :heading="__('Web archive')" class="mb-6">
             <Card>
                 <Field :label="__('Publish a public web version')" :error="formErrors.archive">
@@ -157,105 +269,287 @@ function reloadPage() {
             </Card>
         </Panel>
 
-        <!-- Stat tiles -->
-        <div class="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7 mb-6">
-            <Card v-for="tile in statTiles" :key="tile.label" class="h-full">
-                <Subheading :text="tile.label" />
-                <Heading size="lg" class="mt-2" :text="String(tile.value)" />
-            </Card>
-        </div>
+        <Tabs :model-value="activeTab" @update:model-value="selectTab">
+            <TabList>
+                <TabTrigger v-for="item in tabs" :key="item.name" :name="item.name" :text="item.label" />
+            </TabList>
 
-        <!-- A/B breakdown. Deliberately does not name a winner: whether a gap
-             between two rates is a result or noise depends on the sample, and
-             that question belongs to a test-design review, not to this table.
-             The sample size is stated next to every rate so it can be asked. -->
-        <div v-if="variantRows.length" class="mb-6">
-            <Subheading :text="__('A/B variants')" class="mb-2" />
-            <Card>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
-                                <th class="py-2 pe-4 font-medium">{{ __('Variant') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Subject') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Recipients') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Sample size') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Open rate') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Click rate') }}</th>
-                                <th class="py-2 pe-4 font-medium">{{ __('Bounced') }}</th>
-                                <th class="py-2 font-medium">{{ __('Unsubscribed') }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="row in variantRows" :key="row.variant" class="border-t border-gray-200 dark:border-gray-700">
-                                <td class="py-2 pe-4 font-medium uppercase">{{ row.variant }}</td>
-                                <td class="py-2 pe-4 text-gray-500 dark:text-gray-400">{{ row.subject || '—' }}</td>
-                                <td class="py-2 pe-4">{{ row.recipients }}</td>
-                                <td class="py-2 pe-4">{{ row.sample_size }}</td>
-                                <td class="py-2 pe-4">{{ row.open_rate }}% <span class="text-xs text-gray-400">({{ row.opened }})</span></td>
-                                <td class="py-2 pe-4">{{ row.click_rate }}% <span class="text-xs text-gray-400">({{ row.clicked }})</span></td>
-                                <td class="py-2 pe-4">{{ row.bounced }}</td>
-                                <td class="py-2">{{ row.unsubscribed }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <!-- Overview ------------------------------------------------- -->
+            <TabContent name="overview">
+                <div v-if="isOverview">
+                    <!-- Stat tiles. Unchanged figures, counted the way they have
+                         always been counted, so this campaign stays comparable
+                         with every campaign before it. -->
+                    <div class="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7 mb-6 mt-4">
+                        <!-- `lg`, not `2xl`: eight tiles across one row, where
+                             the dashboard has three. -->
+                        <Card v-for="tile in statTiles" :key="tile.label" class="h-full">
+                            <Subheading :text="tile.label" />
+                            <Heading size="lg" class="mt-2" :text="String(tile.value)" />
+                        </Card>
+                    </div>
+
+                    <!-- The open figures, told apart. -->
+                    <div v-if="openTiles.length" class="mb-6">
+                        <Subheading :text="__('marketing::campaigns.report.opens_heading')" class="mb-2" />
+                        <div class="grid gap-4 grid-cols-2 md:grid-cols-4">
+                            <Card v-for="tile in openTiles" :key="tile.label" class="h-full">
+                                <Subheading :text="tile.label" />
+                                <Heading size="2xl" class="mt-2" :text="String(tile.value)" />
+                            </Card>
+                        </div>
+                        <Text size="sm" variant="subtle" class="mt-2 block" data-marketing-prefetch-note>
+                            {{ __('marketing::timeline.prefetched_note') }}
+                        </Text>
+                    </div>
+
+                    <!-- The campaign as a sequence. Stations that did not
+                         happen are absent, not empty: a campaign that was never
+                         scheduled has no scheduling to report, and a row saying
+                         "Geplant: —" only invites the question. -->
+                    <div v-if="timelineStations.length" class="mb-6">
+                        <Subheading :text="__('marketing::campaigns.report.timeline_heading')" class="mb-2" />
+                        <Card>
+                            <ol class="text-sm">
+                                <li
+                                    v-for="station in timelineStations"
+                                    :key="station.key"
+                                    class="flex items-baseline gap-3 py-1"
+                                >
+                                    <span class="w-40 shrink-0 text-gray-500 dark:text-gray-400">{{ station.label }}</span>
+                                    <span>{{ formatDate(station.at) }}</span>
+                                </li>
+                            </ol>
+                        </Card>
+                    </div>
+
+                    <!-- A/B breakdown. Deliberately does not name a winner:
+                         whether a gap between two rates is a result or noise
+                         depends on the sample, and that question belongs to a
+                         test-design review, not to this table. The sample size
+                         is stated next to every rate so it can be asked. -->
+                    <div v-if="variantRows.length" class="mb-6">
+                        <Subheading :text="__('A/B variants')" class="mb-2" />
+                        <Card>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                                            <th class="py-2 pe-4 font-medium">{{ __('Variant') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Subject') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Recipients') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Sample size') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Open rate') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Click rate') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('Bounced') }}</th>
+                                            <th class="py-2 font-medium">{{ __('Unsubscribed') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="row in variantRows" :key="row.variant" class="border-t border-gray-200 dark:border-gray-700">
+                                            <td class="py-2 pe-4 font-medium uppercase">{{ row.variant }}</td>
+                                            <td class="py-2 pe-4 text-gray-500 dark:text-gray-400">{{ row.subject || '—' }}</td>
+                                            <td class="py-2 pe-4">{{ row.recipients }}</td>
+                                            <td class="py-2 pe-4">{{ row.sample_size }}</td>
+                                            <td class="py-2 pe-4">{{ row.open_rate }}% <span class="text-xs text-gray-400">({{ row.opened }})</span></td>
+                                            <td class="py-2 pe-4">{{ row.click_rate }}% <span class="text-xs text-gray-400">({{ row.clicked }})</span></td>
+                                            <td class="py-2 pe-4">{{ row.bounced }}</td>
+                                            <td class="py-2">{{ row.unsubscribed }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                                {{ __('Rates are measured against the sample size (delivered messages). This report does not declare a winner — read the difference against the sample size before drawing a conclusion.') }}
+                            </p>
+                        </Card>
+                    </div>
                 </div>
-                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    {{ __('Rates are measured against the sample size (delivered messages). This report does not declare a winner — read the difference against the sample size before drawing a conclusion.') }}
-                </p>
-            </Card>
-        </div>
+            </TabContent>
 
-        <!-- Messages. Rows are paginated server-side (custom pager below), so the
-             Listing's client-side search/sort would only cover the current page
-             and mislead — disable the built-in toolbar and keep it a clean table. -->
-        <Listing
-            :items="messages"
-            :columns="columns"
-            :allow-search="false"
-            :allow-bulk-actions="false"
-            :allow-customizing-columns="false"
-            :allow-presets="false"
-            :sortable="false"
-        >
-            <template #cell-email="{ row }">
-                <span class="font-medium">{{ row.email }}</span>
-            </template>
+            <!-- Person tabs ---------------------------------------------- -->
+            <TabContent v-for="item in tabs.filter((t) => t.name !== 'overview')" :key="item.name" :name="item.name">
+                <div v-if="tab === item.name" class="mt-4">
+                    <div class="flex flex-col sm:flex-row gap-2 mb-4 sm:items-end">
+                        <Field v-if="showsStatusFilter" :label="__('Status')" class="w-full sm:w-56">
+                            <Select v-model="status" :options="statuses" @update:model-value="applyFilters" />
+                        </Field>
+                        <Button v-if="showsStatusFilter" :text="__('Filter')" variant="default" @click="applyFilters" />
+                        <span class="grow" />
+                        <Button
+                            v-if="exportHref"
+                            :href="exportHref"
+                            :text="__('marketing::campaigns.report.export')"
+                            variant="default"
+                            data-marketing-export
+                        />
+                    </div>
 
-            <template #cell-status="{ row }">
-                <Badge :color="messageStatusColor(row.status)" :text="row.status" />
-            </template>
+                    <!-- Rows are paginated server-side (custom pager below), so
+                         the Listing's client-side search/sort would only cover
+                         the current page and mislead — disable the built-in
+                         toolbar and keep it a clean table. -->
+                    <Listing
+                        :items="rows"
+                        :columns="columns"
+                        :allow-search="false"
+                        :allow-bulk-actions="false"
+                        :allow-customizing-columns="false"
+                        :allow-presets="false"
+                        :sortable="false"
+                    >
+                        <!-- The address, and the person behind it when LeadHub
+                             holds one. No contact, no link: a row that 404s or
+                             invents a page is worse than a plain address. -->
+                        <template #cell-email="{ row }">
+                            <a v-if="row.contact_url" :href="row.contact_url" class="font-medium hover:underline">{{ row.email }}</a>
+                            <span v-else class="font-medium" :title="__('marketing::campaigns.report.no_contact')">{{ row.email }}</span>
+                        </template>
 
-            <template #cell-sent_at="{ row }">
-                <span class="text-xs text-gray-500">{{ formatDate(row.sent_at) }}</span>
-            </template>
+                        <template #cell-name="{ row }">
+                            <span v-if="row.name">{{ row.name }}</span>
+                            <span v-else class="text-2xs text-gray-400">—</span>
+                        </template>
 
-            <template #cell-opens="{ row }">
-                <span :class="row.opens > 0 ? '' : 'text-gray-400'">{{ row.opens }}</span>
-            </template>
+                        <template #cell-status="{ row }">
+                            <Badge :color="messageStatusColor(row.status)" :text="messageStatusLabel(row.status)" />
+                        </template>
 
-            <template #cell-clicks="{ row }">
-                <span :class="row.clicks > 0 ? '' : 'text-gray-400'">{{ row.clicks }}</span>
-            </template>
-        </Listing>
+                        <!-- Why this one never arrived. The column has been in
+                             the schema since the first migration and has never
+                             been on a screen. -->
+                        <template #cell-error="{ row }">
+                            <span v-if="row.error" class="text-xs text-red-600 dark:text-red-400">{{ row.error }}</span>
+                            <span v-else class="text-2xs text-gray-400">—</span>
+                        </template>
 
-        <!-- Pagination -->
-        <div v-if="pagination.last_page > 1" class="mt-4 flex items-center justify-between">
-            <Button
-                :text="__('Previous')"
-                variant="default"
-                :disabled="pagination.current_page <= 1"
-                @click="goToPage(pagination.current_page - 1)"
-            />
-            <span class="text-xs text-gray-500 dark:text-gray-400">
-                {{ __('Page') }} {{ pagination.current_page }} / {{ pagination.last_page }} · {{ pagination.total }} {{ __('total') }}
-            </span>
-            <Button
-                :text="__('Next')"
-                variant="default"
-                :disabled="pagination.current_page >= pagination.last_page"
-                @click="goToPage(pagination.current_page + 1)"
-            />
-        </div>
+                        <template #cell-sent_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.sent_at) }}</span>
+                        </template>
+
+                        <template #cell-first_opened_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.first_opened_at) }}</span>
+                        </template>
+
+                        <template #cell-last_opened_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.last_opened_at) }}</span>
+                        </template>
+
+                        <template #cell-clicked_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.clicked_at) }}</span>
+                        </template>
+
+                        <template #cell-unsubscribed_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.unsubscribed_at) }}</span>
+                        </template>
+
+                        <template #cell-opens="{ row }">
+                            <span :class="row.opens > 0 ? '' : 'text-gray-400'">{{ row.opens }}</span>
+                        </template>
+
+                        <template #cell-clicks="{ row }">
+                            <span :class="row.clicks > 0 ? '' : 'text-gray-400'">{{ row.clicks }}</span>
+                        </template>
+
+                        <template #cell-human_opens="{ row }">
+                            <span :class="row.human_opens > 0 ? '' : 'text-gray-400'">{{ row.human_opens }}</span>
+                        </template>
+
+                        <!-- Whether this person's mail was fetched for them
+                             rather than read by them. Marked rather than
+                             merely counted, because the number next to it is
+                             the one that would otherwise be believed. -->
+                        <template #cell-machine_opens="{ row }">
+                            <Badge
+                                v-if="row.machine_opens > 0"
+                                color="orange"
+                                :text="String(row.machine_opens)"
+                                data-marketing-prefetched
+                            />
+                            <span v-else class="text-2xs text-gray-400">—</span>
+                        </template>
+
+                        <template #cell-url="{ row }">
+                            <a
+                                v-if="row.url"
+                                :href="row.url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-xs hover:underline break-all"
+                            >{{ row.url }}</a>
+                            <span v-else class="text-2xs text-gray-400">—</span>
+                        </template>
+                    </Listing>
+
+
+                    <!-- Which link was followed, how often, by how many people.
+                         Grouped over the campaign, not over this page: it
+                         answers a question about the mail, not about fifty
+                         rows of it. -->
+                    <div v-if="urlBreakdown && urlBreakdown.length" class="mt-6">
+                        <Subheading :text="__('marketing::campaigns.report.urls_heading')" class="mb-2" />
+                        <Card>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                                            <th class="py-2 pe-4 font-medium">{{ __('marketing::campaigns.report.url') }}</th>
+                                            <th class="py-2 pe-4 font-medium">{{ __('marketing::campaigns.report.url_clicks') }}</th>
+                                            <th class="py-2 font-medium">{{ __('marketing::campaigns.report.url_people') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="link in urlBreakdown" :key="link.url" class="border-t border-gray-200 dark:border-gray-700">
+                                            <td class="py-2 pe-4">
+                                                <a :href="link.url" target="_blank" rel="noopener noreferrer" class="hover:underline break-all">{{ link.url }}</a>
+                                            </td>
+                                            <td class="py-2 pe-4">{{ link.clicks }}</td>
+                                            <td class="py-2">{{ link.people }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    </div>
+
+                    <!-- What the open figures mean. Same words as the
+                         timeline entry a contact gets in LeadHub — one
+                         explanation, not two.
+
+                         On every tab that shows an open figure, not only on
+                         the one named after it: delivery carries an `opens`
+                         column too. And not on an empty tab, where it explains
+                         numbers that are not there. -->
+                    <Text
+                        v-if="rows.length && (tab === 'opens' || tab === 'delivery')"
+                        size="sm"
+                        variant="subtle"
+                        class="mt-4 block"
+                        data-marketing-prefetch-note
+                    >
+                        {{ __('marketing::timeline.prefetched_note') }}
+                    </Text>
+
+                    <!-- Pagination -->
+                    <div v-if="pagination && pagination.last_page > 1" class="mt-4 flex items-center justify-between">
+                        <Button
+                            :text="__('Previous')"
+                            variant="default"
+                            :disabled="pagination.current_page <= 1"
+                            @click="goToPage(pagination.current_page - 1)"
+                        />
+                        <span class="text-xs text-gray-500 dark:text-gray-400">
+                            {{ __('Page') }} {{ pagination.current_page }} / {{ pagination.last_page }} · {{ pagination.total }} {{ __('total') }}
+                        </span>
+                        <Button
+                            :text="__('Next')"
+                            variant="default"
+                            :disabled="pagination.current_page >= pagination.last_page"
+                            @click="goToPage(pagination.current_page + 1)"
+                        />
+                    </div>
+                </div>
+            </TabContent>
+        </Tabs>
     </div>
 </template>

@@ -42,6 +42,9 @@
         <testsuite name="Migrations">
             <directory suffix="Test.php">./tests/Migrations</directory>
         </testsuite>
+        <testsuite name="ShippedDefaults">
+            <directory suffix="Test.php">./tests/ShippedDefaults</directory>
+        </testsuite>
         <testsuite name="Integration">
             <directory suffix="Test.php">./tests/Integration</directory>
         </testsuite>
