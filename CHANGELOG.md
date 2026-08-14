@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.7.2 — 2026-08-14
+
+### Docs — `| default:` rettet eine Anrede ohne Vornamen nicht
+
+2.7.1 behauptete im Kommentar an der Willkommensserie, ein `default:` mit
+Anführungszeichen fange einen fehlenden Vornamen ab. Gemessen am laufenden
+Renderer: `{{ leer | default:'du' }}` ergibt leer, mit und ohne
+Anführungszeichen, während `{{ vorhanden | default:'x' }}` den Wert liefert —
+der Modifier läuft also, er behandelt einen leeren String nur nicht als
+fehlend.
+
+Was hält: `{{ first_name or "du" }}` oder ein `{{ if first_name }}`-Block. Der
+Hinweis steht jetzt auch im README, weil er jede Kampagne betrifft und nicht nur
+die Vorlage: auf dem Sendeweg ist `first_name` leer, und das neutrale Wort aus
+`archive.neutral_name` gilt ausschließlich für die Archivseite.
+
 ## 2.7.1 — 2026-08-14
 
 ### Fixed — die mitgelieferte Willkommensserie baute den Defekt, vor dem dieses Addon warnt

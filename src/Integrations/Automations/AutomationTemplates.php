@@ -53,7 +53,7 @@ class AutomationTemplates
     /**
      * New subscriber → welcome mail → 3 days → follow-up mail.
      *
-     * **On `marketing.send_email`, not on `send_email`.** Until 2.6.2 the two
+     * **On `marketing.send_email`, not on `send_email`.** Until 2.7.1 the two
      * mails here sat on the orchestrator's domain-neutral node: an address, a
      * subject, a body, and no question asked about consent, suppression,
      * opt-out or the frequency cap — the same node a password reset goes out
@@ -139,13 +139,24 @@ class AutomationTemplates
 
     /**
      * Statamic form submission → subscribe to a list (double opt-in applies).
+     *
+     * **The template stops at the subscription on purpose, and the description
+     * says what the next node has to be.** „And then say hello" is the obvious
+     * thing to add here, and the obvious way to add it — the neutral
+     * `send_email` to the address that was just subscribed — is the same
+     * defect the welcome series carried: no consent asked, no unsubscribe
+     * link, no postal line. This flow has no marketing trigger, so the neutral
+     * node cannot refuse it outright (it warns; see that node's docblock). The
+     * catalog entry is where the right answer has to be written down instead.
      */
     protected static function formToNewsletter(): array
     {
         return [
             'handle' => 'marketing_form_to_newsletter',
             'name' => 'Form Submission to Newsletter',
-            'description' => 'Subscribe form submitters to a mailing list — the list\'s double opt-in still applies.',
+            'description' => 'Subscribe form submitters to a mailing list — the list\'s double opt-in still applies. '
+                .'To greet them afterwards, add "Send Marketing Email" (marketing.send_email), never the plain "Send Email": '
+                .'a welcome is marketing mail and needs consent, suppression, opt-out, the cap, an unsubscribe link and your postal line.',
             'requires' => ['marketing'],
             'nodes' => [
                 ['node_key' => 'trigger', 'type' => 'form_submitted', 'position_x' => 0, 'position_y' => 0, 'config' => ['form_handle' => null]],

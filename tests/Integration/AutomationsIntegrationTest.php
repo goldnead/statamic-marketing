@@ -17,6 +17,7 @@ use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Models\Automation;
 use Goldnead\StatamicAutomations\Models\AutomationRun;
+use Goldnead\StatamicAutomations\Nodes\Actions\SendEmailAction;
 use Goldnead\StatamicAutomations\Templates\TemplateRegistry;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Illuminate\Support\Facades\Mail;
@@ -57,7 +58,7 @@ it('contributes the marketing templates to the automations catalog', function ()
 
 /**
  * The shipped welcome series is the first sequence most people will ever build,
- * and until 2.6.2 it built the defect this addon documents: two marketing mails
+ * and until 2.7.1 it built the defect this addon documents: two marketing mails
  * on the orchestrator's domain-neutral `send_email`, which asks for no consent
  * and carries no unsubscribe link.
  */
@@ -95,6 +96,40 @@ it('welcomes each person once', function (): void {
     $trigger = collect($template['nodes'])->firstWhere('node_key', 'trigger');
 
     expect($trigger['config']['_restart_policy'])->toBe('ignore');
+});
+
+/**
+ * The neutral node's refusal is wired to this addon by a class-name STRING
+ * (`SendEmailAction::MARKETING_ACTION`), because the sibling is optional and
+ * may not be installed. A rename on this side would turn the refusal back into
+ * a log line without a single test over there going red — the orchestrator's
+ * own suite cannot see it, since this package is not vendored into it.
+ *
+ * So the pin lives here, where both packages are really installed.
+ */
+it('makes the neutral send_email node refuse marketing mail once this addon is installed', function (): void {
+    $context = AutomationContext::make([
+        'subscriber' => [
+            'email' => 'leser@example.test',
+            'first_name' => 'Lea',
+            'list' => 'newsletter',
+            'status' => 'subscribed',
+        ],
+    ], testMode: true);
+
+    $result = (new SendEmailAction)->execute(
+        $context,
+        ['to' => 'leser@example.test', 'subject' => 'Welcome aboard!', 'body' => 'Hi Lea'],
+    );
+
+    expect($result->isSuccess())->toBeFalse()
+        ->and($result->error)->toContain(SendMarketingEmailAction::handle());
+});
+
+it('names the marketing send node in the form-to-newsletter template, where the next step is decided', function (): void {
+    $template = app(TemplateRegistry::class)->get('marketing_form_to_newsletter');
+
+    expect($template['description'])->toContain(SendMarketingEmailAction::handle());
 });
 
 it('keeps the team notifications on the neutral node, addressed to the team', function (): void {
