@@ -59,6 +59,13 @@ use Illuminate\Support\Str;
  *                          was carrying an ignore entry for each one.
  * @property string $list_handle The list this subscription belongs to, which is
  *                               where its consent comes from.
+ * @property Carbon|null $subscribed_at When this subscription started. Set on
+ *                                      sign-up, kept through a later
+ *                                      unsubscribe — it is when consent was
+ *                                      given, not when it was last true.
+ * @property Carbon|null $unsubscribed_at When it ended, or null while it has
+ *                                        not. The pair is the consent record,
+ *                                        which is why neither is cleared.
  * @property string|null $contact_uuid The LeadHub contact, once the
  *                                     subscription has been confirmed and
  *                                     synced. Null on a pending sign-up — a

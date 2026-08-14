@@ -43,7 +43,6 @@
     "Ignored for a brand that declares its own settings.mail.from_address \u2014 the sending address has to match the relay account the brand sends through, and only the brand row knows which addresses that account owns. Reply-to is unaffected.": "Wird ignoriert, wenn die Brand eine eigene settings.mail.from_address hat: die Absenderadresse muss zu dem Relay-Konto passen, \u00fcber das die Brand versendet, und nur die Brand-Zeile wei\u00df, welche Adressen zu diesem Konto geh\u00f6ren. \u201eAntwort an\u201c bleibt davon unber\u00fchrt.",
     "Ignored for a brand that declares its own settings.mail.from_address \u2014 the display name travels with the address, and the brand supplies both.": "Wird ignoriert, wenn die Brand eine eigene settings.mail.from_address hat: der Anzeigename geh\u00f6rt zur Adresse, und beide kommen von der Brand.",
     "It goes live once the campaign has been sent. Until then nothing is public.": "Sie geht online, sobald die Kampagne versendet wurde. Bis dahin ist nichts öffentlich.",
-    "Layout HTML": "Layout-HTML",
     "Leave empty for no A/B test": "Leer lassen, wenn kein A/B-Test laufen soll",
     "List": "Verteiler",
     "Lists": "Verteiler",
@@ -100,8 +99,6 @@
     "Templates provide the HTML layout wrapped around campaign content.": "Vorlagen liefern das HTML-Layout, das um den Kampagneninhalt gelegt wird.",
     "Test recipient": "Testempfänger",
     "The email subject line": "Die Betreffzeile der E-Mail",
-    "The full HTML layout of the email...": "Das vollständige HTML-Layout der E-Mail …",
-    "The layout must contain": "Das Layout muss",
     "The preview reflects the last saved version. Save your changes first.": "Die Vorschau zeigt den zuletzt gespeicherten Stand. Änderungen vorher speichern.",
     "The web version is the depersonalised edition: no tracking pixel, no click counting, and greetings resolve to a neutral word. Off by default — a campaign only appears once you publish it here.": "Die Webversion ist die entpersonalisierte Fassung: kein Tracking-Pixel, keine Klickzählung, und Anreden lösen zu einem neutralen Wort auf. Standardmäßig aus — eine Kampagne erscheint erst, wenn du sie hier veröffentlichst.",
     "This campaign has been sent or is currently sending and can no longer be edited.": "Diese Kampagne wurde versendet oder wird gerade versendet und lässt sich nicht mehr bearbeiten.",
@@ -120,6 +117,5 @@
     "e.g. Newsletter": "z. B. Newsletter",
     "e.g. Newsletter layout": "z. B. Newsletter-Layout",
     "marketing mails per": "Marketing-Mails pro",
-    "total": "gesamt",
-    "where the campaign content is injected, and may use": "enthalten — dort wird der Kampagneninhalt eingesetzt — und darf verwenden:"
+    "total": "gesamt"
 }

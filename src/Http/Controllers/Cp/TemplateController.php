@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\EmailTemplate;
+use Goldnead\Marketing\Services\TemplatePreview;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,6 +48,7 @@ class TemplateController extends Controller
             'template' => null,
             'storeUrl' => cp_route('marketing.templates.store'),
             'starterHtml' => EmailTemplate::fallback()->html,
+            'previewUrl' => cp_route('marketing.templates.preview'),
         ]);
     }
 
@@ -79,6 +81,33 @@ class TemplateController extends Controller
             ->with('success', __('marketing::templates.flashes.created'));
     }
 
+    /**
+     * Render a layout as it is being typed.
+     *
+     * A POST because the layout arrives in the body — it is not saved yet, and
+     * that is the whole point. Answers JSON rather than HTML: the preview goes
+     * into a sandboxed iframe on the client, where a `<script>` somebody pasted
+     * into their layout cannot run. A route that served the rendered document
+     * directly would run it in the Control Panel's own origin.
+     *
+     * Gated on `manage marketing templates`, the same permission as saving one.
+     * Antlers evaluates what is sent, so this must not be reachable by anyone
+     * who could not already store the same string and have it rendered.
+     */
+    public function preview(Request $request, TemplatePreview $preview)
+    {
+        $this->authorizeOrFail($request, 'manage marketing templates');
+
+        $html = (string) $request->input('html', '');
+
+        return response()->json([
+            'data' => [
+                ...$preview->render($html),
+                'findings' => $preview->findings($html),
+            ],
+        ]);
+    }
+
     public function edit(Request $request, string $handle)
     {
         $this->authorizeOrFail($request, 'manage marketing templates');
@@ -89,6 +118,7 @@ class TemplateController extends Controller
         return Inertia::render('marketing::Templates/Edit', [
             'template' => $template->toArray(),
             'updateUrl' => cp_route('marketing.templates.update', $handle),
+            'previewUrl' => cp_route('marketing.templates.preview'),
             'deleteUrl' => cp_route('marketing.templates.destroy', $handle),
         ]);
     }

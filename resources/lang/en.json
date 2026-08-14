@@ -43,7 +43,6 @@
     "Ignored for a brand that declares its own settings.mail.from_address \u2014 the sending address has to match the relay account the brand sends through, and only the brand row knows which addresses that account owns. Reply-to is unaffected.": "Ignored for a brand that declares its own settings.mail.from_address \u2014 the sending address has to match the relay account the brand sends through, and only the brand row knows which addresses that account owns. Reply-to is unaffected.",
     "Ignored for a brand that declares its own settings.mail.from_address \u2014 the display name travels with the address, and the brand supplies both.": "Ignored for a brand that declares its own settings.mail.from_address \u2014 the display name travels with the address, and the brand supplies both.",
     "It goes live once the campaign has been sent. Until then nothing is public.": "It goes live once the campaign has been sent. Until then nothing is public.",
-    "Layout HTML": "Layout HTML",
     "Leave empty for no A/B test": "Leave empty for no A/B test",
     "List": "List",
     "Lists": "Lists",
@@ -100,8 +99,6 @@
     "Templates provide the HTML layout wrapped around campaign content.": "Templates provide the HTML layout wrapped around campaign content.",
     "Test recipient": "Test recipient",
     "The email subject line": "The email subject line",
-    "The full HTML layout of the email...": "The full HTML layout of the email...",
-    "The layout must contain": "The layout must contain",
     "The preview reflects the last saved version. Save your changes first.": "The preview reflects the last saved version. Save your changes first.",
     "The web version is the depersonalised edition: no tracking pixel, no click counting, and greetings resolve to a neutral word. Off by default — a campaign only appears once you publish it here.": "The web version is the depersonalised edition: no tracking pixel, no click counting, and greetings resolve to a neutral word. Off by default — a campaign only appears once you publish it here.",
     "This campaign has been sent or is currently sending and can no longer be edited.": "This campaign has been sent or is currently sending and can no longer be edited.",
@@ -120,6 +117,5 @@
     "e.g. Newsletter": "e.g. Newsletter",
     "e.g. Newsletter layout": "e.g. Newsletter layout",
     "marketing mails per": "marketing mails per",
-    "total": "total",
-    "where the campaign content is injected, and may use": "where the campaign content is injected, and may use"
+    "total": "total"
 }

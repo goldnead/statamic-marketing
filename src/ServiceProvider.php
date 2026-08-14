@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing;
 
+use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
@@ -11,6 +12,7 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
+use Goldnead\Marketing\Integrations\Leadhub\ContactSubscriptionsPanel;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentCampaignRepository;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentEmailTemplateRepository;
@@ -178,6 +180,8 @@ class ServiceProvider extends AddonServiceProvider
 
             $this->app->make(AutomationsBridge::class)
                 ->boot($this->app->make('events'));
+
+            $this->registerContactPanel();
         };
 
         $this->app->booted(function () use ($boot): void {
@@ -185,6 +189,33 @@ class ServiceProvider extends AddonServiceProvider
 
             $this->app->booted($boot);
         });
+    }
+
+    /**
+     * Put this person's mailing lists on LeadHub's contact screen.
+     *
+     * `method_exists` and not a version constraint: the registry arrived in
+     * LeadHub 2.2, this package requires `^2.1`, and an install running the
+     * older one must keep working with one panel missing rather than fatal on
+     * an undefined method. Registering under a fixed key means the double
+     * `booted()` above cannot produce the panel twice.
+     *
+     * The resolver is a closure around the container, not the object: the panel
+     * needs the mailing-list repository, and resolving that here would bind the
+     * flat-file/Eloquent choice at boot instead of at read time.
+     */
+    protected function registerContactPanel(): void
+    {
+        $manager = LeadHub::getFacadeRoot();
+
+        if (! is_object($manager) || ! method_exists($manager, 'registerContactPanel')) {
+            return;
+        }
+
+        $manager->registerContactPanel(
+            'marketing.subscriptions',
+            fn ($contact) => $this->app->make(ContactSubscriptionsPanel::class)($contact),
+        );
     }
 
     /**

@@ -49,6 +49,10 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
     Route::prefix('templates')->name('templates.')->group(function () {
         Route::get('/', [TemplateController::class, 'index'])->name('index');
         Route::get('/create', [TemplateController::class, 'create'])->name('create');
+        // Before `/{handle}` in every sense that matters: the preview is a POST
+        // and the wildcards here are GET/PATCH/DELETE, but keeping it up with
+        // `create` states that it is not a template of its own.
+        Route::post('/preview', [TemplateController::class, 'preview'])->name('preview');
         Route::post('/', [TemplateController::class, 'store'])->name('store');
         Route::get('/{handle}/edit', [TemplateController::class, 'edit'])->name('edit');
         Route::patch('/{handle}', [TemplateController::class, 'update'])->name('update');

@@ -1,5 +1,64 @@
 # Changelog
 
+## 2.6.0 — 2026-08-14
+
+Beides aus Adrians Fragen beim Durchgang durch den Hub.
+
+### Added — die Verteiler einer Person stehen auf ihrer LeadHub-Kontaktseite
+
+Die beiden Addons waren unter der Oberfläche längst verheiratet: eine Anmeldung
+löst auf einen LeadHub-Kontakt auf, das Publikum einer Kampagne kommt aus
+LeadHub-Segmenten, und LeadHubs `do_not_contact` ist das, was eine Abmeldung
+setzt. Zu sehen war davon nichts. Die Kontaktseite zeigte Tags, Aufgaben und
+eine Chronik und sagte kein Wort über den Newsletter, den die Person seit einem
+Jahr bekommt.
+
+Beigesteuert von dieser Seite über LeadHubs neue Panel-Registry (leadhub 2.2.0),
+nicht von dort gelesen: marketing hängt von leadhub ab, leadhub von niemandem,
+und das für ein Panel umzudrehen hätte ein optionales Geschwister zur harten
+Abhängigkeit des CRM gemacht. Auf einem älteren leadhub fehlt das Panel und
+sonst nichts — geprüft wird mit `method_exists`, nicht mit einer
+Versionsangabe.
+
+Gesucht wird über die normalisierte Adresse und nicht über `contact_uuid`: die
+UUID steht erst da, wenn eine Anmeldung bestätigt und synchronisiert ist, und
+eine unbestätigte Anmeldung ist genau das, wofür man diese Seite aufmacht.
+
+### Added — der Vorlagen-Editor zeigt, was er baut
+
+Eine Vorlage ist der Umschlag, nicht der Brief: Kopf, Fuß, Farben und das Loch,
+in das der Inhalt kommt. Bearbeitet wurde sie als HTML-Wand in einem Textfeld,
+und der einzige Weg, das Ergebnis zu sehen, war speichern, eine Kampagne
+schreiben und sich selbst einen Test schicken — drei Schritte entfernt von dem,
+was man gerade ändert.
+
+Jetzt: Code links mit Syntaxhervorhebung (`CodeEditor`), gerenderte Vorschau
+rechts, umschaltbar zwischen Desktop- und Handybreite. Gerendert wird durch
+denselben Antlers-Parser wie der echte Versand (`Services\TemplatePreview`) —
+eine Vorschau durch eine zweite Engine wäre eine zweite Implementierung, die man
+im Gleichschritt halten muss, und die erste Abweichung stünde in irgendjemandes
+Posteingang.
+
+Dazu zwei Befunde, während getippt wird:
+
+- **Diese Vorlage gibt `{{ content }}` nirgends aus.** Fehler. Eine Kampagne
+  damit kommt leer an: geschrieben, versendet, und jeder Empfänger bekommt den
+  Rahmen um nichts. Das ist nichts, was man aus der Antwort einer Abonnentin
+  erfahren sollte.
+- **Diese Vorlage hat keinen Abmeldelink.** Warnung, kein Fehler: dieselbe
+  Vorlage ist für transaktionale Mail legitim, wo es nichts abzumelden gibt.
+
+Erkannt wird `{{ name }}` mit beliebigem Abstand, nicht das bloße Wort — sonst
+bekäme jemand für eine korrekte Vorlage gesagt, sie sei kaputt, und das ist der
+Weg, auf dem eine Warnung aufhört, gelesen zu werden.
+
+Die Vorschau liegt in einem `<iframe sandbox="">`, das nichts erlaubt. Eine
+Vorlage ist beliebiges HTML, das jemand eingefügt hat; ein `<script>` darin tut
+in einem Mailprogramm nichts und liefe hier im Control Panel mit der Sitzung der
+bearbeitenden Person. Dieselbe Regel wie bei der Kampagnen-Vorschau, und
+`tests/js/preview-sandbox.test.js` hält jetzt beide daran fest.
+
+
 ## 2.5.1 — 2026-08-14
 ### Security
 

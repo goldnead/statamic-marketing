@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import CampaignsEdit from '../../resources/js/pages/Campaigns/Edit.vue';
+import TemplatesEdit from '../../resources/js/pages/Templates/Edit.vue';
 
 /**
  * The frame-side half of the preview barrier.
@@ -87,6 +88,64 @@ describe('campaign preview iframe', () => {
 
     it('names the frame, so a screen reader can say what it is', async () => {
         const frame = await previewFrame();
+
+        expect(frame.attributes('title')).toBeTruthy();
+    });
+});
+
+/**
+ * The same barrier on the layout editor, which grew a preview of its own.
+ *
+ * Different screen, identical exposure: the frame shows HTML a Control Panel
+ * user wrote, and here it arrives through `srcdoc` rather than a route — which
+ * changes nothing about what a `<script>` in it would do.
+ */
+function templatesEdit() {
+    return mount(TemplatesEdit, {
+        props: {
+            template: { handle: 'branded', name: 'Branded', html: '<div>{{ content }}</div>' },
+            storeUrl: null,
+            updateUrl: '/cp/marketing/templates/branded',
+            deleteUrl: null,
+            starterHtml: '',
+            previewUrl: '/cp/marketing/templates/preview',
+        },
+    });
+}
+
+async function templateFrame() {
+    const wrapper = templatesEdit();
+
+    // The frame only exists once something has rendered — there is no point
+    // framing an empty preview — so it is given a render to show.
+    wrapper.vm.previewHtml = '<p>rendered</p>';
+    await wrapper.vm.$nextTick();
+
+    const frame = wrapper.find('iframe');
+
+    expect(frame.exists()).toBe(true);
+
+    return frame;
+}
+
+describe('template preview iframe', () => {
+    it('carries a sandbox attribute', async () => {
+        const frame = await templateFrame();
+
+        expect(frame.attributes('sandbox')).toBeDefined();
+    });
+
+    it('grants the frame neither scripts nor the Control Panel origin', async () => {
+        const frame = await templateFrame();
+
+        const tokens = (frame.attributes('sandbox') ?? '').split(/\s+/).filter(Boolean);
+
+        expect(tokens).not.toContain('allow-scripts');
+        expect(tokens).not.toContain('allow-same-origin');
+    });
+
+    it('names the frame, so a screen reader can say what it is', async () => {
+        const frame = await templateFrame();
 
         expect(frame.attributes('title')).toBeTruthy();
     });
