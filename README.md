@@ -37,8 +37,21 @@ Think Mailcoach, but native to Statamic and built on top of
   Requires LeadHub ^1.1; degrades gracefully (whole-list send) on older LeadHub.
 - **Queued batch sending** through any Laravel mailer with configurable
   throttle, per-recipient message records, and automatic finalization.
-- **Tracking**: open pixel, signed click redirects, per-campaign reports
-  (open/click rates, bounces, unsubscribes).
+- **Tracking**: open pixel and signed click redirects, each switchable off.
+- **Campaign report** in five tabs — Overview, Delivery, Opens, Clicks,
+  Unsubscribes — every one of which shows the people behind the number rather
+  than the number alone. The overview adds the A/B variants and a timeline
+  (scheduled, sending started, sent, first open, last activity) in which a
+  station that did not happen is left out instead of shown empty; Delivery names
+  the reason a message did not go out. Each tab exports the same selection as a
+  CSV — same filter, same order, streamed. Every row links to the reader's
+  LeadHub contact where one exists, and never creates one. See
+  [The campaign report](#the-campaign-report).
+- **Machine opens are named as such.** Apple Mail Privacy Protection loads the
+  tracking pixel for every message it delivers, read or not, so an open rate on
+  its own no longer says what it appears to. The existing counters keep counting
+  everything; the human figures stand beside them under their own names. See
+  [What an open means here](#what-an-open-means-here).
 - **Newsletter web archive**: a public, linkable web version of a campaign on a
   readable URL (`/newsletter/{handle}`), plus a chronological index and an RSS
   feed, with title, description, canonical and Open Graph tags. Visibility is
@@ -71,7 +84,11 @@ Think Mailcoach, but native to Statamic and built on top of
   either way.
 - **LeadHub native**: subscribing upserts the contact, records timeline events
   (`marketing.subscribed` / `marketing.unsubscribed`), and tags contacts with
-  `list:{handle}`. Hard bounces and complaints opt the contact out.
+  `list:{handle}`. Hard bounces and complaints opt the contact out. Every mail
+  the addon sends — sent, opened, preloaded, clicked, bounced, marked as spam —
+  is written onto the recipient's timeline as well, so the question "what has
+  this person had from us" is answerable on the contact. See
+  [Every mail on the contact](#every-mail-on-the-contact).
 - **Flat-file first**: lists, campaigns, and templates live as YAML under
   `content/marketing/` (version-controllable, the Statamic way) — or in the
   database via `MARKETING_DRIVER=eloquent`. Runtime data (subscriptions,
@@ -211,6 +228,112 @@ than pending, so an old confirmation cannot undo an unsubscribe.
 nothing; `POST` confirms. Mail gateways and preview features fetch every URL in a message, and a
 subscription created by a scanner is both wrong and, because it carries a plausible timestamp,
 hard to tell from a real one afterwards.
+
+## The campaign report
+
+The report opens on **Overview** and has four more tabs — **Delivery**,
+**Opens**, **Clicks**, **Unsubscribes** — each of which lists the people behind
+the figure rather than the figure alone. The queries are in
+`src/Services/CampaignReport.php`. `CampaignStats` is deliberately untouched by
+all of it: its numbers are what every earlier campaign was measured with, and
+redefining one of them quietly would look like a collapse in engagement that
+never happened. What is new stands beside the old figures under its own name.
+
+- **Overview** — the figures, the A/B variants, and the campaign as a sequence:
+  scheduled, sending started, sent, first open, last activity. A station that
+  did not happen is left out; a row reading "Scheduled: —" only invites the
+  reader to wonder what went wrong. "Sending started" is the only derived
+  station (nothing records when a send began, so the audience snapshot stands in
+  for it), and it is dropped rather than printed when it would land after the
+  send did.
+- **Delivery** — every recipient with status, time and counters, narrowable to
+  one message status. Where a message did not go out, the reason is in the row.
+  That column had been in the database from the start and was never shown. It
+  appears only on a campaign where something actually failed; the CSV carries
+  the field either way, because a column that comes and goes is worse in a file
+  than an empty one.
+- **Opens** — who, when first, how often, and how much of it was machine. Built
+  on `first_opened_at` rather than on the open counter, so a reader whose client
+  blocks images and who clicked is in the list.
+- **Clicks** — one row per click: who, when, which link, plus the breakdown by
+  link. The one tab that is not per person, because somebody who followed two
+  links did two things.
+- **Unsubscribes** — who and when.
+
+Every row links to the reader's LeadHub contact **where one already exists**,
+and never creates one; a report is a read. The link is resolved over the
+normalised address rather than the subscription's contact uuid, which is only
+filled once a subscription has been confirmed and synced. A Control Panel user
+who may read marketing but not LeadHub's contacts gets no links at all, rather
+than rows that answer 403 when clicked.
+
+Each tab offers the same selection as a CSV (route `marketing.campaigns.export`,
+one query string for both): same filter, same order, streamed in chunks so that
+a campaign with fifty thousand recipients does not have to fit in memory. The
+export sits behind `manage marketing campaigns` while reading the report needs
+`view marketing` — taking a file of addresses off the server is a different
+question from looking at a page. A cell that begins with `=`, `+`, `-`, `@`, tab
+or carriage return is written with a leading apostrophe: the name fields come
+from a public sign-up form, so a stranger chooses their content, and a
+spreadsheet runs such a cell the moment the file is opened, on the machine of
+the person who was allowed to export it.
+
+### What an open means here
+
+Apple's Mail Privacy Protection fetches the tracking pixel for **every message
+it delivers**, shortly after delivery, whether or not anybody looks, and then
+caches the image. Security gateways such as Mimecast or Proofpoint do the same.
+Taken at face value, those fetches report that somebody read a mail nobody
+opened, and say nothing about the reading that came afterwards.
+
+`src/Support/MachineOpen.php` tells the two apart as far as anything can. It is
+a **heuristic, not a detection**: MPP is built to be indistinguishable, so the
+class is wrong sometimes, in both directions. The direction of its doubt is the
+decision — **an unknown client counts as a person.** Filing a real reader as a
+machine is the error that would make the whole thing worse than not trying at
+all. Gmail's `GoogleImageProxy` counts as a person on purpose: Gmail proxies the
+image when the message is actually opened, so its fetch is a reading.
+
+- **The existing counters are unchanged.** `opens` still counts everything, so
+  every comparison with an earlier campaign stays valid. The human figures sit
+  next to them with names of their own: *By a person*, *Open rate (people)*,
+  *Machine only*.
+- **A click counts as a person.** Under MPP the only open on record is the
+  machine's, so counting opens alone reported "read by nobody" for a campaign
+  somebody had clicked through.
+- **Only the answer is stored**: the boolean `machine` on
+  `marketing_message_events`. No user agent, no IP address — see
+  [Personal data](#personal-data).
+- A second event, `MessageOpenedByHuman`, fires on the first open a person is
+  believed to have made. Behind a scanning mailbox the first open is the
+  machine's, and `MessageOpened` has fired by then and does not fire again;
+  without the second event the contact would read "preloaded" forever and never
+  once say the person had read it.
+
+## Every mail on the contact
+
+Sent, opened, preloaded, clicked, bounced, marked as spam: each writes one entry
+onto the recipient's LeadHub timeline, with subject, campaign and list as
+readable lines rather than a payload dump
+(`src/Integrations/Leadhub/TimelineRecorder.php`). The facts were always
+recorded — in `marketing_messages` and `marketing_message_events`, keyed by
+message, which is where nobody looking at a person would find them.
+
+Two properties carry this, and neither of them is about the good case:
+
+- **A tracking pixel never creates a contact.** For an address with no LeadHub
+  contact nothing is written and nothing is created. Somebody who signed up and
+  never confirmed has no contact on purpose, and an opened confirmation mail is
+  not consent to be filed.
+- **Nothing on this path turns a delivered mail into a failure.** It hangs off
+  the send path and off two public tracking endpoints, so it catches everything
+  and logs it throttled per kind of failure — a send to five thousand people
+  with a CRM that is down would otherwise put five thousand identical lines in
+  the log and bury the one that matters.
+
+Switchable off with `marketing.timeline.enabled`, narrowable to single kinds
+with `marketing.timeline.types`. Fifty thousand recipients and one row per open
+on every contact is a legitimate thing not to want.
 
 ## Multi-brand
 
@@ -354,13 +477,15 @@ refused with a message naming the brand that holds it.
 | `subscriptions.confirm_requires_post` | `true` | Confirming needs a button press, so link scanners cannot consent for the reader |
 | `unsubscribe.global_opt_out` | `false` | Also set LeadHub `do_not_contact` on unsubscribe |
 | `tracking.opens` / `tracking.clicks` | `true` | Toggle tracking |
+| `timeline.enabled` | `true` | Write every mail onto the recipient's LeadHub timeline (see [Every mail on the contact](#every-mail-on-the-contact)). Nothing is written for an address with no contact |
+| `timeline.types` | `[]` | Which of the six kinds are written; empty means all of them. An install sending to fifty thousand people may not want a row per open on every contact. Constants on `Integrations\Leadhub\TimelineRecorder` |
 | `delivery.mail_headers` | `[]` | Per-message headers asking the provider not to rewrite links |
 | `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
 | `frequency_cap.enabled` | `false` | Off until you turn it on — updating the package changes no send |
 | `frequency_cap.max` / `.window_hours` | `3` / `168` | Three marketing mails per seven days |
 | `frequency_cap.defer.*` | `1440` min, `3` tries | How long a capped message waits, and how often, before it is discarded and logged |
-| `archive.enabled` | `true` | The archive routes; per-campaign visibility is still off by default |
+| `archive.enabled` | `false` (`MARKETING_ARCHIVE`) | The archive routes. Off means they are **not registered at all**, so no route exists to link to |
 | `archive.prefix` | `newsletter` | Path for the index, `feed.xml` and each campaign page |
 | `archive.neutral_name` | `null` | Stands in for `{{ first_name }}` / `{{ name }}` on the web version (falls back to the translation) |
 
@@ -395,7 +520,12 @@ hearing from you a lot.
 
 ### Publishing an issue to the web archive
 
-Open the campaign's report page and switch **Publish a public web version** on.
+The archive ships **off**: `MARKETING_ARCHIVE` defaults to `false`, and while it
+is off the archive routes are not registered. Set `MARKETING_ARCHIVE=true` first
+— the switch below only appears once they exist.
+
+Then open the campaign's report page and switch **Publish a public web version**
+on.
 It takes effect once the campaign has actually been sent, and switching it off
 removes the page on the next request — nothing caches the list. Under
 multi-brand the index and the feed show whichever brand is current for the
@@ -420,12 +550,42 @@ an open redirect on your own domain rather than merely a weaker signature.
 the provider's own counter off, which most of them offer and Brevo does not. It
 is empty by default; `config/marketing.php` has the verified table of names.
 
+## Personal data
+
+The addon stores personal data in your own application's database, in four
+tables of its own:
+
+| Table | What is in it |
+| --- | --- |
+| `marketing_subscriptions` | The consent record: address (as given and normalised), first and last name, list, status, source, the unsubscribe and confirmation tokens, whatever the sign-up path recorded as `meta`, and the subscription/confirmation/unsubscription timestamps |
+| `marketing_messages` | One row per mail: recipient address, status, the reason a send failed, open and click counters and their first/last timestamps |
+| `marketing_message_events` | One row per open, click, unsubscribe, bounce or complaint: the kind, the `machine` verdict on an open, the clicked target, and for an inbound ESP feedback event what the provider sent |
+| `marketing_mail_log` | The frequency cap's bookkeeping: normalised address, mail class, brand, reference and the time of each mail after it was delivered. Written whether or not the cap is switched on |
+
+Outside these four: one entry per mail on the recipient's **LeadHub contact
+timeline** — LeadHub's table, not this addon's, and only ever for a contact that
+already exists (see [Every mail on the contact](#every-mail-on-the-contact)).
+Suppression records belong to `statamic-suppression` and are documented there.
+
+**What is not stored: no IP address and no user agent.** The fetching client of
+an open is read while the request is in hand, answered with the one boolean
+`machine`, and dropped. An IP is personal data and a stored user agent is a
+fingerprint, and neither is needed once the question has been answered.
+
+**Deleting it.** Deleting a subscription in the Control Panel (list → subscriber
+→ delete) takes its messages and their events with it: both foreign keys cascade
+on delete. The contact itself and its timeline are LeadHub's, and go when the
+contact does. `marketing_mail_log` hangs off no subscription and is not cleared
+with one; it holds an address, a class and a time, and rows older than
+`frequency_cap.window_hours` are of no further use to anything here.
+
 ## Testing
 
 ```bash
 composer install
 vendor/bin/pest                     # flat driver (default)
 MARKETING_DRIVER=eloquent vendor/bin/pest   # eloquent driver
+vendor/bin/pest --testsuite=ShippedDefaults # the configuration the addon ships
 
 # Live cross-addon integration suite (installs automations + webhook-manager
 # into a throwaway copy; point the *_PATH vars at local checkouts):
@@ -437,6 +597,22 @@ scripts/test-siblings.sh
 CI note: `goldnead/statamic-leadhub` is a private sibling repo, so the GitHub
 Actions workflows need a `SIBLING_REPOS_TOKEN` repository secret (a PAT with
 read access to it) to check it out next to this package.
+
+### The suite that runs the shipped configuration
+
+`tests/TestCase.php` switches the archive **on** for the whole suite, so that
+the archive can be tested at all. The price of that one line is that no test
+ever entered the configuration the addon actually ships with — and the campaign
+screen built `route('marketing.archive.show')` unconditionally, a route that is
+only registered while the archive is enabled. Every default install answered 500
+on that screen, through a green suite, for as long as the archive has existed.
+
+`tests/ShippedDefaults/` is the suite that meets the addon as it ships. Setting
+the config inside a test body is not enough: routes are registered while the
+application boots, so by the time a test runs, `Route::has()` has already been
+decided. The switch has to be thrown before boot, which is what
+`tests/ArchiveOffTestCase.php` is for. Anything that behaves differently under a
+shipped default than under the test defaults belongs in this suite.
 
 ### Against a real MySQL server
 
