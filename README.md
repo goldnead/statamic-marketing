@@ -45,8 +45,15 @@ Think Mailcoach, but native to Statamic and built on top of
   station that did not happen is left out instead of shown empty; Delivery names
   the reason a message did not go out. Each tab exports the same selection as a
   CSV — same filter, same order, streamed. Every row links to the reader's
-  LeadHub contact where one exists, and never creates one. See
+  LeadHub contact where one exists, and never creates one. The overview also
+  carries the **activity curve**: opens and clicks over the time since the send,
+  with the machine share drawn apart from the human one. See
   [The campaign report](#the-campaign-report).
+- **Marketing dashboard** with two charts beside the totals: the open and click
+  rate of the last twelve sent campaigns in send order, and sign-ups against
+  sign-offs per week over twelve weeks. The rates are lifted out of
+  `CampaignStats` unchanged rather than worked out a second time. See
+  [The marketing dashboard](#the-marketing-dashboard).
 - **Machine opens are named as such.** Apple Mail Privacy Protection loads the
   tracking pixel for every message it delivers, read or not, so an open rate on
   its own no longer says what it appears to. The existing counters keep counting
@@ -278,6 +285,54 @@ from a public sign-up form, so a stranger chooses their content, and a
 spreadsheet runs such a cell the moment the file is opened, on the machine of
 the person who was allowed to export it.
 
+### When it was read
+
+The overview draws opens and clicks over the time since the send
+(`CampaignReport::activity()`), with the machine share kept apart from the human
+one all the way to the screen. The chart is hand-drawn out of CSS boxes: the
+Control Panel's CSP allows no CDN script, and three pictures are not worth a
+dependency the whole addon would carry.
+
+The grid follows the campaign. While the activity fits inside about three days
+it is hourly, past that daily, and ninety buckets at the outside. Which of the
+two is decided from the ninety-fifth percentile of the events, not from the last
+of them: opening a mail again three weeks on is entirely ordinary, and an `n` of
+one must not turn three days of reading into three bars out of ninety. Anything
+that lands past the end of the axis is counted and said in words underneath
+rather than dropped. The axis starts at the send and not at the first event —
+"two hours until anybody looked" is a fact about the campaign, and an axis
+beginning at the first open hides it. Empty buckets in between are noughts.
+
+Four things decide whether the picture is read correctly:
+
+- **The axis measures against the tallest human bucket, not the tallest
+  bucket.** Apple's proxy fetches the pixel for roughly half of a campaign
+  inside a single hour, while reading spreads over ten hours and more. Sharing
+  one axis with that, the tallest human hour lands at a tenth of the track and a
+  typical one at a fiftieth — three to five pixels, with hour four and hour
+  seven a rounding error apart. So human opens and clicks set the ceiling, the
+  preload bar runs into it, and **that is the statement**: it does not fit here.
+  The figure it really has is written out in the scale line beside the chart.
+- **The bars count events; the tiles above them count messages.** "Opens in
+  total" is the number of messages with at least one open, so somebody who
+  opened the mail five times is a one there and a five here. Both are correct
+  and they are not the same question; a note under the chart says so.
+- **A campaign sent before 2026-08-15 cannot be read for its split.** That is
+  the day the `machine` column arrived, and the migration gives existing rows
+  `false` on purpose — no figure moved under anybody's feet on the day the
+  update ran. For the tiles that is the right trade; for a chart whose whole
+  subject is the difference between the two colours it is not, so the screen
+  says it. It only says it where not one preload has been recorded for that
+  campaign: a campaign sent shortly before the migration keeps collecting
+  flagged opens afterwards, and a warning printed above an orange bar would be
+  worse than no warning at all.
+- **A campaign nobody has opened yet gets a sentence**, not an axis with nothing
+  on it.
+
+Every column is announced for screen readers as a sentence of its own, and the
+chart carries a one-sentence summary of the whole — the bars themselves hold no
+text.
+
 ### What an open means here
 
 Apple's Mail Privacy Protection fetches the tracking pixel for **every message
@@ -309,6 +364,59 @@ image when the message is actually opened, so its fetch is a reading.
   machine's, and `MessageOpened` has fired by then and does not fire again;
   without the second event the contact would read "preloaded" forever and never
   once say the person had read it.
+
+## The marketing dashboard
+
+Under the audience totals and the five most recent campaigns, two charts drawn
+by the same component as the activity curve.
+
+**Engagement across recent campaigns** — the open and click rate of the last
+twelve campaigns that actually went out, oldest on the left, because a trend is
+read left to right. Drafts and scheduled campaigns are left out: an open rate on
+a campaign that was never sent is a nought pretending to be a result. The rates
+are lifted straight out of `CampaignStats`, the same numbers the campaign's own
+report prints, rather than a second calculation that happens to agree today —
+two different open rates in one addon is a defect this repo has shipped once
+already, and this is exactly where it starts. The bars are scaled to the largest
+rate in the row rather than to a fixed hundred, since a three-percent click rate
+against a full-height axis is a line nobody can compare; the top of the axis is
+therefore stated above the chart. Two sentences appear when they apply: that a
+trend needs at least two sent campaigns, and that the newest bar is early
+because the campaign went out less than 48 hours ago and is still collecting its
+opens.
+
+**List growth** — sign-ups against sign-offs per week over twelve weeks
+(`SubscriptionGrowth`), weeks starting on Monday whatever the CP language is set
+to. A week nobody joined is an empty track rather than a missing column, so a
+quiet month cannot look like a busy one. What it counts, and the caveat that
+comes with it:
+
+- Sign-ups from `subscribed_at`, falling back to `created_at` where that is
+  null. `subscribed_at` is written when the form is submitted, so a week counts
+  sign-**ups**, not confirmed subscribers. Counting `confirmed_at` instead would
+  look stricter and be worse: it is null on every row that arrived by import or
+  predates the column, and those weeks would silently read nought.
+- Sign-offs from `unsubscribed_at`, which every route out writes — link,
+  preference centre, bounce handling.
+- **It is the list as the database stands today, not an immutable ledger.**
+  `unsubscribed_at` is cleared when the same address subscribes again, so
+  somebody who left in week two and came back in week five is gone from week two
+  and appears only with the new sign-up. The page carries that sentence under
+  the chart. Unsubscribe *events* are never rewritten, but they are worse for
+  this question: one is only recorded where the unsubscribe carried a message,
+  which would drop every sign-off made in the preference centre. Complete beats
+  immutable here.
+
+### One lookup for the whole page
+
+`CampaignStats::forCampaigns()` answers for any number of campaigns in **two**
+queries. The loop it replaces asked `forCampaign()` per row, about six queries
+each: thirty for the five-row table, and the twelve campaigns of the engagement
+chart would have added seventy-odd more to a single page. Both paths build their
+result through the same method, so "open rate" is defined once in the addon, and
+a test holds the two against each other. `DashboardQueryCountTest` measures that
+the count does not move between two campaigns and twelve — the page still asks
+once per mailing list, which is what that test is named for.
 
 ## Every mail on the contact
 
