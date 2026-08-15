@@ -1,5 +1,96 @@
 # Changelog
 
+## 2.10.0 — 2026-08-15
+
+### Added — drei Diagramme, jedes für eine Frage
+
+**Wann wird gelesen?** Der Kampagnen-Bericht bekommt auf der Übersicht eine
+Kurve der Öffnungen und Klicks über die Zeit seit dem Versand, stündlich
+gerastert und ab etwa drei Tagen Lesedauer täglich.
+
+**Wird es besser oder schlechter?** Das Marketing-Dashboard zeigt Öffnungs- und
+Klickrate der letzten zwölf versendeten Kampagnen in Versandreihenfolge. Die
+Raten kommen unverändert aus `CampaignStats` — dieselbe Zahl, die auch auf der
+Kampagnenseite steht.
+
+**Wächst die Liste?** Anmeldungen gegen Abmeldungen je Woche über zwölf Wochen.
+Eine stille Woche ist eine Null im Verlauf, keine fehlende Woche.
+
+Alles von Hand gezeichnet, keine neue Abhängigkeit; der CSP im Control Panel
+lässt ohnehin kein Skript von einem CDN zu. Jedes Diagramm trägt eine
+textliche Entsprechung für alle, die es nicht sehen können.
+
+### Added — das Dashboard fragt nicht mehr je Kampagne einzeln
+
+`CampaignStats::forCampaigns()` liefert die Zahlen für beliebig viele
+Kampagnen in **zwei** Abfragen. Vorher lief eine Schleife mit rund sechs
+Abfragen je Kampagne: für die fünf Zeilen der Übersicht bereits 55, für die
+zwölf des neuen Verlaufs wären es 132 gewesen. Gemessen und festgenagelt: die
+Dashboard-Seite bleibt bei derselben Abfragenzahl, ob sie zwei, zwölf oder
+fünfzig Kampagnen zeigt.
+
+Beide Wege bauen ihr Ergebnis über dieselbe Methode, damit „Öffnungsrate" im
+Addon genau einmal definiert ist. Ein Test hält beide gegeneinander.
+
+### Fixed — was die Kurve zuerst behauptet hat
+
+Alles aus der Kritiker-Runde, und alles derselbe Fehler in verschiedenen
+Kleidern: das Diagramm sagte etwas anderes, als es meinte.
+
+- **Der Vorlade-Block erschlug den Maßstab.** Apples Proxy holt das Zählpixel
+  für rund die Hälfte aller zugestellten Nachrichten in **einer** Stunde,
+  während sich das Lesen über zehn und mehr verteilt. Auf einer geteilten
+  Achse landete die höchste menschliche Stunde bei einem Zehntel, typische bei
+  zwei bis drei Prozent — drei bis fünf Pixel, und der Unterschied zwischen
+  Stunde 4 und Stunde 7 war einer. Die Achse misst jetzt am menschlichen
+  Maximum, der Vorlade-Balken schlägt an der Decke an, und **genau das ist die
+  Aussage**; sein wahrer Wert steht daneben. Ehrlich war die alte Darstellung
+  auch, nur unlesbar, und die Lesbarkeit war die Frage.
+- **Zwei Bedeutungen von „Öffnung" auf einer Tafel.** Die Kachel zählt
+  Nachrichten mit mindestens einer Öffnung, die Balken zählen die Vorgänge.
+  Wer eine Mail fünfmal öffnet, stand als 1 und als 5 da, hundert Pixel
+  auseinander, unkommentiert. Die Kacheln bleiben, wie sie sind; das Diagramm
+  sagt jetzt, was es zählt.
+- **Altkampagnen wurden als reine Menschen gezeichnet.** Die Spalte `machine`
+  hat Default `false`, also ist jede vor ihrer Einführung aufgezeichnete
+  Öffnung „ein Mensch" — die Zustellwand jeder archivierten Kampagne stand grün
+  im Diagramm, dessen ganzer Zweck die Trennung ist. Ein Satz sagt das jetzt,
+  aber nur, wenn für diese Kampagne tatsächlich nie eine Vorladung verzeichnet
+  wurde: eine kurz vor der Migration versendete Kampagne sammelt danach
+  weiter Öffnungen ein, und die tragen die Kennzeichnung. Eine Warnung über
+  einem orangen Balken wäre schlechter als keine.
+- **Ein einzelner Nachzügler kippte die Kurve dauerhaft aufs Tagesraster.** Die
+  Einheit kam aus dem letzten Ereignis überhaupt; ein Klick ein halbes Jahr
+  später machte aus drei Tagen Lesen drei von 90 Balken. Erneutes Öffnen nach
+  Wochen ist Alltag, `n = 1` nahm der Kurve also ihre Auflösung. Jetzt
+  entscheidet die Masse der Ereignisse, nicht der Ausreißer.
+- Ein Balken unter etwa 0,7 Prozent der Achse rendert subpixel und war damit
+  unsichtbar, während die Zusage lautete, ein nicht-leerer Zeitraum sei als
+  solcher erkennbar. Nicht-Null hat jetzt eine Mindesthöhe.
+- Der jüngste Balken des Engagement-Verlaufs ist systematisch zu niedrig, weil
+  eine gestern versendete Kampagne ihre Öffnungen noch nicht eingesammelt hat.
+  Ein Satz sagt das, wenn die jüngste keine 48 Stunden alt ist.
+- Beide Zähldiagramme nennen jetzt die Höhe ihrer Achse in Worten. Ohne das
+  macht ein einziger Import von fünfhundert Adressen ein Jahr organisches
+  Wachstum zu Härchen, ohne dass man es merkt.
+
+### Fixed — Wächter, die nicht bewachten
+
+- Der Übersetzungs-Wächter sah nur Schlüssel, bei denen direkt nach `__(` ein
+  Anführungszeichen steht. Vier Schlüssel kamen aus einem Ternär und wurden nie
+  geprüft — ausgerechnet die Achsenbeschriftungen. Er liest jetzt den ganzen
+  Aufruf.
+- Ein Test versprach „identische Arrays" und verglich mit `==`. Jetzt `toBe`.
+- Ein Test hieß „die ganze Seite in einem festen Budget", maß aber mit einer
+  einzigen Liste, während das Dashboard weiterhin je Liste fragt. Er heißt
+  jetzt, was er tut.
+
+### Docs — Sommerzeit ist hier kein Problem, und das steht jetzt fest
+
+Im Herbst fallen beide realen Zwei-Uhr-Stunden in denselben Balken und werden
+einmal ausgegeben; nichts geht verloren, nichts zählt doppelt. Ein Test auf
+`Europe/Berlin` hält das fest, damit es harmlos bleibt.
+
 ## 2.9.0 — 2026-08-15
 
 ### Added — der Kampagnen-Bericht

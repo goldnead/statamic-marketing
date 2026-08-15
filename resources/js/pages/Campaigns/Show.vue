@@ -5,6 +5,7 @@ import {
     Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Switch, Field, Text,
     Select, Tabs, TabList, TabTrigger, TabContent,
 } from '@statamic/cms/ui';
+import BarChart from '../../components/BarChart.vue';
 
 const props = defineProps([
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
@@ -15,6 +16,8 @@ const props = defineProps([
                      //   open_rate, clicked, click_rate, bounced, unsubscribed,
                      //   variants: { a: {...same, sample_size}, b: {...} } — empty unless A/B }
     'humanOpens',    // overview only: { human, machine_only, human_rate }
+    'activity',      // overview only: { unit, buckets: [{ at, human_opens, machine_opens, clicks }],
+                     //   totals, beyond }
     'timeline',      // overview only: [{ key, at }] — only the stations that happened
     'rows',          // person tabs: [{ email, name, contact_url, ...tab-specific }]
     'columns',       // Array<Column>
@@ -160,6 +163,159 @@ const openTiles = computed(() => {
     ];
 });
 
+// -- Activity curve ---------------------------------------------------------
+//
+// The machine share is a series of its own, never folded into the opens. Under
+// Apple's Mail Privacy Protection the pixel is fetched when the mail is
+// DELIVERED, so a curve drawn from raw opens is a wall in the first hour that
+// says everybody read it at once. Stacked, the reader can see how much of that
+// wall is a proxy — and the sentence beneath the tiles above, the same one the
+// contact timeline uses, says why.
+
+const activitySeries = computed(() => [
+    { key: 'human_opens', label: __('marketing::campaigns.report.activity_human'), class: 'bg-green-500' },
+    // The same orange the prefetched badge uses on the Opens tab. One colour
+    // for "a machine did this", wherever it appears.
+    { key: 'machine_opens', label: __('marketing::campaigns.report.activity_machine'), class: 'bg-orange-400 dark:bg-orange-500' },
+    { key: 'clicks', label: __('marketing::campaigns.report.activity_clicks'), class: 'bg-purple-500' },
+]);
+
+const activityGroups = computed(() => {
+    const buckets = props.activity?.buckets || [];
+
+    // At most eight ticks, whatever the grid. Seventy-two labelled hours is a
+    // grey smear; eight is a scale somebody can read.
+    const stride = Math.max(1, Math.ceil(buckets.length / 8));
+
+    return buckets.map((bucket, index) => ({
+        key: bucket.at,
+        xLabel: index % stride === 0 ? activityTick(bucket.at) : '',
+        ariaLabel: __('marketing::campaigns.report.activity_bucket', {
+            at: activityMoment(bucket.at),
+            human: bucket.human_opens,
+            machine: bucket.machine_opens,
+            clicks: bucket.clicks,
+        }),
+        // Two bars per bucket: the opens as a stack, the clicks beside them.
+        // Clicks are deliberately not a third layer of the same stack — a
+        // click and an open are different acts, and a stack would read as
+        // "this many people", which it is not.
+        stacks: [
+            [
+                { series: 'human_opens', value: bucket.human_opens },
+                { series: 'machine_opens', value: bucket.machine_opens },
+            ],
+            [{ series: 'clicks', value: bucket.clicks }],
+        ],
+    }));
+});
+
+const activityUnitLabel = computed(() => __(props.activity?.unit === 'day'
+    ? 'marketing::campaigns.report.activity_daily'
+    : 'marketing::campaigns.report.activity_hourly'));
+
+/**
+ * The top of the axis: the tallest bucket a person is responsible for.
+ *
+ * Not the tallest stack, and that is the whole point. Apple's proxy fetches
+ * the pixel for around half of every delivered campaign inside a single
+ * bucket, while reading spreads over ten hours and more — so on a shared axis
+ * the tallest human hour lands at a tenth of the track, a typical one at a
+ * fiftieth, and hour four and hour seven are one pixel apart. The question
+ * "when was it read" is then not answerable from the picture that was drawn to
+ * answer it.
+ *
+ * Human opens and clicks together, never the sum with the machine share: the
+ * two are the acts of a person and are worth comparing against each other. The
+ * machine bar then runs into the ceiling, which is the honest reading of it —
+ * it does not fit on this scale — and the number it really has is said in
+ * words, in the scale line below and in the label of its own column.
+ */
+const activityMax = computed(() => {
+    const buckets = props.activity?.buckets || [];
+
+    return Math.max(
+        1,
+        ...buckets.map((bucket) => Number(bucket.human_opens) || 0),
+        ...buckets.map((bucket) => Number(bucket.clicks) || 0),
+    );
+});
+
+/** The tallest preload bucket — the one the ceiling cuts off. */
+const activityMachineMax = computed(() => {
+    const buckets = props.activity?.buckets || [];
+
+    return Math.max(0, ...buckets.map((bucket) => Number(bucket.machine_opens) || 0));
+});
+
+/**
+ * What the top of the axis means, in words.
+ *
+ * This chart needs the sentence more than the others do, because its axis is
+ * deliberately too short for one of its three series. A bar that ends at the
+ * ceiling has a true value the picture cannot show, so the picture says it:
+ * where preloading goes over the top, the scale line names the figure it
+ * reached.
+ */
+const activityScale = computed(() => {
+    const line = __(props.activity?.unit === 'day'
+        ? 'marketing::campaigns.report.activity_scale_daily'
+        : 'marketing::campaigns.report.activity_scale_hourly', { max: activityMax.value });
+
+    if (activityMachineMax.value <= activityMax.value) return line;
+
+    return `${line} · ${__('marketing::campaigns.report.activity_scale_machine', { max: activityMachineMax.value })}`;
+});
+
+const activitySummary = computed(() => __('marketing::campaigns.report.activity_summary', {
+    human: props.activity?.totals?.human_opens ?? 0,
+    machine: props.activity?.totals?.machine_opens ?? 0,
+    clicks: props.activity?.totals?.clicks ?? 0,
+}));
+
+/**
+ * Was this campaign sent before preload detection existed?
+ *
+ * The server answers it against the date of the migration that added the
+ * column (CampaignReport::MACHINE_DETECTION_SINCE) — every open recorded
+ * before that day carries the column default, which is "a person". For the
+ * tiles that was the right call and stays it: no figure moves under anybody's
+ * feet on the day the update runs. For a chart whose entire subject is telling
+ * the two apart it is not, so the chart says so.
+ */
+const activityPredatesDetection = computed(() => Boolean(props.activity?.predates_detection));
+
+const activityDetectionSince = computed(() => {
+    const since = props.activity?.detection_since;
+
+    return since ? new Date(since).toLocaleDateString() : '';
+});
+
+/** One bucket as a moment somebody can say out loud. */
+function activityMoment(at) {
+    const moment = new Date(at);
+
+    return props.activity?.unit === 'day'
+        ? moment.toLocaleDateString()
+        : moment.toLocaleString();
+}
+
+/**
+ * The same bucket as an axis tick — short enough to sit under a bar.
+ *
+ * `hour12: false` against the locale's own preference, and deliberately: an
+ * axis tick is about four characters wide before it starts colliding with its
+ * neighbour, and "01:00 PM" is eight. It also removes the one ambiguity a
+ * twelve-hour axis has, which is that half its labels appear twice a day.
+ */
+function activityTick(at) {
+    const moment = new Date(at);
+
+    return props.activity?.unit === 'day'
+        ? moment.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })
+        : moment.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 // One row per A/B variant. Empty for every campaign that is not a split test,
 // so the whole block disappears rather than showing an empty table.
 const variantRows = computed(() => Object.entries(props.stats?.variants || {}).map(([variant, s]) => ({
@@ -285,7 +441,7 @@ const subline = computed(() => {
                              the dashboard has three. -->
                         <Card v-for="tile in statTiles" :key="tile.label" class="h-full">
                             <Subheading :text="tile.label" />
-                            <Heading size="lg" class="mt-2" :text="String(tile.value)" />
+                            <Heading size="lg" class="mt-2 tabular-nums" :text="String(tile.value)" />
                         </Card>
                     </div>
 
@@ -295,12 +451,68 @@ const subline = computed(() => {
                         <div class="grid gap-4 grid-cols-2 md:grid-cols-4">
                             <Card v-for="tile in openTiles" :key="tile.label" class="h-full">
                                 <Subheading :text="tile.label" />
-                                <Heading size="2xl" class="mt-2" :text="String(tile.value)" />
+                                <Heading size="2xl" class="mt-2 tabular-nums" :text="String(tile.value)" />
                             </Card>
                         </div>
                         <Text size="sm" variant="subtle" class="mt-2 block" data-marketing-prefetch-note>
                             {{ __('marketing::timeline.prefetched_note') }}
                         </Text>
+                    </div>
+
+                    <!-- When it was read. Directly under the sentence that
+                         explains a prefetched open, because the orange band in
+                         this chart is that sentence drawn: the reader meets
+                         the explanation and then the shape it accounts for. -->
+                    <div v-if="activity" class="mb-6" data-marketing-activity>
+                        <Subheading :text="__('marketing::campaigns.report.activity_heading')" class="mb-2" />
+                        <Card>
+                            <template v-if="activityGroups.length">
+                                <Text size="sm" variant="subtle" class="mb-3 block">{{ activityUnitLabel }} · {{ activityScale }}</Text>
+                                <BarChart
+                                    :label="activityUnitLabel"
+                                    :summary="activitySummary"
+                                    :series="activitySeries"
+                                    :groups="activityGroups"
+                                    :max="activityMax"
+                                />
+                                <!-- What this chart counts, next to a tile
+                                     above that counts something else under a
+                                     word that sounds the same. "Öffnungen
+                                     gesamt" is messages with at least one
+                                     open; these bars are the openings
+                                     themselves, so one reader who opened five
+                                     times is 1 up there and 5 down here. Two
+                                     honest figures a hundred pixels apart, and
+                                     the only thing missing was the sentence
+                                     that says they are different questions. -->
+                                <Text size="sm" variant="subtle" class="mt-3 block" data-marketing-activity-counts>
+                                    {{ __('marketing::campaigns.report.activity_counts_note') }}
+                                </Text>
+                                <!-- Sent before the detection existed: every
+                                     open on record is green because the column
+                                     defaults to "a person", not because a
+                                     person was there. -->
+                                <Text
+                                    v-if="activityPredatesDetection"
+                                    size="sm"
+                                    variant="subtle"
+                                    class="mt-2 block"
+                                    data-marketing-activity-predates
+                                >
+                                    {{ __('marketing::campaigns.report.activity_predates_detection', { date: activityDetectionSince }) }}
+                                </Text>
+                                <Text v-if="activity.beyond" size="sm" variant="subtle" class="mt-2 block">
+                                    {{ __('marketing::campaigns.report.activity_beyond', { count: activity.beyond }) }}
+                                </Text>
+                            </template>
+                            <!-- A campaign nobody has opened is an ordinary
+                                 state, not a failure, and it gets a sentence
+                                 rather than an empty axis — an axis with no
+                                 bars on it reads as a chart that broke. -->
+                            <p v-else class="py-6 text-center text-sm text-gray-500 dark:text-gray-400" data-marketing-activity-empty>
+                                {{ __('marketing::campaigns.report.activity_empty') }}
+                            </p>
+                        </Card>
                     </div>
 
                     <!-- The campaign as a sequence. Stations that did not

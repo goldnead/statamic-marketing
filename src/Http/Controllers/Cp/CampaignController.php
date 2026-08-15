@@ -229,6 +229,11 @@ class CampaignController extends Controller
             'stats' => $figures,
             'humanOpens' => $report->humanOpens($campaign->handle, $figures),
             'timeline' => $report->timeline($campaign),
+            // When it was read, rather than only how often — and with the
+            // machine share kept separate, because a curve drawn from raw
+            // opens says everybody read it in the first hour and that is
+            // Apple's proxy, not the readers.
+            'activity' => $report->activity($campaign),
             'rows' => [],
             'columns' => [],
             'pagination' => null,
@@ -260,6 +265,7 @@ class CampaignController extends Controller
             'stats' => null,
             'humanOpens' => null,
             'timeline' => null,
+            'activity' => null,
             'rows' => $report->rowsFor($tab, collect($page->items())),
             'columns' => collect($fields)
                 ->map(fn (string $label, string $key) => Column::make($key)->label($label)->toArray())

@@ -8,6 +8,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Support\ContactLinks;
+use Goldnead\Marketing\Support\TimeBucket;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Carbon;
@@ -58,6 +59,63 @@ class CampaignReport
 
     /** The rest of the addon paginates at 50. A report is not the place to differ. */
     public const PER_PAGE = 50;
+
+    /**
+     * Up to this much activity is drawn hour by hour; past it, day by day.
+     *
+     * Three days, and the number is a width as much as a duration: seventy-two
+     * bars across the ~1100px a Control Panel panel offers is about 15px each,
+     * which is still a bar. The next hour would make it a comb.
+     */
+    public const ACTIVITY_HOURLY_HOURS = 72;
+
+    /**
+     * The longest axis the activity curve will draw, in either unit.
+     *
+     * Ninety daily bars is a quarter of a year, which is longer than any
+     * campaign is genuinely still being read. It exists so that one late bounce
+     * notice cannot turn the chart into a thousand empty bars.
+     */
+    public const ACTIVITY_MAX_BUCKETS = 90;
+
+    /**
+     * Which point in the run of events decides hour-or-day.
+     *
+     * Not the last one. The last event is a single observation and it is the
+     * one most likely to be an outlier: somebody opens the mail again three
+     * weeks on (which re-fetches the pixel and is entirely ordinary), a bounce
+     * notice arrives late, a link is followed out of an archive. Read from the
+     * maximum, an n of one moves the whole chart onto a daily grid and the
+     * three days of actual reading become three bars out of ninety — the
+     * defect this constant exists to remove.
+     *
+     * So the unit comes from where the events actually are: the bucket the
+     * ninety-fifth percentile of them falls in, by nearest rank below. "Below"
+     * matters at the small end, where a percentile is otherwise meaningless:
+     * with two events the rank is the first of them, so one straggler cannot
+     * decide anything on its own — which is exactly the case complained of.
+     * Anything past that point still lands on the axis if it fits and is
+     * counted in `beyond` if it does not, so nothing is lost either way.
+     */
+    public const ACTIVITY_UNIT_PERCENTILE = 0.95;
+
+    /**
+     * The day this addon started telling a machine open from a human one.
+     *
+     * Read off the migration that added the column,
+     * `2026_08_15_000001_add_machine_to_marketing_message_events_table`. That
+     * migration gives existing rows `machine = false`, deliberately: it is what
+     * the reports said about them the day before, so no figure moves under
+     * anybody's feet on the day the update runs.
+     *
+     * For the tiles that is the right trade and stays it. For a chart whose
+     * whole subject is the difference between the two colours it is not — every
+     * campaign in the archive of an updated install draws its delivery wall in
+     * green, as people. The date is kept here so the screen can say so from the
+     * campaign's own send date, without a query and without guessing from the
+     * shape of the data.
+     */
+    public const MACHINE_DETECTION_SINCE = '2026-08-15';
 
     /** The message statuses the delivery tab can be narrowed to. */
     public const STATUSES = [
@@ -468,6 +526,286 @@ class CampaignReport
             ->map(fn (string $at, string $key) => ['key' => $key, 'at' => $at])
             ->values()
             ->all();
+    }
+
+    /**
+     * When this campaign was read: opens and clicks over the time since it went
+     * out, told apart by whether a person or a machine caused them.
+     *
+     * The machine share is the whole point of the shape. Apple's Mail Privacy
+     * Protection fetches the tracking pixel when it DELIVERS a message, not
+     * when anybody opens it, so a curve drawn from raw opens has a cliff in the
+     * first hour and then almost nothing — and it reads as "everybody read it
+     * immediately", which is the one conclusion the data does not support. The
+     * two are therefore kept apart all the way to the screen (`human_opens` /
+     * `machine_opens`) and never summed here. A caller that wants the total can
+     * add them; a caller that draws them stacked shows the reader which part of
+     * the bar is a machine.
+     *
+     * The grid adapts, because a campaign's life is not one length. Under three
+     * days of activity the interesting question is "which hour", and days would
+     * flatten it to two or three bars; past that the hours are noise and there
+     * would be hundreds of them. Three days is where the two meet: seventy-two
+     * hourly bars is about as many as the width of a CP panel can still draw as
+     * bars rather than as a hairline comb, and a campaign still moving after
+     * three days is being read over days, not over hours.
+     *
+     * Which of the two is decided from where the events are, not from the last
+     * of them — see ACTIVITY_UNIT_PERCENTILE. One click half a year later is an
+     * ordinary thing and must not take the hourly grid away from the three days
+     * that were actually read.
+     *
+     * The axis starts at the send, not at the first event — "an hour until the
+     * first open" is a fact about the campaign, and an axis that begins at the
+     * first open hides it. Empty buckets in between are zeroes, not gaps.
+     *
+     * One query, grouped in the database. A campaign with fifty thousand
+     * recipients has hundreds of thousands of events and none of them travels
+     * into PHP.
+     *
+     * @return array{unit:string, buckets:list<array{at:string, human_opens:int,
+     *               machine_opens:int, clicks:int}>,
+     *               totals:array{human_opens:int, machine_opens:int, clicks:int},
+     *               beyond:int, predates_detection:bool, detection_since:string}
+     */
+    public function activity(Campaign $campaign): array
+    {
+        $hour = TimeBucket::of('created_at', TimeBucket::HOUR);
+
+        $rows = MessageEvent::query()
+            ->whereIn('type', [MessageEvent::TYPE_OPEN, MessageEvent::TYPE_CLICK])
+            ->whereIn('message_id', Message::forCampaign($campaign->handle)->select('id'))
+            ->toBase()
+            ->selectRaw("{$hour} as bucket, type, machine, COUNT(*) as aggregate")
+            ->groupByRaw("{$hour}, type, machine")
+            ->get();
+
+        // Hourly first, always. Rolling hours up into days in PHP costs
+        // nothing and is bounded by the span of the campaign; asking the
+        // database twice — once for the span, once for the counts — costs a
+        // query and can still disagree with itself between the two.
+        $hourly = [];
+        $totals = ['human_opens' => 0, 'machine_opens' => 0, 'clicks' => 0];
+
+        foreach ($rows as $row) {
+            $series = $row->type === MessageEvent::TYPE_CLICK
+                ? 'clicks'
+                : ($row->machine ? 'machine_opens' : 'human_opens');
+
+            $bucket = (string) $row->bucket;
+            $count = (int) $row->aggregate;
+
+            $hourly[$bucket] ??= ['human_opens' => 0, 'machine_opens' => 0, 'clicks' => 0];
+            $hourly[$bucket][$series] += $count;
+            $totals[$series] += $count;
+        }
+
+        if ($hourly === []) {
+            // A campaign nobody has opened yet is not an error and must not
+            // render as one: no buckets at all, so the screen can say so in
+            // words instead of drawing an axis with nothing on it.
+            return [
+                'unit' => 'hour',
+                'buckets' => [],
+                'totals' => $totals,
+                'beyond' => 0,
+                ...$this->detectionNote($campaign, $totals['machine_opens']),
+            ];
+        }
+
+        ksort($hourly);
+
+        $keys = array_keys($hourly);
+        // `:00:00` because an hour bucket is `2026-08-14 10`, and that is not a
+        // time string any parser accepts — the minutes are exactly what the
+        // truncation took off.
+        $first = CarbonImmutable::parse($keys[0].':00:00');
+        $last = CarbonImmutable::parse($keys[count($keys) - 1].':00:00');
+        $start = $this->activityStart($campaign, $first);
+
+        // From where the events are, not from the last of them — see
+        // ACTIVITY_UNIT_PERCENTILE. The axis still ends at `$last`.
+        $typical = CarbonImmutable::parse($this->typicalBucket($hourly).':00:00');
+
+        $unit = $start->diffInHours($typical) < self::ACTIVITY_HOURLY_HOURS ? 'hour' : 'day';
+
+        if ($unit === 'day') {
+            $hourly = $this->rollUpToDays($hourly);
+            $start = $start->startOfDay();
+            $last = $last->startOfDay();
+        }
+
+        $axis = $this->fill($hourly, $start, $last, $unit);
+
+        return [
+            'unit' => $unit,
+            'buckets' => $axis['buckets'],
+            'totals' => $totals,
+            // Stragglers past the end of the axis — a bounce notice that
+            // arrives a year later, a link somebody found in an archive. They
+            // are in `totals`, so the figures still add up, and they are
+            // counted here so the screen can say they exist rather than let
+            // the axis imply nothing happened.
+            'beyond' => $axis['beyond'],
+            ...$this->detectionNote($campaign, $totals['machine_opens']),
+        ];
+    }
+
+    /**
+     * The bucket the ninety-fifth percentile of the events falls in.
+     *
+     * By nearest rank below, over the events themselves rather than over the
+     * buckets: a bucket holding four hundred proxy fetches and a bucket holding
+     * one late click are not two equal votes on how long this campaign was
+     * being read. See ACTIVITY_UNIT_PERCENTILE for why the last event is the
+     * wrong thing to ask.
+     *
+     * @param  array<string, array<string, int>>  $hourly  ascending by bucket
+     */
+    protected function typicalBucket(array $hourly): string
+    {
+        $total = 0;
+
+        foreach ($hourly as $counts) {
+            $total += array_sum($counts);
+        }
+
+        $rank = (int) floor(self::ACTIVITY_UNIT_PERCENTILE * max(0, $total - 1));
+
+        $seen = 0;
+        $bucket = (string) array_key_first($hourly);
+
+        foreach ($hourly as $key => $counts) {
+            $seen += array_sum($counts);
+            $bucket = (string) $key;
+
+            if ($seen > $rank) {
+                break;
+            }
+        }
+
+        return $bucket;
+    }
+
+    /**
+     * Whether this campaign went out before there was a machine open to see.
+     *
+     * From the campaign's own send date against
+     * {@see self::MACHINE_DETECTION_SINCE}. A campaign with no send date on
+     * record is not claimed either way: it is the ordinary state of a draft
+     * and of an import, and a warning there would be a guess.
+     *
+     * **And not claimed when the chart plainly shows otherwise.** A campaign
+     * sent shortly before the column arrived keeps collecting opens after it,
+     * and those carry the flag — so the split is drawn, in orange, right above
+     * the sentence saying it cannot be read. The date alone decides whether
+     * the warning is *possible*; whether a single preload was ever recorded
+     * decides whether it is *true*.
+     *
+     * @param  int  $machineOpens  preloads recorded for this campaign, all of them
+     * @return array{predates_detection:bool, detection_since:string}
+     */
+    protected function detectionNote(Campaign $campaign, int $machineOpens): array
+    {
+        $sent = $campaign->sentAt;
+
+        return [
+            'predates_detection' => $sent !== null
+                && $machineOpens === 0
+                && CarbonImmutable::parse($sent)->lessThan(CarbonImmutable::parse(self::MACHINE_DETECTION_SINCE)),
+            'detection_since' => self::MACHINE_DETECTION_SINCE,
+        ];
+    }
+
+    /**
+     * Where the axis begins: the send, unless something happened before it.
+     *
+     * The earlier of the two, never later than the first event — a campaign
+     * whose `sent_at` was written after its first open (a re-run, an import, a
+     * clock that moved) would otherwise start the axis past events it has to
+     * show.
+     */
+    protected function activityStart(Campaign $campaign, CarbonImmutable $firstEvent): CarbonImmutable
+    {
+        $sent = $campaign->sentAt;
+
+        if ($sent === null) {
+            return $firstEvent;
+        }
+
+        $sent = CarbonImmutable::parse($sent)
+            ->setTimezone(config('app.timezone') ?: date_default_timezone_get())
+            ->startOfHour();
+
+        return $sent->lessThan($firstEvent) ? $sent : $firstEvent;
+    }
+
+    /**
+     * @param  array<string, array<string, int>>  $hourly
+     * @return array<string, array<string, int>>
+     */
+    protected function rollUpToDays(array $hourly): array
+    {
+        $daily = [];
+
+        foreach ($hourly as $bucket => $counts) {
+            $day = substr($bucket, 0, 10);
+
+            foreach ($counts as $series => $count) {
+                $daily[$day][$series] = ($daily[$day][$series] ?? 0) + $count;
+            }
+        }
+
+        ksort($daily);
+
+        return $daily;
+    }
+
+    /**
+     * Every bucket from the send to the last sign of life, including the empty
+     * ones.
+     *
+     * A missing bucket is not the same as an empty one: dropped, the bars close
+     * ranks and a quiet Tuesday looks like a busy one. Zeroes keep the axis
+     * honest.
+     *
+     * Capped, because the end of the axis is data and data can be strange — one
+     * bounce notice a year after the send would otherwise draw three hundred
+     * and sixty-five bars of nothing. What falls off is counted, not hidden.
+     *
+     * @param  array<string, array<string, int>>  $counted
+     * @return array{buckets:list<array{at:string, human_opens:int, machine_opens:int, clicks:int}>, beyond:int}
+     */
+    protected function fill(array $counted, CarbonImmutable $start, CarbonImmutable $last, string $unit): array
+    {
+        $format = $unit === 'hour' ? 'Y-m-d H' : 'Y-m-d';
+        $step = fn (CarbonImmutable $at): CarbonImmutable => $unit === 'hour' ? $at->addHour() : $at->addDay();
+
+        $buckets = [];
+        $at = $unit === 'hour' ? $start->startOfHour() : $start->startOfDay();
+
+        while ($at->lessThanOrEqualTo($last) && count($buckets) < self::ACTIVITY_MAX_BUCKETS) {
+            $key = $at->format($format);
+            $counts = $counted[$key] ?? [];
+
+            $buckets[] = [
+                'at' => $at->toIso8601String(),
+                'human_opens' => (int) ($counts['human_opens'] ?? 0),
+                'machine_opens' => (int) ($counts['machine_opens'] ?? 0),
+                'clicks' => (int) ($counts['clicks'] ?? 0),
+            ];
+
+            unset($counted[$key]);
+            $at = $step($at);
+        }
+
+        $beyond = 0;
+
+        foreach ($counted as $counts) {
+            $beyond += array_sum($counts);
+        }
+
+        return ['buckets' => $buckets, 'beyond' => $beyond];
     }
 
     /**
