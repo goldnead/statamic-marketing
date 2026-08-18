@@ -117,9 +117,9 @@ Think Mailcoach, but native to Statamic and built on top of
 | | |
 | --- | --- |
 | ![Marketing dashboard](screenshots/dashboard.png) | ![Mailing lists](screenshots/lists.png) |
-| Audience and recent campaign performance at a glance | Lists with double-opt-in status and live subscriber counts |
+| Engagement across recent campaigns, list growth by week, and where the audience stands | Lists with double-opt-in status and live subscriber counts |
 | ![Campaign composer](screenshots/campaign-edit.png) | ![Campaign report](screenshots/campaign-report.png) |
-| Antlers content, sender, scheduling, test send | Delivery, open and click rates, per-recipient log |
+| Antlers content, sender, scheduling, test send | Five tabs with the people behind each figure, and when the mail was actually read |
 
 ## Requirements
 
