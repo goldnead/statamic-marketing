@@ -15,6 +15,7 @@ use Goldnead\Marketing\Sending\SingleSend;
 use Goldnead\Marketing\Sending\SingleSendResult;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Contracts\AutomationAction;
+use Goldnead\StatamicAutomations\Services\SequenceOptOut;
 use Goldnead\StatamicAutomations\Support\ActionResult;
 use Illuminate\Support\Facades\Log;
 
@@ -96,6 +97,7 @@ class SendMarketingEmailAction implements AutomationAction
         protected SingleSend $sender,
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
+        protected SequenceOptOut $optOuts,
     ) {}
 
     public static function handle(): string
@@ -282,6 +284,23 @@ class SendMarketingEmailAction implements AutomationAction
             return ActionResult::failed((string) $mode->error);
         }
 
+        /*
+         * Ausgestiegen? Dann endet der Lauf hier.
+         *
+         * Eine Serie wartet tagelang zwischen den Schritten. Wer an Tag 3
+         * aussteigt, darf Mail 4 nicht mehr bekommen — und zwischen den
+         * Wartezeiten laeuft nichts ausser diesem Knoten. Die Pruefung im
+         * EnrollmentGate greift nur fuer Laeufe, die noch gar nicht begonnen
+         * haben.
+         *
+         * `stopped` und nicht `skipped`: der Rest der Serie ist gegenstandslos,
+         * nicht nur dieser eine Schritt. Ein uebersprungener Schritt liesse den
+         * Lauf weiterwandern und die naechste Mail trotzdem rausgehen.
+         */
+        if (($blocked = $this->stopIfOptedOut($context, $config)) !== null) {
+            return $blocked;
+        }
+
         return $mode->isTemplate()
             ? $this->sendTemplate($context, $config, $mode)
             : $this->sendCampaign($context, $config, $mode);
@@ -329,7 +348,7 @@ class SendMarketingEmailAction implements AutomationAction
         }
 
         return $this->interpret(
-            $this->sender->send($campaign, $list, $subscription),
+            $this->sender->send($campaign, $list, $subscription, sequenceUuid: $this->sequenceUuid($context)),
             $context,
             $email,
             $list,
@@ -377,7 +396,14 @@ class SendMarketingEmailAction implements AutomationAction
         }
 
         return $this->interpret(
-            $this->sender->sendTemplate($mode->template, $mode->subject, $list, $subscription, $mode->mailClass),
+            $this->sender->sendTemplate(
+                $mode->template,
+                $mode->subject,
+                $list,
+                $subscription,
+                $mode->mailClass,
+                sequenceUuid: $this->sequenceUuid($context),
+            ),
             $context,
             $email,
             $list,
@@ -531,6 +557,46 @@ class SendMarketingEmailAction implements AutomationAction
     /**
      * @param  array<string, mixed>  $config
      */
+    /**
+     * Die Serie, aus der diese Mail kommt — fuer den Ausstiegs-Link im Fuss.
+     *
+     * Leer ausserhalb eines Laufs. Dann ist es keine Serie, sondern ein
+     * direkter Aufruf, und ein Link mit dem Versprechen "diese Serie
+     * abbestellen" haette nichts, was er abbestellen koennte.
+     */
+    protected function sequenceUuid(AutomationContext $context): ?string
+    {
+        $uuid = (string) ($context->get('_automation')['uuid'] ?? '');
+
+        return $uuid === '' ? null : $uuid;
+    }
+
+    /**
+     * Der Serien-Ausstieg, gefragt kurz vor dem Senden.
+     *
+     * Fehlt die Automations-UUID im Kontext, wird nicht geprueft und nicht
+     * blockiert: das ist ein Aufruf ausserhalb eines Laufs (Test, direkter
+     * Aufruf), und dort gibt es keine Serie, aus der man aussteigen koennte.
+     * Im Zweifel senden ist hier richtig — die Einwilligungs-, Sperrlisten-
+     * und Opt-out-Pruefungen dahinter bleiben ja bestehen.
+     */
+    protected function stopIfOptedOut(AutomationContext $context, array $config): ?ActionResult
+    {
+        $automationUuid = (string) ($context->get('_automation')['uuid'] ?? '');
+
+        if ($automationUuid === '') {
+            return null;
+        }
+
+        $email = $this->recipient($context, $config);
+
+        if ($email === '' || ! $this->optOuts->has($automationUuid, $email)) {
+            return null;
+        }
+
+        return ActionResult::stopped('sequence_opt_out');
+    }
+
     protected function recipient(AutomationContext $context, array $config): string
     {
         $configured = trim((string) ($config['to'] ?? ''));

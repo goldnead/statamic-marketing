@@ -31,13 +31,21 @@ class CampaignRenderer
      * @param  Subscription|null  $subscription  null renders a preview with sample data.
      * @param  Message|null  $message  when given (a real send), tracking is applied.
      */
+    /**
+     * @param  string|null  $sequenceUuid  Die Automation, aus der diese Mail
+     *                                     kommt. Nur gesetzt, wenn ein
+     *                                     Automations-Knoten sendet — nur dann
+     *                                     gibt es eine Serie, aus der man
+     *                                     aussteigen koennte.
+     */
     public function render(
         Campaign $campaign,
         MailingList $list,
         ?Subscription $subscription = null,
         ?Message $message = null,
+        ?string $sequenceUuid = null,
     ): RenderedMail {
-        return $this->build($campaign, $list, $subscription, $message, archive: false);
+        return $this->build($campaign, $list, $subscription, $message, archive: false, sequenceUuid: $sequenceUuid);
     }
 
     /**
@@ -71,6 +79,7 @@ class CampaignRenderer
         ?Subscription $subscription,
         ?Message $message,
         bool $archive,
+        ?string $sequenceUuid = null,
     ): RenderedMail {
         // Resolved before anything is parsed, because the subject is also a
         // template variable — a body that prints `{{ subject }}` must show the
@@ -79,13 +88,15 @@ class CampaignRenderer
 
         $variables = $archive
             ? $this->archiveVariables($campaign, $list, $subjectTemplate)
-            : $this->variables($campaign, $list, $subscription, $subjectTemplate);
+            : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
 
         $content = $this->parse($campaign->content, $variables);
 
         $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 
         $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
+
+        $html = $this->ensureSelfServiceFooter($html, $variables, $subscription);
 
         if ($message) {
             if (config('marketing.tracking.clicks', true)) {
@@ -195,6 +206,7 @@ class CampaignRenderer
         MailingList $list,
         ?Subscription $subscription,
         ?string $subjectTemplate = null,
+        ?string $sequenceUuid = null,
     ): array {
         // Two links, one resolver. `unsubscribe_url` is what a person clicks,
         // so it goes wherever the preference page currently lives — the
@@ -215,6 +227,17 @@ class CampaignRenderer
             'name' => trim(($firstName ?? '').' '.($lastName ?? '')) ?: ($subscription?->email ?? ''),
             'unsubscribe_url' => $unsubscribeUrl,
             'one_click_unsubscribe_url' => $oneClickUrl,
+
+            /*
+             * Der Ausstieg aus DIESER Serie, ohne alles abzubestellen.
+             *
+             * Leer, wenn die Mail nicht aus einer Automation kommt — eine
+             * Kampagne ist keine Serie, und ein Link, der "diese Serie
+             * abbestellen" verspricht und den Newsletter beendet, waere eine
+             * Falle. Den Weg kennt das Automations-Addon, nicht dieses hier;
+             * fehlt es, bleibt der Wert leer.
+             */
+            'sequence_unsubscribe_url' => $this->sequenceUnsubscribeUrl($sequenceUuid, $subscription),
             'subject' => $subjectTemplate ?? $campaign->subject,
             'preheader' => $campaign->preheader ?? '',
             'campaign' => [
@@ -385,6 +408,124 @@ class CampaignRenderer
         }
 
         return array_keys($prefixes);
+    }
+
+    /**
+     * Den Serien-Ausstiegs-Link beim Automations-Addon erfragen.
+     *
+     * Ueber den Container und mit class_exists davor, weil dieses Addon nicht
+     * von den Automationen abhaengt — genauso wie AutomationsBridge es
+     * andersherum haelt. Ohne das Paket gibt es keine Serien, also auch keinen
+     * Link, und eine leere Zeichenkette ist die ehrliche Antwort darauf.
+     */
+    protected function sequenceUnsubscribeUrl(?string $sequenceUuid, ?Subscription $subscription): string
+    {
+        $token = $subscription?->token;
+
+        if ($sequenceUuid === null || $sequenceUuid === '' || ! is_string($token) || $token === '') {
+            return '';
+        }
+
+        $class = 'Goldnead\\StatamicAutomations\\Support\\SequenceOptOutLink';
+
+        if (! class_exists($class)) {
+            return '';
+        }
+
+        return (string) (app($class)->url($sequenceUuid, $token) ?? '');
+    }
+
+    /**
+     * Das Netz unter der Vorlage: keine Werbemail ohne Ausweg.
+     *
+     * `{{ unsubscribe_url }}` steht jeder Vorlage zur Verfuegung, aber eine
+     * Vorlage kann es vergessen — und genau das ist passiert: die fuenf
+     * Willkommens-Mails von adriangoldner.com gingen monatelang ohne
+     * sichtbaren Abmelde-Link raus. Der `List-Unsubscribe`-Kopfeintrag war da,
+     * aber den zeigt nicht jedes Mailprogramm, und wer ihn nicht sieht, hat
+     * keinen Weg hinaus.
+     *
+     * Deshalb liegt die Zusicherung hier statt in den Vorlagen: eine Vorlage,
+     * die den Link selbst setzt, bleibt unangetastet — erkannt daran, dass die
+     * gerenderte Mail bereits auf einen der Selbstbedienungs-Wege zeigt. Nur
+     * wenn keiner darin vorkommt, haengt der Renderer einen schlichten Fuss an.
+     *
+     * Ohne Subscription (Vorschau, Archiv) passiert nichts: dort gibt es keinen
+     * Token, und ein Abmelde-Link ohne Token waere eine Attrappe.
+     */
+    protected function ensureSelfServiceFooter(string $html, array $variables, ?Subscription $subscription): string
+    {
+        if (! $subscription) {
+            return $html;
+        }
+
+        foreach ($this->selfServiceUrls($subscription) as $prefix) {
+            if (str_contains($html, $prefix)) {
+                return $html;
+            }
+        }
+
+        $unsubscribe = (string) ($variables['unsubscribe_url'] ?? '');
+
+        if ($unsubscribe === '' || $unsubscribe === '#') {
+            return $html;
+        }
+
+        $footer = $this->selfServiceFooterHtml(
+            $unsubscribe,
+            (string) ($variables['sequence_unsubscribe_url'] ?? ''),
+        );
+
+        // Vor </body>, damit der Fuss innerhalb des Rahmens landet. Eine
+        // Vorlage ohne </body> ist ein Fragment — dann ans Ende.
+        $pos = strripos($html, '</body>');
+
+        return $pos === false
+            ? $html.$footer
+            : substr($html, 0, $pos).$footer.substr($html, $pos);
+    }
+
+    /**
+     * Der angehaengte Fuss. Bewusst mit Inline-Stilen und ohne Klassen:
+     * er muss auch dann lesbar sein, wenn die Vorlage gar kein CSS mitbringt.
+     */
+    protected function selfServiceFooterHtml(string $unsubscribeUrl, string $sequenceUrl = ''): string
+    {
+        $stil = 'color:#78716C;text-decoration:underline;';
+
+        $links = [];
+
+        /*
+         * Der Serien-Ausstieg zuerst.
+         *
+         * Er ist der kleinere Schritt und fuer die meisten der gemeinte: wer
+         * eine Willkommensstrecke nicht zu Ende lesen will, will selten den
+         * Newsletter los. Stuende die vollstaendige Abmeldung vorn, klickt sie
+         * jemand, weil sie die erste ist — und ist dann ganz weg.
+         */
+        if ($sequenceUrl !== '') {
+            $links[] = sprintf(
+                '<a href="%s" style="%s">%s</a>',
+                e($sequenceUrl),
+                $stil,
+                e(__('statamic-automations::sequence.mail_link')),
+            );
+        }
+
+        $links[] = sprintf(
+            '<a href="%s" style="%s">%s</a>',
+            e($unsubscribeUrl),
+            $stil,
+            e(__('marketing::mail.footer_unsubscribe')),
+        );
+
+        $zeile = implode(' &nbsp;·&nbsp; ', $links);
+
+        return <<<HTML
+        <div style="margin:0;padding:24px 32px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.55;color:#78716C;text-align:center;">
+            {$zeile}
+        </div>
+        HTML;
     }
 
     /**

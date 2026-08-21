@@ -93,6 +93,7 @@ class SingleSend
         Subscription $subscription,
         ?MailClass $class = null,
         ?string $reference = null,
+        ?string $sequenceUuid = null,
     ): SingleSendResult {
         return $this->deliver(
             $campaign,
@@ -102,6 +103,7 @@ class SingleSend
             $reference ?? $campaign->handle,
             campaignHandle: $campaign->handle,
             templateHandle: null,
+            sequenceUuid: $sequenceUuid,
         );
     }
 
@@ -135,6 +137,7 @@ class SingleSend
         Subscription $subscription,
         ?MailClass $class = null,
         ?string $reference = null,
+        ?string $sequenceUuid = null,
     ): SingleSendResult {
         // Before the gates, because it is not about the recipient. A template
         // that answers to nothing is a broken node, and the answer to a broken
@@ -153,6 +156,7 @@ class SingleSend
             $reference ?? $template,
             campaignHandle: null,
             templateHandle: $template,
+            sequenceUuid: $sequenceUuid,
         );
     }
 
@@ -177,6 +181,7 @@ class SingleSend
         string $reference,
         ?string $campaignHandle,
         ?string $templateHandle,
+        ?string $sequenceUuid = null,
     ): SingleSendResult {
         $email = (string) $subscription->email;
 
@@ -220,7 +225,7 @@ class SingleSend
         ]);
 
         try {
-            $rendered = $this->renderer->render($campaign, $list, $subscription, $message);
+            $rendered = $this->renderer->render($campaign, $list, $subscription, $message, $sequenceUuid);
 
             // Same brand the message row was stamped with, same identity the
             // list path uses. A sequence mail is a mail.
