@@ -1,5 +1,43 @@
 # Changelog
 
+## 2.11.0 — 2026-08-22
+
+### Fixed — keine Werbemail mehr ohne sichtbaren Ausweg
+
+`{{ unsubscribe_url }}` steht jeder Vorlage zur Verfügung, aber eine Vorlage
+kann es vergessen. Genau das ist passiert: die fünfteilige Willkommensstrecke
+von adriangoldner.com ging monatelang ohne sichtbaren Abmelde-Link raus. Der
+`List-Unsubscribe`-Kopfeintrag war da, doch den zeigt nicht jedes
+Mailprogramm — und wer ihn nicht sieht, hat keinen Weg hinaus.
+
+Der Renderer hängt jetzt einen Fuß an, wenn die fertig gerenderte Mail auf
+keinen Selbstbedienungs-Weg zeigt. Eine Vorlage, die den Link selbst setzt,
+bleibt unangetastet.
+
+**Warum das so lange niemandem auffiel:** die mitgelieferte Ersatzvorlage trägt
+selbst einen Abmelde-Link. Die Lücke entstand nur dort, wo ein Host seinen
+eigenen Rahmen mitbringt — und dort schaut niemand mehr in die
+Addon-Vorlage. Deshalb liegt die Zusicherung jetzt im Renderer statt in einer
+Vorlage: sie gilt für jeden eigenen Rahmen, auch für künftige.
+
+### Added — Ausstieg aus einer einzelnen Serie
+
+`sequence_unsubscribe_url` steht bereit, wenn die Mail aus einer Automation
+kommt. Den Weg dorthin kennt `goldnead/statamic-automations`, nicht dieses
+Addon; fehlt das Paket, bleibt der Wert leer und der Fuß trägt nur die
+vollständige Abmeldung.
+
+**Im Fuß steht der Serien-Ausstieg vor der vollständigen Abmeldung.** Das ist
+keine Kosmetik: wer eine Willkommensstrecke loswerden will, will selten den
+Newsletter los. Stünde die vollständige Abmeldung vorn, klickt sie jemand, weil
+sie die erste ist — und ist dann ganz weg.
+
+### Changed
+
+`SingleSend::send()` und `sendTemplate()` nehmen ein optionales
+`$sequenceUuid`. Es steht am Ende der Signatur, damit bestehende Aufrufe
+unverändert bleiben.
+
 ## 2.10.0 — 2026-08-15
 
 ### Added — drei Diagramme, jedes für eine Frage
