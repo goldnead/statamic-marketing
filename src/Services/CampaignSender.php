@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Services;
 
 use Carbon\CarbonImmutable;
+use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -12,6 +13,7 @@ use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class CampaignSender
@@ -21,6 +23,7 @@ class CampaignSender
         protected MailingListRepository $lists,
         protected CampaignRenderer $renderer,
         protected BrandMailer $mailer,
+        protected ContactRepository $contacts,
     ) {}
 
     /** Queue a campaign for immediate delivery. */
@@ -73,12 +76,30 @@ class CampaignSender
     /**
      * Send a rendered test to one address without touching messages/stats.
      *
-     * Gated like the real thing, but it says so out loud instead of skipping
-     * quietly. A campaign send drops a blocked recipient silently because there
-     * are thousands of them and the editor is not watching; a test send has an
-     * audience of one, standing at the screen, waiting for a mail that will
-     * never arrive. Failing silently there teaches the editor that the test
-     * button is broken.
+     * **Not gated like the real thing, and it should not be.** The docblock
+     * here used to claim it was, which is the more dangerous half of the
+     * problem: whoever reads that sentence stops checking.
+     *
+     * What runs, and why:
+     *
+     * - **Suppression list** — yes. A bounce or a complaint means never again,
+     *   whoever is asking and for whatever reason.
+     * - **`do_not_contact` on the contact** — yes, since 2026-08-24. It is what
+     *   an unsubscribe sets, and what an editor sets by hand in the CRM. Both
+     *   mean "never", not "not subscribed". Sending a test "just to have a
+     *   quick look" to a customer who unsubscribed is the case this exists to
+     *   prevent, and it is the naming-obvious one.
+     * - **Subscription status and consent** — no. A test send goes to an
+     *   address the editor types in, usually their own, which is by definition
+     *   not on the list. Requiring a subscription would break the button for
+     *   its ordinary use.
+     * - **Frequency cap** — no. A test is not a campaign and must not eat into
+     *   a recipient's budget, nor be refused because a campaign already did.
+     *
+     * Blocks throw rather than return false: a campaign send drops a blocked
+     * recipient silently because there are thousands and nobody is watching; a
+     * test send has an audience of one, standing at the screen. Failing
+     * silently there teaches the editor that the button is broken.
      */
     public function sendTest(Campaign $campaign, string $email): void
     {
@@ -100,6 +121,18 @@ class CampaignSender
                 'The suppression list could not be checked, so no test was sent. '.$e->getMessage(),
                 0,
                 $e
+            );
+        }
+
+        // The second "never" flag. The suppression table holds what a provider
+        // reported; this holds what a person decided — an unsubscribe with
+        // global opt-out on, or an editor setting it in the CRM. Neither
+        // implies the other, so both are asked.
+        if ($this->contactSaysNever($email)) {
+            throw new InvalidArgumentException(
+                "[{$email}] is marked do-not-contact in the CRM and cannot be mailed, not even as a ".
+                'test. Someone unsubscribed this address or set the flag by hand; clear it there if '.
+                'that was a mistake.'
             );
         }
 
@@ -142,5 +175,19 @@ class CampaignSender
         if (! $campaign->listHandle || ! $this->lists->find($campaign->listHandle)) {
             throw new InvalidArgumentException("Campaign [{$campaign->handle}] has no valid mailing list.");
         }
+    }
+
+    /**
+     * Has anyone said "never contact this address"?
+     *
+     * Read by normalised address rather than by subscription, because a test
+     * send has no subscription — the whole point is that it goes to an address
+     * that need not be on any list.
+     */
+    protected function contactSaysNever(string $email): bool
+    {
+        $contact = $this->contacts->findByEmailNormalized(Str::lower(trim($email)));
+
+        return (bool) $contact?->do_not_contact;
     }
 }

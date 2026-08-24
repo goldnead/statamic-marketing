@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.14.0 — 2026-08-24
+
+### Fixed — der Testversand behauptete vier Tore und hatte eines
+
+`CampaignSender::sendTest()` prüfte die Sperrliste und sonst nichts, während
+sein Docblock „gated like the real thing" sagte. Das ist die gefährlichere
+Hälfte: wer den Satz liest, hört auf zu prüfen.
+
+Neu geprüft wird **`do_not_contact` am Kontakt** — die zweite „nie"-Fahne. Die
+Sperrliste hält, was ein Anbieter gemeldet hat; diese Fahne hält, was ein
+Mensch entschieden hat (Abmeldung mit globalem Opt-out, oder eine Hand im CRM).
+Keins folgt aus dem anderen. Der Fall, der bisher durchging, ist der
+naheliegende: „nur mal kurz zum Ansehen" an eine Kundin, die sich abgemeldet
+hat.
+
+**Bewusst nicht geprüft:** Abo-Status, Einwilligung und Frequenz-Deckel. Ein
+Testversand geht an eine Adresse, die der Absender eintippt — meist die eigene,
+die per Definition nicht auf der Liste steht. Ein Abo zu verlangen würde den
+Knopf für genau das kaputt machen, wofür er da ist. Der Docblock sagt das jetzt
+im Wortlaut, statt das Gegenteil zu behaupten.
+
+
 ## 2.13.0 — 2026-08-24
 
 ### Changed — die Anbieterkennzeichnung wird aufgeloest, nicht gelesen

@@ -1,5 +1,6 @@
 <?php
 
+use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -242,6 +243,42 @@ it('refuses a test send to a suppressed address, out loud', function (): void {
 
 it('still sends a test to an address nobody blocked', function (): void {
     app(CampaignSender::class)->sendTest($this->campaign, 'fine@example.test');
+
+    Mail::assertSent(CampaignMail::class);
+});
+
+/**
+ * Die zweite „nie"-Fahne.
+ *
+ * Die Sperrliste haelt, was ein Anbieter gemeldet hat; `do_not_contact` haelt,
+ * was ein Mensch entschieden hat — eine Abmeldung mit globalem Opt-out, oder
+ * eine Hand im CRM. Keins folgt aus dem anderen, deshalb werden beide gefragt.
+ *
+ * Bis 24.08.2026 prüfte der Testversand nur die Sperrliste, waehrend sein
+ * Docblock „gated like the real thing" behauptete. Der Fall, der dadurch
+ * durchging, ist der naheliegende: „nur mal kurz zum Ansehen" an eine Kundin,
+ * die sich abgemeldet hat.
+ */
+it('refuses a test send to a do-not-contact address, out loud', function (): void {
+    // Direkt statt ueber die Factory: LeadHubs `database/factories` liegt in
+    // dessen autoload-dev und ist in dieser Suite nicht geladen.
+    $contact = Contact::create([
+        'email' => 'weg@example.test',
+        'do_not_contact' => true,
+    ]);
+
+    expect(fn () => app(CampaignSender::class)->sendTest($this->campaign, 'weg@example.test'))
+        ->toThrow(InvalidArgumentException::class, 'do-not-contact');
+
+    Mail::assertNothingSent();
+    expect($contact->fresh()->do_not_contact)->toBeTrue();
+});
+
+it('sends a test to an address that is simply not subscribed', function (): void {
+    // Der gewoehnliche Fall: der Absender tippt seine eigene Adresse ein. Ein
+    // Abo zu verlangen wuerde den Knopf fuer genau das kaputt machen, wofuer er
+    // da ist.
+    app(CampaignSender::class)->sendTest($this->campaign, 'niemand-kennt-mich@example.test');
 
     Mail::assertSent(CampaignMail::class);
 });
