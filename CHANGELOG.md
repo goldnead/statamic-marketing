@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.13.0 — 2026-08-24
+
+### Changed — die Anbieterkennzeichnung wird aufgeloest, nicht gelesen
+
+2.12.0 las `marketing.footer.postal_line` direkt. Das ist fuer eine Marke
+richtig und fuer sechs in einem Prozess falsch: alle sechs bekaemen dieselbe
+Anschrift — genau die Fehlerklasse, die die Absenderidentitaet schon hatte.
+
+Neu: `Contracts\PostalLineResolver`. Die mitgelieferte Fassung
+(`Support\ConfiguredPostalLine`) liest weiterhin die Config, ein
+Mehrmarken-Host bindet seine eigene und liefert die Zeile der aktuellen Marke.
+**Fuer Ein-Marken-Installationen aendert sich nichts.**
+
 ## 2.12.0 — 2026-08-24
 
 ### Fixed — Werbepost konnte still ohne Anbieterkennzeichnung rausgehen

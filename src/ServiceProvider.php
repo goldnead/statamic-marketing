@@ -7,6 +7,7 @@ use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
 use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
+use Goldnead\Marketing\Contracts\PostalLineResolver;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -24,6 +25,7 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
 use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
+use Goldnead\Marketing\Support\ConfiguredPostalLine;
 use Illuminate\Console\Scheduling\Schedule;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -112,6 +114,12 @@ class ServiceProvider extends AddonServiceProvider
         // described. A host that keeps sender identities somewhere other than
         // `brands.settings.mail` rebinds this contract in its own provider.
         $this->app->bind(SenderIdentityResolver::class, BrandSenderIdentity::class);
+
+        // Die Anbieterkennzeichnung wird aufgeloest, nicht gelesen: ein fester
+        // Config-Wert waere fuer eine Marke richtig und fuer sechs in einem
+        // Prozess falsch. Die mitgelieferte Fassung liest die Config, ein
+        // Mehrmarken-Host bindet seine eigene.
+        $this->app->bind(PostalLineResolver::class, ConfiguredPostalLine::class);
 
         // Singletons so the bridges' boot guards hold across resolutions.
         $this->app->singleton(WebhookManagerBridge::class);

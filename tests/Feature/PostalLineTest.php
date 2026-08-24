@@ -1,5 +1,6 @@
 <?php
 
+use Goldnead\Marketing\Contracts\PostalLineResolver;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -101,4 +102,21 @@ it('escapes the configured line', function (): void {
 
     expect($html)->not->toContain('<script>alert(1)</script>');
     expect($html)->toContain('Muster &amp; Co');
+});
+
+it('lets a host resolve the line per brand', function (): void {
+    // Der Fall, fuer den der Vertrag da ist: sechs Marken in einem Prozess.
+    // Ein fester Config-Wert waere fuer eine richtig und fuer fuenf falsch.
+    app()->bind(PostalLineResolver::class, fn () => new class implements PostalLineResolver
+    {
+        public function line(): string
+        {
+            return 'FamilyStack · Anderer Weg 2 · 60311 Frankfurt';
+        }
+    });
+
+    $html = renderMitAnschrift();
+
+    expect($html)->toContain('Anderer Weg 2');
+    expect($html)->not->toContain('Musterweg 1');
 });

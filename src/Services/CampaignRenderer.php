@@ -170,10 +170,14 @@ class CampaignRenderer
      * Ist keine Zeile konfiguriert, passiert nichts — ein Addon kann die
      * Anschrift seines Betreibers nicht erfinden, und eine erfundene waere
      * schlimmer als keine.
+     *
+     * Aufgeloest statt gelesen: ein fester Config-Wert waere fuer eine Marke
+     * richtig und fuer sechs in einem Prozess falsch — dieselbe Fehlerklasse,
+     * die die Absenderidentitaet schon hatte. Siehe {@see PostalLineResolver}.
      */
     protected function ensurePostalLine(string $html): string
     {
-        $zeile = trim((string) config('marketing.footer.postal_line', ''));
+        $zeile = app(\Goldnead\Marketing\Contracts\PostalLineResolver::class)->line();
 
         if ($zeile === '') {
             return $html;
