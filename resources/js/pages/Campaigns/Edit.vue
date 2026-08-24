@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
     Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea,
@@ -17,7 +17,8 @@ const props = defineProps([
     'scheduleUrl',     // POST endpoint (edit only)
     'unscheduleUrl',   // POST endpoint (edit only)
     'testUrl',         // POST endpoint (edit only)
-    'previewUrl',      // GET, rendered HTML (edit only)
+    'previewUrl',      // GET, rendered HTML of the SAVED campaign (edit only)
+    'livePreviewUrl',  // POST, renders what is being typed
     'showUrl',         // report page (edit only)
     'lists',           // [{ value, label }]
     'segments',        // [{ value, label, members_count }] — empty if LeadHub lacks segments
@@ -278,6 +279,84 @@ function destroy() {
         onError: (errors) => { formErrors.value = errors || {}; },
     });
 }
+
+// ---------- Live preview ----------
+//
+// Bis hierher zeigte die Vorschau die gespeicherte Fassung, und die Oberflaeche
+// sagte es auch dazu. Damit war sie drei Schritte vom Bearbeiteten entfernt:
+// schreiben, speichern, ansehen. Die Vorlagen-Seite dieses Addons kann es
+// laengst besser; das hier ist dasselbe Muster.
+//
+// Gerendert wird serverseitig durch denselben CampaignRenderer, den der echte
+// Versand nimmt. Ein zweiter Renderer auf dieser Seite waere ein zweites Ding,
+// das man in Gleichschritt halten muss, und die erste Abweichung faende jemand
+// in seinem Posteingang.
+
+const previewHtml = ref('');
+const previewError = ref(null);
+const previewStale = ref(false);
+
+let previewTimer = null;
+let previewRequest = 0;
+
+async function refreshPreview() {
+    if (! props.livePreviewUrl || ! showPreview.value) return;
+
+    // Jede Antwort traegt die Nummer der Anfrage, die sie erbeten hat. Tippen
+    // schickt mehrere gleichzeitig los, und ohne das kann die langsame Antwort
+    // auf einen aelteren Tastendruck zuletzt ankommen und eine Vorschau malen,
+    // die so nicht mehr auf dem Schirm steht.
+    const mine = ++previewRequest;
+
+    try {
+        const response = await fetch(props.livePreviewUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': window.Statamic?.$config?.get('csrfToken') ?? '',
+            },
+            body: JSON.stringify({
+                handle: handle.value,
+                name: name.value,
+                subject: subject.value,
+                preheader: preheader.value,
+                content: contentValues.value.content ?? null,
+                list_handle: list.value,
+                template_handle: template.value,
+            }),
+        });
+
+        if (! response.ok) throw new Error(String(response.status));
+
+        const { data } = await response.json();
+
+        if (mine !== previewRequest) return;
+
+        previewError.value = data.error;
+        previewStale.value = false;
+
+        // Ein Parse-Fehler laesst das letzte Bild stehen, statt zu leeren:
+        // halb getippte Antlers ist der Normalzustand einer Kampagne, an der
+        // jemand schreibt.
+        if (! data.error) previewHtml.value = data.html;
+    } catch (e) {
+        if (mine !== previewRequest) return;
+        previewStale.value = true;
+    }
+}
+
+function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(refreshPreview, 500);
+}
+
+watch([contentValues, subject, preheader, template], schedulePreview, { deep: true });
+watch(showPreview, (open) => { if (open) refreshPreview(); });
+onBeforeUnmount(() => clearTimeout(previewTimer));
+
 </script>
 
 <template>
@@ -422,8 +501,14 @@ function destroy() {
                                     {{ __('Open in new tab') }} ↗
                                 </a>
                             </div>
-                            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                {{ __('The preview reflects the last saved version. Save your changes first.') }}
+                            <p v-if="previewError" class="mt-2 text-xs text-red-600 dark:text-red-400">
+                                {{ previewError }}
+                            </p>
+                            <p v-else-if="previewStale" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {{ __('The preview could not be refreshed. What you see is the last render.') }}
+                            </p>
+                            <p v-else class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {{ __('The preview updates as you type.') }}
                             </p>
                             <!--
                                 The frame shows HTML a Control Panel user wrote,
@@ -436,9 +521,17 @@ function destroy() {
                                 the matching Content-Security-Policy. Held by
                                 tests/js/preview-sandbox.test.js.
                             -->
+                            <!--
+                                `srcdoc` statt `src`, weil die Vorschau jetzt
+                                aus einer POST-Antwort kommt. Am `sandbox=""`
+                                aendert das nichts: ein srcdoc-Rahmen ohne
+                                Tokens ist derselbe undurchsichtige Ursprung
+                                ohne Skripte. Gehalten von
+                                tests/js/preview-sandbox.test.js.
+                            -->
                             <iframe
                                 v-if="showPreview"
-                                :src="previewUrl"
+                                :srcdoc="previewHtml"
                                 :title="__('Email preview')"
                                 sandbox=""
                                 class="mt-3 w-full h-[600px] rounded border border-content-border bg-content-bg"

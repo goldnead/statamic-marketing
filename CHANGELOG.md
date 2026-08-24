@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.15.0 — 2026-08-24
+
+### Added — die Kampagnen-Vorschau ändert sich beim Tippen
+
+Bisher zeigte sie die **gespeicherte** Fassung, und die Oberfläche sagte es auch
+dazu: „Save your changes first." Damit war sie drei Schritte vom Bearbeiteten
+entfernt — schreiben, speichern, ansehen.
+
+Jetzt dasselbe Muster wie bei den Vorlagen: ein POST auf
+`marketing.campaigns.live-preview` rendert, was gerade im Formular steht.
+Gerendert wird durch **denselben `CampaignRenderer`**, den der echte Versand
+nimmt; ein zweiter Renderer wäre ein zweites Ding, das man in Gleichschritt
+halten muss, und die erste Abweichung fände jemand in seinem Posteingang.
+
+**Nichts wird dabei gespeichert.** Die Kampagne wird aus den geschickten Werten
+gebaut und nach dem Rendern weggeworfen — ein Test hält das fest.
+
+Der Rahmen behält `sandbox=""` und wechselt nur von `src` auf `srcdoc`: ein
+srcdoc-Rahmen ohne Tokens ist derselbe undurchsichtige Ursprung ohne Skripte.
+Der Link „Open in new tab" zeigt weiterhin auf die gespeicherte Fassung.
+
+
 ## 2.14.0 — 2026-08-24
 
 ### Fixed — der Testversand behauptete vier Tore und hatte eines

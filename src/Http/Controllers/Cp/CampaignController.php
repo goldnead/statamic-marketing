@@ -494,6 +494,7 @@ class CampaignController extends Controller
             'unscheduleUrl' => cp_route('marketing.campaigns.unschedule', $handle),
             'testUrl' => cp_route('marketing.campaigns.test', $handle),
             'previewUrl' => cp_route('marketing.campaigns.preview', $handle),
+            'livePreviewUrl' => cp_route('marketing.campaigns.live-preview'),
             'showUrl' => cp_route('marketing.campaigns.show', $handle),
             'lists' => $this->listOptions(),
             'segments' => $this->segmentOptions(),
@@ -649,6 +650,70 @@ class CampaignController extends Controller
      * Guarded by `tests/Feature/CampaignPreviewIsolationTest.php` and
      * `tests/js/preview-sandbox.test.js`.
      */
+    /**
+     * Die Vorschau dessen, was gerade getippt wird — nicht des zuletzt
+     * Gespeicherten.
+     *
+     * Bis hierher zeigte die Kampagnen-Vorschau die gespeicherte Fassung, und
+     * die Oberflaeche sagte es auch dazu („Save your changes first"). Damit war
+     * sie drei Schritte vom Bearbeiteten entfernt: schreiben, speichern,
+     * ansehen. Die Vorlagen-Seite dieses Addons kann es laengst besser; das hier
+     * ist dasselbe Muster fuer Kampagnen.
+     *
+     * Gerendert wird durch **denselben** `CampaignRenderer`, den der echte
+     * Versand nimmt. Ein zweiter Renderer waere ein zweites Ding, das man in
+     * Gleichschritt halten muss, und die erste Abweichung faende jemand in
+     * seinem Posteingang.
+     *
+     * Nichts wird gespeichert. Die Kampagne wird aus den geschickten Werten
+     * gebaut und nach dem Rendern weggeworfen.
+     */
+    public function livePreview(Request $request, CampaignRenderer $renderer)
+    {
+        $this->authorizeOrFail($request, 'view marketing');
+
+        $listHandle = (string) $request->input('list_handle', '');
+        $list = $listHandle !== '' ? $this->lists->find($listHandle) : null;
+
+        if (! $list) {
+            return response()->json(['data' => [
+                'html' => '',
+                'error' => __('marketing::campaigns.errors.no_list'),
+            ]]);
+        }
+
+        $campaign = new Campaign(
+            handle: (string) $request->input('handle', 'vorschau'),
+            name: (string) $request->input('name', ''),
+            subject: (string) $request->input('subject', ''),
+            // Durch dieselbe Umwandlung wie beim Speichern. Das Feld schickt
+            // Bard-Werte, keinen HTML-String; ein `(string)` darauf ist eine
+            // „Array to string conversion" und eine leere Vorschau.
+            content: app(CampaignContentField::class)->fromForm($request->input('content')),
+            listHandle: $list->handle,
+            templateHandle: $request->input('template_handle') ?: null,
+            preheader: $request->input('preheader') ?: null,
+        );
+
+        try {
+            $rendered = $renderer->render($campaign, $list);
+        } catch (\Throwable $e) {
+            // Halb getippte Antlers ist der Normalzustand einer Kampagne, an
+            // der jemand schreibt. Die Meldung geht zurueck, die Seite behaelt
+            // ihr letztes Bild — eine Vorschau, die bei jeder offenen Klammer
+            // weiss wird, ist schlimmer als keine.
+            return response()->json(['data' => [
+                'html' => '',
+                'error' => $e->getMessage(),
+            ]]);
+        }
+
+        return response()->json(['data' => [
+            'html' => $rendered->html,
+            'error' => null,
+        ]]);
+    }
+
     public function preview(Request $request, string $handle, CampaignRenderer $renderer)
     {
         $this->authorizeOrFail($request, 'view marketing');

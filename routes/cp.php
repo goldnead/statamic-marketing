@@ -28,6 +28,13 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
     Route::prefix('campaigns')->name('campaigns.')->group(function () {
         Route::get('/', [CampaignController::class, 'index'])->name('index');
         Route::get('/create', [CampaignController::class, 'create'])->name('create');
+
+        /*
+         * Vor `/{handle}` in jedem Sinn, der zaehlt: die Live-Vorschau ist ein
+         * POST auf einen festen Pfad und darf nicht als Handle „preview"
+         * gelesen werden. Dasselbe Muster wie bei den Vorlagen weiter unten.
+         */
+        Route::post('/preview', [CampaignController::class, 'livePreview'])->name('live-preview');
         Route::post('/', [CampaignController::class, 'store'])->name('store');
         Route::get('/{handle}', [CampaignController::class, 'show'])->name('show');
         // The rows of one report tab as a CSV. Its own route rather than a
