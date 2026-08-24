@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.12.0 — 2026-08-24
+
+### Fixed — Werbepost konnte still ohne Anbieterkennzeichnung rausgehen
+
+`ensureSelfServiceFooter()` haengt seinen Fuss nur an, wenn die Vorlage **gar
+keinen** Selbstbedienungs-Weg enthaelt. Das mitgelieferte Ersatzlayout hat
+einen Abmeldelink — und **keine Anschrift**. Genau diese Kombination rutschte
+durch: Ausweg ja, Pflichtangabe nein.
+
+Es braucht dafuer nicht einmal eine Loeschung. Ein `et_templates`-Eintrag mit
+demselben Slug gewinnt gegen die Marketing-Vorlage und tauscht das Layout
+lautlos aus.
+
+Zwei Aenderungen:
+
+1. **Ein zweites Netz.** Ist `marketing.footer.postal_line` gesetzt und die
+   gerenderte Mail enthaelt sie nicht, haengt der Renderer sie an. Getrennt von
+   der Abmelde-Pruefung, weil eine Vorlage den Link haben kann und die
+   Anschrift nicht.
+2. **Der Rueckfall sagt es.** Loest ein Vorlagen-Handle nicht auf, steht das
+   jetzt im Log. Vorher war „umbenannt" von „geloescht" nicht zu unterscheiden
+   — und beides von „alles in Ordnung" auch nicht.
+
+**Leer ausgeliefert.** Ein Addon kann die Anschrift seines Betreibers nicht
+erfinden, und eine erfundene waere schlimmer als keine. Auf einem Host mit
+mehreren Marken gehoert der Wert je Marke gesetzt.
+
+Die `text/plain`-Fassung war nie betroffen — dort kommt die Zeile aus der
+Mailable. Betroffen war die Darstellung, die fast jeder sieht.
+
+
 ## 2.11.0 — 2026-08-22
 
 ### Fixed — keine Werbemail mehr ohne sichtbaren Ausweg

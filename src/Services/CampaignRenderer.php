@@ -12,6 +12,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\PreferenceLink;
 use Goldnead\Marketing\Support\RenderedMail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Statamic\Facades\Antlers;
 
@@ -97,6 +98,7 @@ class CampaignRenderer
         $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
 
         $html = $this->ensureSelfServiceFooter($html, $variables, $subscription);
+        $html = $this->ensurePostalLine($html);
 
         if ($message) {
             if (config('marketing.tracking.clicks', true)) {
@@ -133,7 +135,66 @@ class CampaignRenderer
     {
         $html = ($handle !== null && $handle !== '') ? $this->findTemplateHtml($handle) : null;
 
+        if ($html === null && $handle !== null && $handle !== '') {
+            /*
+             * Der Rueckfall ist richtig — aber lautlos war er falsch.
+             *
+             * Ein Vorlagen-Handle loest aus zwei Gruenden nicht auf: er wurde
+             * umbenannt, oder die Zeile ist weg (CP-Loeschung, Sicherung von
+             * vor dem Anlegen). Beides sieht am Ergebnis gleich aus, und beides
+             * tauscht das Layout einer laufenden Strecke aus, ohne dass jemand
+             * es merkt. Die Zeile hier ist der Unterschied zwischen "faellt
+             * beim naechsten Blick ins Log auf" und "faellt gar nicht auf".
+             */
+            Log::warning('[marketing] Campaign template ['.$handle.'] does not resolve; the built-in fallback layout was used. Check that the template still exists.');
+        }
+
         return $html ?? EmailTemplate::fallback()->html;
+    }
+
+    /**
+     * Das zweite Netz: keine Werbemail ohne Anbieterkennzeichnung.
+     *
+     * {@see ensureSelfServiceFooter()} haengt nur an, wenn die Vorlage gar
+     * keinen Selbstbedienungs-Weg enthaelt. Das mitgelieferte Ersatzlayout hat
+     * einen Abmeldelink — und **keine Anschrift**. Damit rutschte genau die
+     * Kombination durch, die im deutschen Recht nicht durchrutschen darf:
+     * Werbepost mit Ausweg, aber ohne Pflichtangabe.
+     *
+     * Die beiden Pruefungen sind deshalb getrennt. Eine Vorlage kann den Link
+     * haben und die Anschrift nicht.
+     *
+     * Die `text/plain`-Fassung war nie betroffen: dort kommt die Zeile aus der
+     * Mailable. Betroffen war die Darstellung, die fast jeder sieht.
+     *
+     * Ist keine Zeile konfiguriert, passiert nichts — ein Addon kann die
+     * Anschrift seines Betreibers nicht erfinden, und eine erfundene waere
+     * schlimmer als keine.
+     */
+    protected function ensurePostalLine(string $html): string
+    {
+        $zeile = trim((string) config('marketing.footer.postal_line', ''));
+
+        if ($zeile === '') {
+            return $html;
+        }
+
+        // Schon da? Dann hat die Vorlage ihre Pflicht getan.
+        if (str_contains(strip_tags($html), $zeile)) {
+            return $html;
+        }
+
+        $block = sprintf(
+            '<div style="margin:0;padding:0 32px 24px;font-family:Arial,Helvetica,sans-serif;'
+            .'font-size:12px;line-height:1.55;color:#78716C;text-align:center;">%s</div>',
+            nl2br(e($zeile)),
+        );
+
+        $pos = strripos($html, '</body>');
+
+        return $pos === false
+            ? $html.$block
+            : substr($html, 0, $pos).$block.substr($html, $pos);
     }
 
     /**

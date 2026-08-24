@@ -159,6 +159,29 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fuss
+    |--------------------------------------------------------------------------
+    |
+    | Die Anbieterkennzeichnung, die unter jeder Werbemail stehen muss (§ 5 DDG,
+    | frueher § 5 TMG). Leer ausgeliefert: ein Addon kann die Anschrift seines
+    | Betreibers nicht erfinden, und eine erfundene waere schlimmer als keine.
+    |
+    | Ist sie gesetzt und die gerenderte Mail enthaelt sie nicht, haengt der
+    | Renderer sie an. Das ist ein Netz, kein Ersatz fuer eine Vorlage, die es
+    | richtig macht — aber es faengt den Fall, der sonst lautlos durchrutscht:
+    | eine Vorlage mit Abmeldelink und ohne Anschrift, etwa das mitgelieferte
+    | Ersatzlayout.
+    |
+    | Auf einem Host mit mehreren Marken gehoert der Wert je Marke gesetzt.
+    |
+    */
+
+    'footer' => [
+        'postal_line' => env('MARKETING_POSTAL_LINE'),
+    ],
+
     'tracking' => [
         'opens' => true,
         'clicks' => true,

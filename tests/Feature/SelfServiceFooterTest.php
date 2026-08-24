@@ -126,4 +126,3 @@ it('setzt den Serien-Ausstieg vor die vollstaendige Abmeldung', function (): voi
 
     expect(strpos($html, '/serie/'))->toBeLessThan(strpos($html, '/abmelden'));
 });
-
