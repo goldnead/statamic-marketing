@@ -136,8 +136,16 @@ class CampaignSender
             );
         }
 
-        // An unsaved subscription gives the renderer realistic variables and
-        // a syntactically valid (but inert) unsubscribe URL.
+        /*
+         * An unsaved subscription gives the renderer realistic variables and a
+         * syntactically valid unsubscribe URL that leads nowhere (404).
+         *
+         * Inert on purpose, and it stays that way. The link proves the layout
+         * puts it where it belongs, which is what a test is for. A *working*
+         * one would be the more dangerous thing: the person clicking around in
+         * their own test mail would unsubscribe a real address, and the address
+         * in a test send is often a colleague's.
+         */
         $subscription = new Subscription([
             'list_handle' => $list->handle,
             'email' => $email,
