@@ -33,13 +33,21 @@ class EmailTemplate
         ];
     }
 
-    /** A minimal fallback layout used when a campaign has no template. */
+    /**
+     * A minimal fallback layout used when a campaign has no template.
+     *
+     * The one word in here that a reader sees was hard-coded English, so every
+     * campaign without its own template said "Unsubscribe" on a German site —
+     * and in this addon every campaign without a template lands here.
+     */
     public static function fallback(): self
     {
+        $abmelden = __('marketing::mail.footer_unsubscribe');
+
         return new self(
             handle: 'default',
             name: 'Default',
-            html: <<<'HTML'
+            html: <<<HTML
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
@@ -47,7 +55,7 @@ class EmailTemplate
     <div style="max-width:600px;margin:0 auto;padding:32px 24px;background:#ffffff;">
         {{ content }}
         <p style="margin-top:40px;font-size:12px;color:#71717a;">
-            <a href="{{ unsubscribe_url }}" style="color:#71717a;">Unsubscribe</a>
+            <a href="{{ unsubscribe_url }}" style="color:#71717a;">{$abmelden}</a>
         </p>
     </div>
 </body>

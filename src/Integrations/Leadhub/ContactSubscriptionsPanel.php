@@ -6,6 +6,7 @@ use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 
 /**
  * "Which mailing lists is this person on?", answered on LeadHub's contact page.
@@ -118,9 +119,22 @@ class ContactSubscriptionsPanel
         return null;
     }
 
+    /**
+     * A status this addon does not know still has to read as something.
+     *
+     * `__()` hands back the key it could not find, so a row imported from an
+     * older schema or another system printed the literal string
+     * "marketing::leadhub.status_confirmed" into the Control Panel. Falling
+     * back to the raw value is not pretty, but it is a word rather than a bug
+     * report addressed to the reader.
+     */
     protected function statusLabel(string $status): string
     {
-        return (string) __('marketing::leadhub.status_'.$status);
+        $schluessel = 'marketing::leadhub.status_'.$status;
+
+        return ($label = (string) __($schluessel)) === $schluessel
+            ? Str::headline($status)
+            : $label;
     }
 
     /**

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.16.0 — 2026-08-25
+
+### Fixed
+
+- **The Control Panel printed a translation key at a reader.** `ContactSubscriptionsPanel` built its
+  status label as `__('marketing::leadhub.status_'.$status)`, and `__()` hands back the key it cannot
+  find. A subscription row carrying a status this addon does not know — from an older schema, an
+  import, another system — showed the literal string `marketing::leadhub.status_confirmed` in the
+  panel. It now falls back to the raw value as a headline: not pretty, but a word rather than a bug
+  report addressed to the user.
+
+- **The fallback layout said "Unsubscribe" in English on every site.** The word was hard-coded in
+  `EmailTemplate::fallback()`, and in this addon every campaign without its own template renders
+  through exactly that layout — so on a German installation it was every campaign. It uses
+  `marketing::mail.footer_unsubscribe` now, which was already translated.
+
 ## 2.15.0 — 2026-08-24
 
 ### Added — die Kampagnen-Vorschau ändert sich beim Tippen
