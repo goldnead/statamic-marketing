@@ -68,6 +68,19 @@ class Message extends Model
 
     public const STATUS_PENDING = 'pending';
 
+    /**
+     * Claimed by a worker, not yet resolved.
+     *
+     * The state exists so that "may I send this" can be asked as a write
+     * instead of a read. Exactly one worker moves a row out of `pending`, and
+     * only that worker sends. Everything that used to end a message —
+     * `sent`, `failed`, `skipped`, `capped` — still ends it from here.
+     *
+     * A row sitting in this state longer than the lease is not finished, it is
+     * abandoned: see `marketing:release-stale-sends`.
+     */
+    public const STATUS_SENDING = 'sending';
+
     public const STATUS_SENT = 'sent';
 
     public const STATUS_FAILED = 'failed';
@@ -95,6 +108,7 @@ class Message extends Model
         'first_clicked_at' => 'datetime',
         'last_clicked_at' => 'datetime',
         'cap_deferred_until' => 'datetime',
+        'claimed_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -147,8 +161,42 @@ class Message extends Model
         return $query->where('variant', $variant);
     }
 
+    /**
+     * Not finished yet — waiting or in flight.
+     *
+     * `sending` belongs in here, and leaving it out would be the expensive
+     * mistake: `maybeFinalize()` marks a campaign sent once nothing is pending,
+     * so a claimed message would let the campaign report itself complete while
+     * that message was still being delivered.
+     */
     public function scopePending($query)
     {
-        return $query->where('status', self::STATUS_PENDING);
+        return $query->whereIn('status', [self::STATUS_PENDING, self::STATUS_SENDING]);
+    }
+
+    /**
+     * Move this message from `pending` to `sending`, exactly once.
+     *
+     * The whole point is that this is one statement: a read followed by a write
+     * is what let two workers both believe they were the only one. `=== 1` is
+     * the answer to "did I win", and only the winner sends.
+     */
+    public static function claim(int $id): bool
+    {
+        return static::query()
+            ->whereKey($id)
+            ->where('status', self::STATUS_PENDING)
+            ->update([
+                'status' => self::STATUS_SENDING,
+                'claimed_at' => now(),
+            ]) === 1;
+    }
+
+    /** Hand an unfinished message back to the queue. */
+    public static function release(int $id): void
+    {
+        static::query()
+            ->whereKey($id)
+            ->update(['status' => self::STATUS_PENDING, 'claimed_at' => null]);
     }
 }

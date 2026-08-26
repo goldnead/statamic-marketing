@@ -28,6 +28,26 @@ class SendMessageJob implements ShouldQueue
 
     public function __construct(public int $messageId) {}
 
+    /**
+     * Hand the claim back when this job gives up for good.
+     *
+     * Found by review: between the claim and the first status write sit four
+     * lookups that can throw outside any try — the campaign, the list, the
+     * suppression gate, the frequency cap. An exception there used to leave the
+     * row in `sending` with nobody able to take it: the retry cannot re-claim
+     * it, a fresh campaign run skips it, and the only way back was the sweeper
+     * fifteen minutes later.
+     *
+     * Before the claim existed the row simply stayed `pending` and the retry
+     * picked it up. This restores that, which matters more than it looks:
+     * losing a mail is the worse half of this bug, and a claim without a way
+     * back is how you lose one.
+     */
+    public function failed(Throwable $e): void
+    {
+        Message::release($this->messageId);
+    }
+
     public function handle(
         CampaignRepository $campaigns,
         MailingListRepository $lists,
@@ -35,12 +55,48 @@ class SendMessageJob implements ShouldQueue
         SuppressionGate $gate,
         FrequencyCap $cap,
     ): void {
-        $message = Message::query()->with('subscription')->find($this->messageId);
-
-        if (! $message || $message->status !== Message::STATUS_PENDING) {
+        // Claimed, not asked. The old form read the status, then sent, then
+        // wrote it — and two workers reading before either wrote both sent the
+        // same mail to the same address. Reproduced, not suspected: one row,
+        // two mails, and the row afterwards says `sent` once, so the data does
+        // not record that it happened.
+        //
+        // It needs no second worker either. A worker killed between the send
+        // and the write leaves the row `pending`, and the retry sends again.
+        //
+        // Everything below assumes it is the only one here, which is now true.
+        if (! Message::claim($this->messageId)) {
             return;
         }
 
+        $message = Message::query()->with('subscription')->find($this->messageId);
+
+        if (! $message) {
+            return;
+        }
+
+        // Everything from here to the first status write runs inside a guard.
+        // The lookups below can throw — a repository that cannot reach its
+        // store, a suppression backend that is down — and a throw between the
+        // claim and any write would strand the row. Releasing before rethrowing
+        // means the retry finds it exactly as it was.
+        try {
+            $this->deliver($message, $campaigns, $lists, $renderer, $gate, $cap);
+        } catch (Throwable $e) {
+            Message::release($this->messageId);
+
+            throw $e;
+        }
+    }
+
+    protected function deliver(
+        Message $message,
+        CampaignRepository $campaigns,
+        MailingListRepository $lists,
+        CampaignRenderer $renderer,
+        SuppressionGate $gate,
+        FrequencyCap $cap,
+    ): void {
         $campaign = $campaigns->find($message->campaign_handle);
         $subscription = $message->subscription;
         $list = $campaign?->listHandle ? $lists->find($campaign->listHandle) : null;
@@ -120,6 +176,12 @@ class SendMessageJob implements ShouldQueue
             // Resolved from the container here rather than injected into
             // `handle()`, so the signature every host and test already calls
             // stays as it is.
+            // Stamped BEFORE the handover, not after. If the worker is killed
+            // inside the transport call, this is the only trace that the mail
+            // may already be on its way — and the sweeper reads it instead of
+            // sending a second copy. See ReleaseStaleSendsCommand.
+            $message->update(['sent_at' => now()]);
+
             $sent = app(BrandMailer::class)->send(
                 $message->brand_id === null ? null : (int) $message->brand_id,
                 (string) $subscription->email,
@@ -141,6 +203,7 @@ class SendMessageJob implements ShouldQueue
             if (! $sent) {
                 $message->update([
                     'status' => Message::STATUS_FAILED,
+                    'sent_at' => null,
                     'error' => 'No sender identity for this brand — see the log for the reason.',
                 ]);
 
@@ -162,7 +225,9 @@ class SendMessageJob implements ShouldQueue
 
             event(new MessageSent($message->fresh()));
         } catch (Throwable $e) {
-            $message->update(['status' => Message::STATUS_FAILED, 'error' => $e->getMessage()]);
+            // sent_at back to null: the stamp is a claim that the transport
+            // took it, and a throw says it did not.
+            $message->update(['status' => Message::STATUS_FAILED, 'sent_at' => null, 'error' => $e->getMessage()]);
 
             report($e);
         }
@@ -234,7 +299,13 @@ class SendMessageJob implements ShouldQueue
             return;
         }
 
+        // Back to `pending`, and the claim let go with it. The docblock above
+        // says the pending status is load-bearing for finalisation; it is just
+        // as load-bearing that the redelivery in a day's time can claim the row
+        // again, which a row still marked `sending` could not.
         $message->update([
+            'status' => Message::STATUS_PENDING,
+            'claimed_at' => null,
             'cap_deferrals' => (int) $message->cap_deferrals + 1,
             'cap_deferred_until' => now()->addMinutes($retryMinutes),
         ]);

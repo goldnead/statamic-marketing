@@ -120,6 +120,7 @@ class CampaignReport
     /** The message statuses the delivery tab can be narrowed to. */
     public const STATUSES = [
         Message::STATUS_PENDING,
+        Message::STATUS_SENDING,
         Message::STATUS_SENT,
         Message::STATUS_FAILED,
         Message::STATUS_SKIPPED,

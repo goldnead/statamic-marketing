@@ -58,6 +58,16 @@ return [
         'queue' => env('MARKETING_QUEUE', 'default'),
         'chunk' => 200,
         'messages_per_minute' => (int) env('MARKETING_PER_MINUTE', 0),
+
+        /*
+         * How long a worker may hold a message before it is assumed dead.
+         *
+         * The claim on a message is what stops one mail going out twice; this
+         * is what stops the claim turning a duplicate into a disappearance.
+         * Deliberately generous: releasing early re-creates the very bug the
+         * claim exists for, because the first worker may still be sending.
+         */
+        'claim_lease_minutes' => (int) env('MARKETING_CLAIM_LEASE_MINUTES', 15),
     ],
 
     /*

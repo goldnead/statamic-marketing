@@ -1,5 +1,55 @@
 # Changelog
 
+## 2.17.0 — 2026-08-26
+
+### Fixed
+
+- **One recipient could receive the same campaign mail twice.** `SendMessageJob` opened with
+  `if ($message->status !== 'pending') return;` — a read, then a send, then a write. Two workers
+  read before either wrote, both passed, both sent. Reproduced before it was fixed: one message
+  row, two mails at the same address, and the row afterwards reads `sent` exactly once, so nothing
+  in the data says it happened.
+
+  Two ordinary situations produced it. `marketing:send-scheduled` runs every minute and had no
+  overlap protection, so a run lasting longer than a minute stood beside its successor; and any
+  worker killed between the send and the status write left the row `pending` for the retry to send
+  again. The second needs no concurrency at all — one worker and bad timing.
+
+  The guard is now a claim: `pending → sending` as a single conditional update, and only the winner
+  sends.
+
+### Added
+
+- **`sending`**, the state a claimed message holds until it is resolved. It counts as outstanding
+  in `scopePending()`, which is load-bearing rather than cosmetic: `maybeFinalize()` marks a
+  campaign sent once nothing is pending, and a message in flight that stopped counting would let a
+  campaign report itself complete while somebody was still waiting for it. It also has its own
+  figure in the report, its own filter and its own label — a state the interface cannot show is a
+  state nobody can find.
+
+- **`marketing:release-stale-sends`**, scheduled every five minutes. A claim that cannot be given
+  back trades a duplicate mail for a missing one, which is the worse half of the bug: a duplicate
+  gets complained about, a missing newsletter does not. Anything held past
+  `marketing.sending.claim_lease_minutes` (15) comes back.
+
+  It distinguishes two ways a worker dies, because they need opposite answers. `sent_at` is stamped
+  immediately *before* the handover to the transport. A stuck row without it never reached the mail
+  server and is delivered again; a stuck row with it did, and is closed without a second copy —
+  loudly, because whether it arrived cannot be known from here. A second copy is certain harm, a
+  missed mail is possible harm and can be looked into.
+
+- `SendMessageJob::failed()` hands the claim back. Between the claim and the first status write sit
+  four lookups that can throw outside any try; a throw there used to strand the row where neither
+  the retry nor a fresh campaign run could reach it.
+
+### Changed
+
+- `withoutOverlapping(5)` on the minute schedule and `withoutOverlapping(10)` on the sweeper, with
+  the expiry spelled out. Laravel's default is a full day and the lock is released on SIGTERM and
+  SIGINT but not on SIGKILL, an OOM kill or a hard reboot — a `schedule:run` killed that way would
+  otherwise silence both commands for twenty-four hours without printing a line, the sweeper
+  included.
+
 ## 2.16.0 — 2026-08-25
 
 ### Fixed

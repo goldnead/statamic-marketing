@@ -5,6 +5,7 @@ namespace Goldnead\Marketing;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
+use Goldnead\Marketing\Console\ReleaseStaleSendsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
 use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
 use Goldnead\Marketing\Contracts\PostalLineResolver;
@@ -64,6 +65,7 @@ class ServiceProvider extends AddonServiceProvider
      */
 
     protected $commands = [
+        ReleaseStaleSendsCommand::class,
         SendScheduledCampaignsCommand::class,
         MigrateFlatBrandsCommand::class,
         ConsentIntegrityCommand::class,
@@ -259,10 +261,34 @@ class ServiceProvider extends AddonServiceProvider
     protected function registerSchedule(): self
     {
         $this->callAfterResolving(Schedule::class, function ($schedule) {
+            // withoutOverlapping, and not only onOneServer: the latter stops a
+            // second SERVER from starting the run, not a second run on the same
+            // one. A minute is short, and a run that takes longer than a minute
+            // used to have its successor start beside it — both would find the
+            // same due campaign and queue it twice.
+            // withoutOverlapping(5), with the expiry spelled out. Laravel's
+            // default is 1440 — a full day — and the lock is only released on
+            // SIGTERM/SIGINT, not on SIGKILL, an OOM kill or a hard reboot. A
+            // `schedule:run` killed that way would silence this command for
+            // twenty-four hours without printing a line. Five minutes is longer
+            // than any run and short enough that a lost lock heals itself.
             $schedule->command('marketing:send-scheduled')
                 ->everyMinute()
+                ->withoutOverlapping(5)
                 ->onOneServer()
                 ->name('marketing-send-scheduled');
+
+            // Rare by design: it only finds something when a worker died mid
+            // send. Every five minutes is often enough that a stalled campaign
+            // moves again quickly, and rare enough that it is not in the way.
+            // Same reasoning, and it matters more here: this command IS the
+            // net under a dead worker. A stuck lock on the net is the failure
+            // nobody would look for.
+            $schedule->command('marketing:release-stale-sends')
+                ->everyFiveMinutes()
+                ->withoutOverlapping(10)
+                ->onOneServer()
+                ->name('marketing-release-stale-sends');
         });
 
         return $this;

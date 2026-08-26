@@ -42,6 +42,7 @@ return [
     ],
     'message_statuses' => [
         'pending' => 'Ausstehend',
+        'sending' => 'In Zustellung',
         'sent' => 'Versendet',
         'failed' => 'Fehlgeschlagen',
         'skipped' => 'Übersprungen',

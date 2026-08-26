@@ -163,6 +163,10 @@ class CampaignStats
             // `recipients` and the report quietly loses people.
             'capped' => (clone $base)->where('status', Message::STATUS_CAPPED)->count(),
             'pending' => (clone $base)->where('status', Message::STATUS_PENDING)->count(),
+            // In flight: claimed by a worker, not yet resolved. Its own figure
+            // for exactly the reason given above — without one, a campaign
+            // being delivered right now would show fewer people than it has.
+            'sending' => (clone $base)->where('status', Message::STATUS_SENDING)->count(),
             'opened' => (clone $base)->where('opens', '>', 0)->count(),
             'clicked' => (clone $base)->where('clicks', '>', 0)->count(),
             'bounced' => (clone $base)->where('status', Message::STATUS_BOUNCED)->count(),
@@ -206,6 +210,7 @@ class CampaignStats
             'skipped' => $count('skipped'),
             'capped' => $count('capped'),
             'pending' => $count('pending'),
+            'sending' => $count('sending'),
             'opened' => $opened,
             'open_rate' => $sent > 0 ? round($opened / $sent * 100, 1) : 0.0,
             'clicked' => $clicked,
@@ -236,6 +241,7 @@ class CampaignStats
             'skipped' => Message::STATUS_SKIPPED,
             'capped' => Message::STATUS_CAPPED,
             'pending' => Message::STATUS_PENDING,
+            'sending' => Message::STATUS_SENDING,
             'bounced' => Message::STATUS_BOUNCED,
         ];
 

@@ -42,6 +42,7 @@ return [
     ],
     'message_statuses' => [
         'pending' => 'Pending',
+        'sending' => 'Sending',
         'sent' => 'Sent',
         'failed' => 'Failed',
         'skipped' => 'Skipped',

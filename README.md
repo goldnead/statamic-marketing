@@ -169,6 +169,14 @@ Make sure a queue worker is running for campaign delivery, and the Laravel
 scheduler for scheduled campaigns (`marketing:send-scheduled` runs every
 minute).
 
+`marketing:release-stale-sends` runs alongside it, every five minutes. Sending
+claims a message before it delivers, so that two workers cannot send the same
+mail twice; this hands back anything whose worker died while holding the claim
+(`marketing.sending.claim_lease_minutes`, 15 by default). A message that had
+already been handed to the mail server is closed rather than re-sent, and the
+reason is written to the log — a second copy is certain harm, a missed mail is
+possible harm and can be looked into.
+
 ## Frontend signup form
 
 ```antlers

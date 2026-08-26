@@ -341,6 +341,9 @@ function campaignStatusColor(status) {
 function messageStatusColor(status) {
     return {
         pending: 'default',
+        // In flight, not finished. Blue rather than green: green is the answer
+        // to "did this person get it", and that answer is not in yet.
+        sending: 'blue',
         sent: 'green',
         failed: 'red',
         skipped: 'default',
