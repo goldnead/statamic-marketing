@@ -68,6 +68,24 @@ return [
          * claim exists for, because the first worker may still be sending.
          */
         'claim_lease_minutes' => (int) env('MARKETING_CLAIM_LEASE_MINUTES', 15),
+
+        /*
+         * When a message may be delivered, in the RECIPIENT's local time.
+         *
+         * Both unset means every hour is allowed, which is what every
+         * installation does today — a window nobody configured must not start
+         * holding mail back.
+         *
+         * Whole hours, `from` inclusive and `to` exclusive. A window that wraps
+         * midnight is fine (`from` 22, `to` 6). `timezone` is the fallback for
+         * a recipient who has none of their own; without it the application's
+         * timezone decides.
+         */
+        'window' => [
+            'from' => env('MARKETING_WINDOW_FROM'),
+            'to' => env('MARKETING_WINDOW_TO'),
+            'timezone' => env('MARKETING_WINDOW_TIMEZONE'),
+        ],
     ],
 
     /*

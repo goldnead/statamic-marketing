@@ -1,5 +1,6 @@
 <?php
 
+use Carbon\CarbonImmutable;
 use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\MailClass;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
@@ -14,6 +15,7 @@ use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Statamic\Facades\User;
 
 /*
@@ -294,4 +296,74 @@ it('does not send twice when a stale message is released and picked up again', f
 
     expect($message->fresh()->status)->toBe(Message::STATUS_SENT)
         ->and(rausgegangen())->toBe(1);
+});
+
+/*
+ * The send window, at the one place it can be observed: the job.
+ *
+ * A rule that only the support class knows would be the same shape of nothing
+ * as a custom field nobody can segment on.
+ */
+it('holds a message back until the recipients window opens', function (): void {
+    config()->set('marketing.sending.window', ['from' => 8, 'to' => 20, 'timezone' => null]);
+    // A real connection name the test environment has, and Queue::fake() so
+    // the deferred dispatch is captured instead of needing a jobs table.
+    config()->set('queue.default', 'database');
+    Queue::fake();
+
+    $this->recipient->update(['timezone' => 'Europe/Berlin']);
+    $message = nachricht($this->recipient->id);
+
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-26 01:40', 'UTC'));
+
+    app()->call([app(SendMessageJob::class, ['messageId' => $message->id]), 'handle']);
+
+    CarbonImmutable::setTestNow();
+
+    // Re-queued for the morning, not dropped.
+    Queue::assertPushed(SendMessageJob::class);
+
+    // Nothing went out, and the claim went back — a message waiting for
+    // tomorrow morning still has to count as outstanding, or the campaign
+    // reports itself finished while somebody is still waiting for it.
+    expect(rausgegangen())->toBe(0)
+        ->and($message->fresh()->status)->toBe(Message::STATUS_PENDING)
+        ->and($message->fresh()->claimed_at)->toBeNull()
+        ->and(Message::forCampaign('test-kampagne')->pending()->count())->toBe(1);
+});
+
+it('sends straight away inside the window', function (): void {
+    config()->set('marketing.sending.window', ['from' => 8, 'to' => 20, 'timezone' => null]);
+    config()->set('queue.default', 'array');
+
+    $this->recipient->update(['timezone' => 'Europe/Berlin']);
+    $message = nachricht($this->recipient->id);
+
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-26 12:00', 'UTC'));
+
+    app()->call([app(SendMessageJob::class, ['messageId' => $message->id]), 'handle']);
+
+    CarbonImmutable::setTestNow();
+
+    expect(rausgegangen())->toBe(1)
+        ->and($message->fresh()->status)->toBe(Message::STATUS_SENT);
+});
+
+it('sends anyway on an installation with no queue to come back with', function (): void {
+    config()->set('marketing.sending.window', ['from' => 8, 'to' => 20, 'timezone' => null]);
+    config()->set('queue.default', 'sync');
+
+    $this->recipient->update(['timezone' => 'Europe/Berlin']);
+    $message = nachricht($this->recipient->id);
+
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-08-26 01:40', 'UTC'));
+
+    app()->call([app(SendMessageJob::class, ['messageId' => $message->id]), 'handle']);
+
+    CarbonImmutable::setTestNow();
+
+    // On `sync` a delay is ignored and there is no worker to come back later.
+    // A message that silently never sends is worse than one that arrives at an
+    // odd hour.
+    expect(rausgegangen())->toBe(1);
 });

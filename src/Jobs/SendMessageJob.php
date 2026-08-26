@@ -13,6 +13,7 @@ use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Marketing\Support\SendWindow;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Bus\Queueable;
@@ -165,6 +166,26 @@ class SendMessageJob implements ShouldQueue
             return;
         }
 
+        // After the three gates and before the send: a window says "later", and
+        // there is no point deferring a mail to somebody who may never receive
+        // it at all — the same reasoning that puts the frequency cap last.
+        //
+        // Deferred to the exact moment the window opens rather than retried
+        // hourly. A retry loop would spend the deferral budget the cap owns and
+        // discard the message before the recipient's morning ever arrived.
+        $oeffnet = app(SendWindow::class)->nextOpening($subscription);
+
+        // The `sync` check belongs HERE, not inside waitForWindow(), and the
+        // first attempt had it there — where the early return meant the message
+        // was neither deferred nor sent. It simply vanished, on exactly the
+        // installation with no worker to notice. Caught by the test written for
+        // the opposite case.
+        if ($oeffnet !== null && config('queue.default') !== 'sync') {
+            $this->waitForWindow($message, $oeffnet, $campaigns, $campaign->handle);
+
+            return;
+        }
+
         try {
             $rendered = $renderer->render($campaign, $list, $subscription, $message);
 
@@ -313,6 +334,44 @@ class SendMessageJob implements ShouldQueue
         static::dispatch($message->id)
             ->onQueue(config('marketing.sending.queue', 'default'))
             ->delay(now()->addMinutes($retryMinutes));
+    }
+
+    /**
+     * Put the message back until the recipient's window opens.
+     *
+     * Back to `pending` and the claim released, exactly like the cap's
+     * deferral: `maybeFinalize()` marks a campaign sent once nothing is
+     * pending, and a message waiting for tomorrow morning that had stopped
+     * counting would let the campaign report itself finished while somebody was
+     * still waiting for it.
+     *
+     * It does NOT spend a cap deferral. The two are different questions — "too
+     * much mail this week" and "the wrong hour of the day" — and charging the
+     * second against the first would discard a message after three nights
+     * simply for having been queued in the evening.
+     *
+     * The caller decides whether to come here at all: on the `sync` connection
+     * there is no queue, a delay is ignored, and the window is skipped so the
+     * message goes out. A single-process install has no worker to come back
+     * later, and a message that silently never sends is worse than one that
+     * arrives at an odd hour.
+     */
+    protected function waitForWindow(
+        Message $message,
+        CarbonImmutable $oeffnet,
+        CampaignRepository $campaigns,
+        string $campaignHandle,
+    ): void {
+        $message->update([
+            'status' => Message::STATUS_PENDING,
+            'claimed_at' => null,
+        ]);
+
+        static::dispatch($message->id)
+            ->onQueue(config('marketing.sending.queue', 'default'))
+            ->delay($oeffnet);
+
+        $this->maybeFinalize($campaigns, $campaignHandle);
     }
 
     /** The job that resolves the last pending message marks the campaign sent. */

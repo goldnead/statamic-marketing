@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.18.0 — 2026-08-26
+
+### Added — Versandfenster in der Zeit der Empfängerin
+
+Ein Newsletter, der um 03:40 ankommt, liest sich wie eine Maschine. Einer, der um 03:40 **Ortszeit**
+ankommt, liest sich wie eine Maschine, die nicht weiß, wo man ist — und „um neun" von einem
+deutschen Server ist neun Uhr morgens für die meisten und mitten in der Nacht für die eine in
+Vancouver.
+
+`sending.window.from` / `.to` als ganze Stunden, gelesen in der Zeitzone der Empfängerin:
+`marketing_subscriptions.timezone`, dann die der Konfiguration, dann die der Anwendung. **Nie
+geraten** — eine falsche Zeitzone scheitert nicht, sie stellt zur falschen Stunde zu, und danach
+sagt nichts mehr, welche der drei Antworten benutzt wurde.
+
+**Ab Werk aus.** Beide Werte leer heißt: jede Stunde ist erlaubt, also genau das, was jede
+Installation heute tut. Ein Fenster, das niemand eingestellt hat, darf keine Post zurückhalten.
+
+Ein Fenster über Mitternacht (22 bis 6) wird verstanden. Die naive Prüfung `>= von && < bis` liest
+das als „nie" — eine stille Art, allen Versand anzuhalten.
+
+Zurückgestellt wird auf **den Moment, an dem das Fenster öffnet**, nicht stündlich erneut versucht:
+ein Wiederholungslauf würde das Aufschub-Budget des Frequenzdeckels aufbrauchen und die Nachricht
+verwerfen, bevor der Morgen der Empfängerin je da war. Und er zahlt nicht auf den Deckel ein — „zu
+viel Post diese Woche" und „die falsche Stunde" sind verschiedene Fragen.
+
+**Auf `sync` wird das Fenster übergangen.** Dort gibt es keinen Arbeiter, der später wiederkommt.
+Der erste Bau hatte den Zweig an der falschen Stelle: die Nachricht wurde weder zurückgestellt noch
+gesendet, sie verschwand einfach — auf genau der Installation, auf der es niemandem auffällt.
+Gefunden vom Test, der für den umgekehrten Fall geschrieben war.
+
 ## 2.17.0 — 2026-08-26
 
 ### Fixed
