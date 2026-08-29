@@ -21,6 +21,14 @@ parameters:
     scanFiles:
         - .phpstan/webhook-manager-stubs.php
         - .phpstan/automations-stubs.php
+        # The analytics sibling is a `suggest` too, but this addon keeps a
+        # stand-in for its contract and its base class in tests/Fakes — so the
+        # metrics can be ANALYSED rather than skipped.
+        # `InsightsContractsMatchTest` holds those stand-ins against the real
+        # package wherever it can be found, which is what stops the analysis
+        # from being a check against a fiction.
+        - tests/Fakes/insights-contracts.php
+        - tests/Fakes/insights-table-metric.php
 
     # The three sibling addons are private packages resolved from GitHub. Where
     # one of them is genuinely optional (email-templates, automations,

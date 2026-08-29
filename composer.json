@@ -42,7 +42,8 @@
     },
     "suggest": {
         "goldnead/statamic-automations": "Build drip sequences and welcome flows from marketing triggers/actions in the visual workflow builder",
-        "goldnead/statamic-webhook-manager": "Receive ESP feedback webhooks (bounces, complaints) and fire outbound webhooks on marketing events"
+        "goldnead/statamic-webhook-manager": "Receive ESP feedback webhooks (bounces, complaints) and fire outbound webhooks on marketing events",
+        "goldnead/statamic-insights": "Put the newsletter figures — sign-ups, unsubscribes, list size, mails sent, open and click rate — on the shared Insights dashboard next to revenue"
     },
     "autoload": {
         "psr-4": {

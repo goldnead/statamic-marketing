@@ -14,6 +14,12 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
+use Goldnead\Marketing\Integrations\Insights\ClickRate;
+use Goldnead\Marketing\Integrations\Insights\MailsSent;
+use Goldnead\Marketing\Integrations\Insights\OpenRate;
+use Goldnead\Marketing\Integrations\Insights\Subscribed;
+use Goldnead\Marketing\Integrations\Insights\SubscribersActive;
+use Goldnead\Marketing\Integrations\Insights\Unsubscribed;
 use Goldnead\Marketing\Integrations\Leadhub\ContactSubscriptionsPanel;
 use Goldnead\Marketing\Integrations\Leadhub\TimelineRecorder;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
@@ -28,9 +34,11 @@ use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
 use Goldnead\Marketing\Support\ConfiguredPostalLine;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Log;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
+use Throwable;
 
 class ServiceProvider extends AddonServiceProvider
 {
@@ -142,6 +150,87 @@ class ServiceProvider extends AddonServiceProvider
         // bootAddon() runs inside an app->booted() callback, where a nested
         // booted() would fire before sibling addons have booted.
         $this->registerSiblingBridges();
+        $this->registerInsightsMetrics();
+    }
+
+    /**
+     * The metric handles this addon contributes, and the classes behind them.
+     *
+     * Handle and class both, so the registry can store the class name without
+     * constructing anything to find out what it is called. Naming the handle
+     * twice is the price of that laziness, and it is the cheaper half of the
+     * trade: an install with twenty addons would otherwise build every metric
+     * object of every one of them on a request that renders none.
+     *
+     * The handles are frozen from the moment they are registered — they end up
+     * in saved dashboards and in URLs. Renaming one is a breaking change.
+     *
+     * @var array<class-string, string>
+     */
+    protected const INSIGHTS_METRICS = [
+        Subscribed::class => 'marketing.subscribed',
+        Unsubscribed::class => 'marketing.unsubscribed',
+        SubscribersActive::class => 'marketing.subscribers_active',
+        MailsSent::class => 'marketing.mails_sent',
+        OpenRate::class => 'marketing.open_rate',
+        ClickRate::class => 'marketing.click_rate',
+    ];
+
+    /**
+     * Offer the newsletter figures to the analytics addon, if it is there.
+     *
+     * From an `app->booted()` callback rather than from `bootAddon()`: the
+     * sibling's container bindings only exist once its own provider has booted,
+     * and this one may boot first. Registering earlier registers into nothing,
+     * silently — an empty screen with no error anywhere, which is the worst
+     * shape this failure could take.
+     *
+     * **Nothing here throws, ever.** A missing, half-installed or mid-upgrade
+     * analytics addon must cost a few tiles on a screen nobody has open, never
+     * a send. The guards are three, and each one answers a real variation of
+     * "installed but not quite": the class may be absent, the container may
+     * refuse to build the manager, and an older release of the sibling may have
+     * the facade without this method on it.
+     *
+     * The metric classes name the sibling's base class in their `extends` and
+     * its value objects in their type hints, which is safe precisely because of
+     * the first guard: PHP loads a class when something touches it, and nothing
+     * touches these unless the facade exists. Hence `suggest` in composer.json
+     * rather than `require` — installing this addon alone must not drag an
+     * analytics package in.
+     *
+     * Registering twice is harmless. The sibling keys its registry by handle,
+     * and this addon deliberately queues a second `booted()` pass elsewhere for
+     * the bridges that need one.
+     */
+    protected function registerInsightsMetrics(): void
+    {
+        $this->app->booted(function (): void {
+            $facade = '\Goldnead\StatamicInsights\Facades\Insights';
+
+            if (! class_exists($facade)) {
+                return;
+            }
+
+            try {
+                $manager = $facade::getFacadeRoot();
+
+                // Asked of the object, never of the facade: a facade forwards
+                // through `__callStatic` and declares none of what it forwards,
+                // so the probe on the facade itself is always false.
+                if (! is_object($manager) || ! method_exists($manager, 'registerMetric')) {
+                    return;
+                }
+
+                foreach (self::INSIGHTS_METRICS as $class => $handle) {
+                    $manager->registerMetric($class, $handle);
+                }
+            } catch (Throwable $e) {
+                Log::warning('marketing: the insights metrics could not be registered.', [
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        });
     }
 
     public function bootAddon(): void

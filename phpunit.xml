@@ -37,6 +37,15 @@
             can be tested at all — and that is how a 500 on the campaign screen
             of a default install stayed invisible through a green suite.
         -->
+        <!--
+            The bridge to goldnead/statamic-insights. Its own suite because the
+            tests need a different base class: the sibling is a `suggest` and is
+            not installed, so its contract, its base class and its facade are
+            stood in for before the application boots.
+        -->
+        <testsuite name="Insights">
+            <directory suffix="Test.php">./tests/Insights</directory>
+        </testsuite>
         <testsuite name="ShippedDefaults">
             <directory suffix="Test.php">./tests/ShippedDefaults</directory>
         </testsuite>
