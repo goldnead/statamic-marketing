@@ -1,5 +1,42 @@
 # Changelog
 
+## 2.19.0 — 2026-08-29
+
+### Neu: die Zahlen dieses Addons erscheinen in Insights
+
+`statamic-insights` ist ab 1.1.0 keine Umsatzauswertung mehr, sondern die Auswertungs-Schicht der
+Familie: jedes Addon meldet an, was es zählen kann, und bekommt dafür Zeitraum, Vergleich mit dem
+Vorzeitraum, Diagramm, Aufteilungen und zwei fertige Schirme.
+
+Die Kopplung ist in **beide** Richtungen freiwillig. Ohne Insights fehlt hier nichts; ohne dieses
+Addon fehlt dort nur seine Gruppe. `suggest`, nie `require`.
+
+Jede Zahl hält sich an die Hausregeln des Vertrags: **null ist nicht null** (eine Quote ohne Nenner
+hat keine Antwort und zeigt keine 0 %), `available()` entscheidet über die Existenz und nie über die
+Daten, Lücken im Verlauf füllt Insights und nicht die Kennzahl, und ein Filter, den eine Zahl nicht
+versteht, wird ignoriert statt zum Fehler.
+
+Sechs Zahlen: Abonnenten, Zuwachs, Bestand, Öffnungs-, Klick- und Beteiligungsrate.
+
+### Behoben: sechs Kacheln verschwanden, statt 0 zu zeigen
+
+Wie bei leadhub beantwortete `available()` hier die Markenfrage und nahm damit die halbe Gruppe vom
+Schirm. Dazu verschluckte ein `catch (Throwable)` genau das fehlende Container-Binding, das jetzt
+offen geprüft wird — das war der Grund, warum der Fehlschlag still blieb. Der Block ist ersatzlos
+weg. Die beiden anderen `catch`-Blöcke bleiben: die decken eine kaputte Definitionsdatei ab, was
+etwas anderes ist.
+
+### Behoben: eine Zahl zählt nur noch die aktive Marke
+
+Beim Bauen der Anbindung bekam diese Frage in der Familie vier verschiedene Antworten, und auf einem
+Schirm nebeneinander ist das schlimmer als gar keine: eine Kachel zeigte den Umsatz dreier fremder
+Marken, während die daneben korrekt filterte. Die Regel steht jetzt einmal in
+`TableMetric::brandScoped()`, als Abschrift von `BrandScope::apply()`; hier wird nur noch die Spalte
+genannt, und Zahl, Diagramm und jede Aufteilung verengen gemeinsam.
+
+Ist keine Marke gewählt, liest die Kachel **0 und bleibt stehen**. Ein Leser versteht eine Null;
+eine verschwundene Kachel bemerkt er nicht.
+
 ## 2.18.0 — 2026-08-26
 
 ### Added — Versandfenster in der Zeit der Empfängerin
