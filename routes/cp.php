@@ -3,6 +3,7 @@
 use Goldnead\Marketing\Http\Controllers\Cp\CampaignController;
 use Goldnead\Marketing\Http\Controllers\Cp\DashboardController;
 use Goldnead\Marketing\Http\Controllers\Cp\ListController;
+use Goldnead\Marketing\Http\Controllers\Cp\SequenceController;
 use Goldnead\Marketing\Http\Controllers\Cp\SubscriberController;
 use Goldnead\Marketing\Http\Controllers\Cp\TemplateController;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,15 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
         // editable, and whether it belongs in the public archive is decided
         // after it went out. See CampaignController::archive().
         Route::patch('/{handle}/archive', [CampaignController::class, 'archive'])->name('archive');
+    });
+
+    Route::prefix('sequences')->name('sequences.')->group(function () {
+        Route::get('/', [SequenceController::class, 'index'])->name('index');
+        Route::get('/create', [SequenceController::class, 'create'])->name('create');
+        Route::post('/', [SequenceController::class, 'store'])->name('store');
+        Route::get('/{handle}/edit', [SequenceController::class, 'edit'])->name('edit');
+        Route::patch('/{handle}', [SequenceController::class, 'update'])->name('update');
+        Route::delete('/{handle}', [SequenceController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('templates')->name('templates.')->group(function () {

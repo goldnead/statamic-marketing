@@ -111,6 +111,85 @@ Think Mailcoach, but native to Statamic and built on top of
     built out of: it sends one campaign — or one managed `et_template` — to the
     contact in the run, through list consent, suppression, opt-out and the
     frequency cap, in that order. See [docs/sequences.md](docs/sequences.md).
+- **Sequences** as their own screen (Marketing → Sequences): a trigger, a
+  mailing list, and the mails as a list with the gap before each one. Saving a
+  sequence writes the automation a hand-built series would be. See
+  [Sequences](#sequences).
+
+## Broadcasts and sequences
+
+Kajabi and its peers separate "one mail to many" (a broadcast, with an A/B
+test) from "a series, started by an event" (a sequence). This addon has both,
+and neither is a second engine.
+
+**A broadcast is a campaign.** It has been one since 1.0: a subject, a body, a
+list and optionally a segment, a scheduled time, a sent time, and a report with
+recipients, delivered, opened and clicked. The A/B split on the subject line is
+`variant_subject`. There is no separate broadcast object because there is
+nothing a broadcast would carry that the campaign does not.
+
+### A/B test share
+
+`ab_share` is the share of the audience a subject-line test runs on, in
+percent. `0` — the default, and what every campaign that exists today has —
+means the whole audience is split half and half between the two subjects. `10`
+to `50` means "test on this share, then send the winner to the rest".
+
+**The winner send is not built yet.** The column, the field on the campaign
+editor and the validation (0, or 10 to 50, and only with a variant subject)
+ship first so a campaign written now carries the answer. Until the winner send
+lands, a campaign with `ab_share = 20` sends exactly like one with `0`: the
+whole audience, split evenly, no winner picked. The field says so.
+
+### Sequences
+
+A sequence is a series of mails a person receives after an event — a purchase,
+a completed funnel, a tag set on the contact. It lives under Marketing →
+Sequences and is edited as a list: the trigger, the mailing list the consent
+comes from, and the steps, each with an `et_templates` template, an optional
+subject, and the gap measured from the previous step.
+
+**A sequence is a view plus a generator, not a second scheduler.** Saving one
+writes exactly the automation an editor would otherwise build by hand in
+`goldnead/statamic-automations`: the trigger node, then for every step a
+`delay` (when the step has a gap) and a `marketing.send_email` node in template
+mode, wired in one line. The engine's `automation_scheduled_jobs` is the only
+queue; the marketing send path with consent, suppression, opt-out and the
+frequency cap is the only sender. The sequence adds neither.
+
+What the generated automation looks like, and why:
+
+- Node keys are positional — `trigger`, `mail_1`, `delay_2`, `mail_2`, … — so a
+  second save rewrites the graph without moving a run that is asleep in
+  `delay_2` off its node. Changing a template, a subject, a gap, or the order
+  of the steps is a change of content for a run already under way. **Removing
+  steps is not**, and the editor is asked before it happens: a save that would
+  take away a node somebody is waiting on is refused with the number of people
+  it affects. Confirm it and those runs are ended right there — the wake-up
+  call cancelled, the run closed as `cancelled` with the reason on it — instead
+  of failing days later with `Cannot resume — node 'mail_3' not found in
+  automation` in a log nobody on this side reads. Shortening a series people
+  are currently in is a decision, not a detail.
+- The trigger's re-entry rule is *once per person* unless the trigger config
+  says otherwise. A series is something a person goes through once.
+- Each mail node carries the subject explicitly: the step's own subject, or
+  the template's subject read at save time. `marketing.send_email` in template
+  mode takes its subject from the node and nothing else, so a template whose
+  subject changes later reaches the automation on the next save of the
+  sequence. A step with no subject anywhere is refused at save.
+- The automation is `created_by = marketing.sequence:<handle>` and its
+  description names the sequence. **It is marked, not locked**: the automations
+  addon has no read-only flag for a flow, so the canvas can still edit it — and
+  the next save of the sequence overwrites those edits. Both screens say so.
+- Deleting a sequence **disables** its automation and keeps it. The runs are
+  the record of what went to whom.
+
+**Without `goldnead/statamic-automations`** a sequence can still be written and
+is kept. The list and the editor show *Automations not installed — the sequence
+does not run*, and nothing is sent. Install the addon, save the sequence once,
+and it is written.
+
+Permission: `manage marketing sequences` (reading the list is `view marketing`).
 
 ## Screenshots
 

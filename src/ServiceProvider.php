@@ -396,6 +396,8 @@ class ServiceProvider extends AddonServiceProvider
                         ->route('marketing.dashboard'),
                     $nav->item(__('marketing::nav.campaigns'))
                         ->route('marketing.campaigns.index'),
+                    $nav->item(__('marketing::nav.sequences'))
+                        ->route('marketing.sequences.index'),
                     $nav->item(__('marketing::nav.lists'))
                         ->route('marketing.lists.index'),
                     $nav->item(__('marketing::nav.templates'))
@@ -425,6 +427,8 @@ class ServiceProvider extends AddonServiceProvider
                                 Permission::make('send marketing campaigns')
                                     ->label(__('marketing::permissions.send_campaigns')),
                             ]),
+                        Permission::make('manage marketing sequences')
+                            ->label(__('marketing::permissions.manage_sequences')),
                     ]);
             });
         });

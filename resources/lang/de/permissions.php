@@ -7,4 +7,5 @@ return [
     'manage_templates' => 'E-Mail-Vorlagen verwalten',
     'manage_campaigns' => 'Kampagnen verwalten',
     'send_campaigns' => 'Kampagnen versenden',
+    'manage_sequences' => 'Sequenzen verwalten',
 ];

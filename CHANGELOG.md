@@ -1,5 +1,57 @@
 # Changelog
 
+## 2.20.0 — 2026-09-02
+
+### Neu: Sequenzen als eigener Schirm (Register K·13)
+
+Marketing → Sequenzen: eine Mailserie als Liste. Auslöser (jeder registrierte Automations-Trigger,
+etwa `payments.paid`, `funnels.completed`, `leadhub.lead_tag_added`), Verteiler als Quelle der
+Einwilligung, Schritte mit `et_templates`-Vorlage, optionalem Betreff und Wartezeit ab dem
+vorherigen Schritt. Neue Tabellen `marketing_sequences` und `marketing_sequence_steps`.
+
+**Eine Sequenz ist Sicht plus Generator, kein zweiter Scheduler.** Beim Speichern schreibt
+`Sequences\SequenceSync` genau die Automation, die man bisher von Hand baute: Trigger-Knoten, je
+Schritt `delay` (wenn eine Wartezeit gesetzt ist) und `marketing.send_email` im Vorlagen-Modus, in
+einer Linie verdrahtet, über `AutomationRepository::save()`. Warteschlange bleibt
+`automation_scheduled_jobs`, Versandweg bleibt der Marketing-Pfad mit Einwilligung, Sperrliste,
+Opt-out und Häufigkeitsdeckel.
+
+Die Knoten-Schlüssel sind positionsfest (`trigger`, `mail_1`, `delay_2`, `mail_2`, …): ein zweites
+Speichern überschreibt den Graphen, ohne einen Lauf zu verlieren, der in `delay_2` schläft. **Wer
+die Sequenz kürzt, wird vorher gefragt**: ein Speichern, das einen Knoten entfernt, auf dem gerade
+jemand wartet, wird abgelehnt und nennt die Zahl der betroffenen Läufe. Nach der Bestätigung werden
+diese Läufe sofort beendet, der Weckruf abgesagt und der Lauf als `cancelled` mit Begründung
+geschlossen, statt Tage später mit „Cannot resume — node not found" in einem Log zu scheitern, das
+auf der Marketing-Seite niemand liest. Der
+Auslöser bekommt *einmal je Person*, sofern die Trigger-Konfiguration nichts anderes sagt. Der
+Betreff steht ausdrücklich am Knoten: der des Schritts, sonst der der Vorlage zum Zeitpunkt des
+Speicherns; ohne beides wird der Schritt beim Speichern abgelehnt.
+
+Die Automation trägt `created_by = marketing.sequence:<handle>` und eine Beschreibung, die die
+Sequenz nennt. **Markiert, nicht gesperrt**: automations hat keinen Schreibschutz für einen Flow,
+also lässt sich die Automation dort weiter bearbeiten, und das nächste Speichern der Sequenz
+überschreibt das. Beide Schirme sagen es. Löschen der Sequenz schaltet die Automation ab und
+behält sie mit ihren Läufen.
+
+Ohne `goldnead/statamic-automations` ist eine Sequenz speicherbar; Liste und Editor zeigen
+„Automations nicht installiert, Sequenz läuft nicht“, und es wird nichts versendet.
+
+Neue Berechtigung `manage marketing sequences`. Lesen ist `view marketing`.
+
+### Neu: A/B-Testanteil an der Kampagne
+
+Ein Broadcast **ist** die Kampagne, seit 1.0: Betreff, Text, Verteiler, Segment, geplanter und
+gesendeter Zeitpunkt, Zähler im Bericht, A/B über `variant_subject`. Es gibt deshalb kein zweites
+Objekt. Neu ist die Spalte `ab_share` (0 oder 10 bis 50 Prozent) mit Feld im Editor und
+Validierung, dazu ein Zeitzonen-Hinweis am Planungsfeld. **Der Gewinner-Versand ist noch nicht
+gebaut**: `ab_share` wird gespeichert und geprüft, ändert den Versand aber nicht. Das steht am
+Feld und im README.
+
+### Geändert
+
+`Support\EmailTemplateOptions` ist die eine Stelle, die `et_templates` als Auswahl liest; der
+Kampagnen-Editor und der Sequenz-Editor nutzen sie beide.
+
 ## 2.19.0 — 2026-08-29
 
 ### Neu: die Zahlen dieses Addons erscheinen in Insights

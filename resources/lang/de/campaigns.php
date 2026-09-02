@@ -100,8 +100,13 @@ return [
         'activity_predates_detection' => 'Diese Kampagne wurde vor dem :date versendet, dem Tag, an dem die Vorlade-Erkennung dazukam. Alle davor aufgezeichneten Öffnungen liegen als „von einem Menschen“ vor, auch die, die ein Proxy geholt hat. Die Trennung in diesem Diagramm trägt für diese Kampagne deshalb nicht.',
         'activity_beyond' => ':count weitere Ereignisse liegen nach dem letzten Balken.',
     ],
+    'ab_share' => 'A/B-Testanteil (%)',
+    'ab_share_help' => '0: Der ganze Verteiler wird halbe-halbe auf die beiden Betreffzeilen verteilt, so läuft es heute. 10 bis 50: Nur dieser Anteil wird zuerst getestet. Der Versand des Gewinners an den Rest ist noch nicht gebaut, der Wert wird gespeichert und ändert den Versand nicht.',
+    'schedule_timezone' => 'Zeiten gelten in :timezone.',
     'errors' => [
         'no_list' => 'Diese Kampagne hat keine gültige Mailingliste.',
+        'ab_share_range' => 'Der Testanteil ist 0 (kein Testanteil) oder liegt zwischen 10 und 50 Prozent.',
+        'ab_share_needs_variant' => 'Ein Testanteil braucht eine Betreff-Variante B.',
     ],
     'flashes' => [
         'created' => 'Kampagne erstellt.',

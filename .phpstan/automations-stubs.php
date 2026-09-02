@@ -115,3 +115,35 @@ class Automations
         return null;
     }
 }
+
+/*
+ * The two run-side models, for the same reason and with one extra wrinkle:
+ * larastan resolves an Eloquent model it sees in a query chain, and a model
+ * class it cannot load is an INTERNAL error rather than the ignorable
+ * `class.notFound` the rest of this file relies on. `Sequences\SequenceSync`
+ * reads and closes waiting runs when a sequence is shortened, so both names
+ * have to exist here. Only the members that class touches; the live check is
+ * still tests/Integration/SequenceAutomationTest.php against the real package.
+ */
+
+namespace Goldnead\StatamicAutomations\Models;
+
+class AutomationRun extends \Illuminate\Database\Eloquent\Model
+{
+    public const STATUS_QUEUED = 'queued';
+
+    public const STATUS_RUNNING = 'running';
+
+    public const STATUS_WAITING = 'waiting';
+
+    public const STATUS_CANCELLED = 'cancelled';
+}
+
+class AutomationScheduledJob extends \Illuminate\Database\Eloquent\Model
+{
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_QUEUED = 'queued';
+
+    public const STATUS_CANCELLED = 'cancelled';
+}

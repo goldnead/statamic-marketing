@@ -12,6 +12,7 @@ use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\Sequence;
 use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Support\Facades\Mail;
 use Statamic\Facades\User;
@@ -27,6 +28,13 @@ beforeEach(function (): void {
     app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter'));
     app(EmailTemplateRepository::class)->save(new EmailTemplate(handle: 'branded', name: 'Branded', html: '{{ content }}'));
     app(CampaignRepository::class)->save(new Campaign(handle: 'welcome', name: 'Welcome', subject: 'Hi', listHandle: 'newsletter'));
+
+    Sequence::query()->create([
+        'handle' => 'after_purchase',
+        'title' => 'Nach dem Kauf',
+        'trigger' => 'payments.paid',
+        'list_handle' => 'newsletter',
+    ])->steps()->create(['position' => 1, 'template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days']);
 });
 
 function marketingInertiaComponent($response): ?string
@@ -48,6 +56,9 @@ dataset('cp pages', [
     'campaigns create' => ['marketing.campaigns.create', [], 'marketing::Campaigns/Edit'],
     'campaigns show' => ['marketing.campaigns.show', ['welcome'], 'marketing::Campaigns/Show'],
     'campaigns edit' => ['marketing.campaigns.edit', ['welcome'], 'marketing::Campaigns/Edit'],
+    'sequences index' => ['marketing.sequences.index', [], 'marketing::Sequences/Index'],
+    'sequences create' => ['marketing.sequences.create', [], 'marketing::Sequences/Edit'],
+    'sequences edit' => ['marketing.sequences.edit', ['after_purchase'], 'marketing::Sequences/Edit'],
     'templates index' => ['marketing.templates.index', [], 'marketing::Templates/Index'],
     'templates create' => ['marketing.templates.create', [], 'marketing::Templates/Edit'],
     'templates edit' => ['marketing.templates.edit', ['branded'], 'marketing::Templates/Edit'],

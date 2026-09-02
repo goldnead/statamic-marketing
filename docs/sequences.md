@@ -1,9 +1,14 @@
 # Sequences
 
-A welcome series, a follow-up, a drip. There is no sequence object in this addon
-and there is not going to be one: a sequence is an automation in
-`goldnead/statamic-automations`, and what this addon contributes is the one node
-that automation cannot write for itself.
+A welcome series, a follow-up, a drip. What runs is always an automation in
+`goldnead/statamic-automations`; what this addon contributes is the one node
+that automation cannot write for itself, and — since 2.20.0 — a **Sequences**
+screen that writes that automation for you (Marketing → Sequences, see the
+README section "Broadcasts and sequences"). The screen is a list over the
+graph: trigger, list, steps with their gaps. Saving it produces the exact
+node chain described on this page, on the node described on this page. This
+page explains the node; the rest holds whether the chain was built on the
+canvas or by the screen.
 
 ## Why the node lives here
 

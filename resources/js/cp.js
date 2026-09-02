@@ -14,6 +14,8 @@ import CampaignsEdit from './pages/Campaigns/Edit.vue';
 import CampaignsShow from './pages/Campaigns/Show.vue';
 import TemplatesIndex from './pages/Templates/Index.vue';
 import TemplatesEdit from './pages/Templates/Edit.vue';
+import SequencesIndex from './pages/Sequences/Index.vue';
+import SequencesEdit from './pages/Sequences/Edit.vue';
 
 Statamic.booting(() => {
     Statamic.$inertia.register('marketing::Dashboard', Dashboard);
@@ -25,4 +27,6 @@ Statamic.booting(() => {
     Statamic.$inertia.register('marketing::Campaigns/Show', CampaignsShow);
     Statamic.$inertia.register('marketing::Templates/Index', TemplatesIndex);
     Statamic.$inertia.register('marketing::Templates/Edit', TemplatesEdit);
+    Statamic.$inertia.register('marketing::Sequences/Index', SequencesIndex);
+    Statamic.$inertia.register('marketing::Sequences/Edit', SequencesEdit);
 });

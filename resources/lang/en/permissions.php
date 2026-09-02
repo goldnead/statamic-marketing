@@ -7,4 +7,5 @@ return [
     'manage_templates' => 'Manage email templates',
     'manage_campaigns' => 'Manage campaigns',
     'send_campaigns' => 'Send campaigns',
+    'manage_sequences' => 'Manage sequences',
 ];

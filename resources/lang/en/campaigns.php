@@ -100,8 +100,13 @@ return [
         'activity_predates_detection' => 'This campaign was sent before :date, the day preload detection was added. Every open recorded before then is filed as “by a person”, including the ones a proxy fetched, so the split in this chart cannot be read for this campaign.',
         'activity_beyond' => ':count more events happened after the last bar.',
     ],
+    'ab_share' => 'A/B test share (%)',
+    'ab_share_help' => '0: the whole audience is split half and half between the two subjects, which is what happens today. 10 to 50: only this share is tested first. Sending the winner to the rest is not built yet, so the value is stored and does not change the send.',
+    'schedule_timezone' => 'Times are read in :timezone.',
     'errors' => [
         'no_list' => 'This campaign has no valid mailing list.',
+        'ab_share_range' => 'The test share is 0 (no test share) or between 10 and 50 percent.',
+        'ab_share_needs_variant' => 'A test share needs a subject variant B.',
     ],
     'flashes' => [
         'created' => 'Campaign created.',

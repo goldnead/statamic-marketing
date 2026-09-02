@@ -3,8 +3,6 @@
 namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Carbon\CarbonImmutable;
-use Goldnead\EmailTemplates\Facades\EmailTemplates;
-use Goldnead\EmailTemplates\Services\EmailTemplateCollectionManager;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\MailClass;
@@ -18,10 +16,12 @@ use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\CampaignContentField;
+use Goldnead\Marketing\Support\EmailTemplateOptions;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use InvalidArgumentException;
 use Statamic\CP\Column;
@@ -141,6 +141,7 @@ class CampaignController extends Controller
             templateHandle: $data['template'] ?? null,
             content: app(CampaignContentField::class)->fromForm($data['content'] ?? ''),
             mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
+            abShare: (int) ($data['ab_share'] ?? 0),
         );
 
         $this->campaigns->save($campaign);
@@ -505,6 +506,10 @@ class CampaignController extends Controller
             'contentField' => app(CampaignContentField::class)->forEditing($campaign->content),
             'editable' => $campaign->isEditable(),
             'canSend' => $this->userCan($request, 'send marketing campaigns'),
+            // The zone a scheduled time is read in. The field is a plain
+            // datetime-local, which carries no zone of its own; saying which
+            // one applies is cheaper than a mail that goes out an hour early.
+            'timezone' => (string) config('app.timezone', 'UTC'),
         ]);
     }
 
@@ -533,6 +538,7 @@ class CampaignController extends Controller
         $campaign->templateHandle = $data['template'] ?? null;
         $campaign->content = app(CampaignContentField::class)->fromForm($data['content'] ?? '');
         $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
+        $campaign->abShare = (int) ($data['ab_share'] ?? 0);
 
         $this->campaigns->save($campaign);
 
@@ -737,7 +743,17 @@ class CampaignController extends Controller
 
     protected function validateCampaign(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
+            // 0 or 10–50. Anything in between is a test on too few people to
+            // say anything, and above half there is no "rest" left to send a
+            // winner to. Validated now, acted on in Phase 2 — see Campaign.
+            'ab_share' => ['nullable', 'integer', function (string $attribute, mixed $value, \Closure $fail): void {
+                $share = (int) $value;
+
+                if ($share !== 0 && ($share < 10 || $share > 50)) {
+                    $fail(__('marketing::campaigns.errors.ab_share_range'));
+                }
+            }],
             'name' => ['required', 'string', 'max:255'],
             'handle' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9_]+$/'],
             'subject' => ['nullable', 'string', 'max:255'],
@@ -763,6 +779,15 @@ class CampaignController extends Controller
             'content' => ['nullable'],
             'content.*' => ['nullable'],
         ]);
+
+        // A share without a second subject is a test with one arm.
+        if ((int) ($data['ab_share'] ?? 0) > 0 && trim((string) ($data['variant_subject'] ?? '')) === '') {
+            throw ValidationException::withMessages([
+                'ab_share' => __('marketing::campaigns.errors.ab_share_needs_variant'),
+            ]);
+        }
+
+        return $data;
     }
 
     /**
@@ -864,27 +889,12 @@ class CampaignController extends Controller
      */
     protected function emailTemplateEntryOptions(): array
     {
-        if (! class_exists(EmailTemplates::class)
-            || ! class_exists(Entry::class)) {
-            return [];
-        }
-
-        try {
-            // Handle comes from the addon itself (single source of truth); the
-            // addon owns `et_templates` to avoid colliding with any unrelated
-            // host-app `email_templates` collection.
-            $handle = EmailTemplateCollectionManager::HANDLE;
-
-            return collect(Entry::query()->where('collection', $handle)->get())
-                ->map(fn ($entry) => [
-                    'value' => (string) $entry->slug(),
-                    'label' => (string) ($entry->value('title') ?? $entry->slug()),
-                ])
-                ->values()
-                ->all();
-        } catch (\Throwable) {
-            return [];
-        }
+        // One lookup for both screens that pick a managed template — this one
+        // and the sequence editor. See Support\EmailTemplateOptions.
+        return array_map(
+            fn (array $option) => ['value' => $option['value'], 'label' => $option['label']],
+            EmailTemplateOptions::all(),
+        );
     }
 
     /**

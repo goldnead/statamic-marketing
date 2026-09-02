@@ -128,8 +128,9 @@ test('every key a page claims to render at its field is actually rendered there'
 
 test('every field the CP validates has somewhere to show its error', function (): void {
     // Keys the server reports that belong to no input: a refused send, a
-    // campaign that is no longer editable. They are covered by the summary.
-    $generalKeys = ['send', 'status'];
+    // campaign that is no longer editable, a sequence whose automation could
+    // not be written. They are covered by the summary.
+    $generalKeys = ['send', 'status', 'automation'];
 
     $validated = [];
 

@@ -36,6 +36,7 @@ const props = defineProps([
     'frequencyCap',    // { enabled, max, window_hours }
     'editable',        // bool (edit only)
     'canSend',         // bool
+    'timezone',        // string — the zone a scheduled time is read in (edit only)
 ]);
 
 const isCreating = computed(() => ! props.updateUrl);
@@ -46,6 +47,9 @@ const handle = ref(props.campaign?.handle || '');
 const subject = ref(props.campaign?.subject || '');
 // Empty means "not an A/B test". Filling it in is the only way to start one.
 const variantSubject = ref(props.campaign?.variant_subject || '');
+// 0 = split the whole audience (today's behaviour). Stored and validated now;
+// the winner send that would act on 10–50 is Phase 2.
+const abShare = ref(props.campaign?.ab_share ?? 0);
 const preheader = ref(props.campaign?.preheader || '');
 const list = ref(props.campaign?.list || '');
 const segment = ref(props.campaign?.segment || '');
@@ -174,6 +178,7 @@ function payload() {
         ...(isCreating.value ? { handle: handle.value || null } : {}),
         subject: subject.value || null,
         variant_subject: variantSubject.value || null,
+        ab_share: variantSubject.value.trim() ? (Number(abShare.value) || 0) : 0,
         preheader: preheader.value || null,
         list: list.value || null,
         segment: segment.value || null,
@@ -202,7 +207,7 @@ const contentErrors = computed(() =>
 // not in this list has no field to sit at — it goes into the summary above the
 // form instead, otherwise it would be invisible again.
 const fieldKeys = [
-    'name', 'handle', 'subject', 'variant_subject', 'preheader', 'content',
+    'name', 'handle', 'subject', 'variant_subject', 'ab_share', 'preheader', 'content',
     'list', 'segment', 'template', 'mail_class',
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
@@ -429,6 +434,17 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         {{ __('Splits the audience evenly and permanently: each recipient is assigned to A or B once, when the campaign starts sending, and keeps that variant. The report breaks every figure down per variant but does not pick a winner.') }}
                                     </p>
+                                </Field>
+
+                                <Field
+                                    v-if="variantSubject.trim()"
+                                    :label="__('marketing::campaigns.ab_share')"
+                                    :instructions="__('marketing::campaigns.ab_share_help')"
+                                    :error="formErrors.ab_share"
+                                >
+                                    <div class="w-32">
+                                        <Input v-model="abShare" type="number" min="0" max="50" />
+                                    </div>
                                 </Field>
 
                                 <Field :label="__('Preheader')" :error="formErrors.preheader">
@@ -719,7 +735,11 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                 </div>
 
                                 <div v-else class="space-y-2">
-                                    <Field :label="__('Schedule for later')" :error="formErrors.scheduled_at">
+                                    <Field
+                                        :label="__('Schedule for later')"
+                                        :instructions="timezone ? __('marketing::campaigns.schedule_timezone', { timezone }) : null"
+                                        :error="formErrors.scheduled_at"
+                                    >
                                         <Input v-model="scheduledAt" type="datetime-local" />
                                     </Field>
                                     <Button :text="__('Schedule')" variant="default" :disabled="!scheduledAt" @click="schedule" />

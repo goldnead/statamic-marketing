@@ -48,6 +48,7 @@ class EloquentCampaignRepository implements CampaignRepository
                 'sent_at' => $campaign->sentAt,
                 'in_archive' => $campaign->inArchive,
                 'mail_class' => $campaign->mailClass,
+                'ab_share' => $campaign->abShare,
             ],
         );
 
@@ -89,6 +90,7 @@ class EloquentCampaignRepository implements CampaignRepository
             sentAt: $record->sent_at ? CarbonImmutable::parse($record->sent_at) : null,
             inArchive: (bool) $record->in_archive,
             mailClass: MailClass::fromValue($record->mail_class)->value,
+            abShare: (int) ($record->ab_share ?? 0),
         );
     }
 }
