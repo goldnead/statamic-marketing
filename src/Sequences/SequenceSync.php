@@ -11,7 +11,6 @@ use Goldnead\StatamicAutomations\Engine\VersionManager;
 use Goldnead\StatamicAutomations\Models\Automation;
 use Goldnead\StatamicAutomations\Models\AutomationRun;
 use Goldnead\StatamicAutomations\Models\AutomationScheduledJob;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,24 +37,34 @@ use Illuminate\Support\Facades\DB;
  *    therefore a change of content for a run already under way, not a lost
  *    run. Reordering is the same thing: positions keep their meaning, the
  *    mails behind them change.
- *  - **Fewer steps, or a gap taken out of one:** the keys that are gone are
- *    gone, and a run asleep on one of them has nothing left to wake up on.
- *    Left alone, the engine would find out days later: `ResumeDelayedRun`
- *    fires, `WorkflowRunner::resumeAfterNode()` cannot find the node, and the
- *    run ends as failed with a line in a log nobody on the marketing side
- *    reads. That is a silent stop for the people in the series, so this class
- *    does not leave it alone. Two things happen instead:
+ *  - **A gap taken out of a step:** setting a step's wait to zero drops its
+ *    `delay_N` while `mail_N` stays. Nobody loses a mail — they lose a wait,
+ *    which is what was asked for. {@see self::settleStrandedRuns()} moves
+ *    their wake-up call in front of `mail_N`, so they get it on the next run
+ *    of the scheduler. Nothing is cancelled and nothing is asked.
+ *  - **Fewer steps:** the keys past the new end are gone, and a run asleep on
+ *    one of them has nothing left to wake up on. Left alone, the engine would
+ *    find out days later: `ResumeDelayedRun` fires,
+ *    `WorkflowRunner::resumeAfterNode()` cannot find the node, and the run
+ *    ends as failed with a line in a log nobody on the marketing side reads.
+ *    That is a silent stop for the people in the series, so this class does
+ *    not leave it alone. Two things happen instead:
  *
  *      1. {@see self::runsAsleepOnRemovedSteps()} counts them **before** the
  *         graph is replaced. The controller refuses the save and names the
  *         number; the editor confirms, or takes the steps back.
- *      2. On a confirmed save, {@see self::endOrphanedRuns()} cancels the
+ *      2. On a confirmed save, {@see self::settleStrandedRuns()} cancels the
  *         wake-up calls and closes those runs as `cancelled` with the reason
  *         written on them — at the moment of the decision, not three days
  *         later under a different heading.
  *
  *    Shortening a running series stays a decision. It is now a decision
  *    somebody made on purpose.
+ *
+ * **Only on the `database` storage driver.** See
+ * {@see self::determineUnavailableReason()}: with `flat_file` there is no
+ * automation row to point at and no way to ask which runs are waiting, so
+ * every guard above would read zero. The CP says so rather than half-working.
  *
  * **Marked, not locked.** The automation carries `created_by =
  * marketing.sequence:<handle>` and a description that says who owns it. The
@@ -74,13 +83,26 @@ class SequenceSync
     /** Horizontal distance between nodes on the canvas. */
     public const SPACING = 250;
 
+    /** Automations is not installed (or not migrated). */
     public const STATE_UNAVAILABLE = 'unavailable';
+
+    /** Automations is installed, but storing its definitions as flat files. */
+    public const STATE_UNSUPPORTED_STORAGE = 'unsupported_storage';
 
     public const STATE_DETACHED = 'detached';
 
     public const STATE_ENABLED = 'enabled';
 
     public const STATE_DISABLED = 'disabled';
+
+    /** The one automations storage driver a sequence can be written into. */
+    public const SUPPORTED_STORAGE = 'database';
+
+    /**
+     * Memoised {@see self::unavailableReason()}: `null` while unasked, `false`
+     * once the answer is "it works", else the reason.
+     */
+    protected static string|false|null $unavailableReason = null;
 
     /**
      * A trigger node's re-entry key and the value a series wants. Spelled out
@@ -107,9 +129,73 @@ class SequenceSync
      */
     public static function available(): bool
     {
-        return AutomationsBridge::available()
-            && class_exists(Automation::class)
-            && Automation::schemaReady();
+        return static::unavailableReason() === null;
+    }
+
+    /**
+     * Why a sequence cannot be written here, or null when it can.
+     *
+     * One of {@see self::STATE_UNAVAILABLE} or
+     * {@see self::STATE_UNSUPPORTED_STORAGE} — the CP shows a different
+     * sentence for each, because "automations is not installed" is a lie when
+     * it is installed and merely keeping its flows in files.
+     *
+     * **Memoised for the life of the process.** The check behind it ends in
+     * `Automation::schemaReady()`, which is a `Schema::hasTable()`, and
+     * Laravel sends that to the database on every call rather than caching it.
+     * Unmemoised, a listing that reads the state of fifty sequences paid for
+     * fifty round trips — the N+1 this class had just removed, moved one table
+     * over. Neither answer can change inside a request; a long-running worker
+     * (Octane) picks up a change on the restart a deploy does anyway, and the
+     * test suite calls {@see self::forgetAvailability()} between cases.
+     */
+    public static function unavailableReason(): ?string
+    {
+        if (static::$unavailableReason === null) {
+            static::$unavailableReason = static::determineUnavailableReason() ?? false;
+        }
+
+        return static::$unavailableReason ?: null;
+    }
+
+    /**
+     * Drop the memo. For tests, and for anything that changes the config or
+     * runs migrations inside one process.
+     */
+    public static function forgetAvailability(): void
+    {
+        static::$unavailableReason = null;
+    }
+
+    protected static function determineUnavailableReason(): ?string
+    {
+        if (! AutomationsBridge::available() || ! class_exists(Automation::class) || ! Automation::schemaReady()) {
+            return self::STATE_UNAVAILABLE;
+        }
+
+        // Sequences read the engine through Eloquent — the automation row for
+        // the state badge, `automation_scheduled_jobs` for the runs a save
+        // would strand. With the `flat_file` driver there is no row:
+        // `FlatFileAutomationRepository::save()` hands back a model that was
+        // never persisted, so `automation_id` would stay null, the badge would
+        // read "not linked" forever, and the shrink guard would count zero
+        // waiting people every single time. That last one is the failure this
+        // class exists to prevent, silently reintroduced.
+        //
+        // Reading through `AutomationRepository` instead would fix the first
+        // two and not the third: the contract has no way to ask which runs are
+        // waiting on a flow. So sequences say plainly that they need the
+        // `database` driver, rather than half-working.
+        if (static::storageDriver() !== self::SUPPORTED_STORAGE) {
+            return self::STATE_UNSUPPORTED_STORAGE;
+        }
+
+        return null;
+    }
+
+    protected static function storageDriver(): string
+    {
+        return (string) config('automations.storage.driver', self::SUPPORTED_STORAGE);
     }
 
     /**
@@ -154,9 +240,10 @@ class SequenceSync
             $automation = app(AutomationRepository::class)->save($automation, $graph['nodes'], $graph['edges']);
 
             // The graph is the new one now, so anything still scheduled on a
-            // key it no longer has is a run with nowhere to go. Ended here,
-            // inside the same transaction that removed its node.
-            $this->endOrphanedRuns($sequence, $automation, array_column($graph['nodes'], 'node_key'));
+            // key it no longer has needs handling: moved on where the step it
+            // was waiting for survives, ended where it does not. Inside the
+            // same transaction that removed the node.
+            $this->settleStrandedRuns($sequence, $automation, $graph);
 
             if ((int) $sequence->automation_id !== (int) $automation->id) {
                 $sequence->forceFill(['automation_id' => $automation->id])->saveQuietly();
@@ -183,76 +270,136 @@ class SequenceSync
             return 0;
         }
 
-        $keys = array_column($this->graph($sequence)['nodes'], 'node_key');
+        $graph = $this->graph($sequence);
 
-        return (int) $this->inBrandOf($sequence, fn (): int => $this->pendingJobsOutside(
-            (int) $sequence->automation_id,
-            $keys,
-        )->count());
+        return (int) $this->inBrandOf(
+            $sequence,
+            fn (): int => count($this->classifyStranded((int) $sequence->automation_id, $graph)['cancel']),
+        );
     }
 
     /**
-     * End the runs whose next node this rewrite has just removed.
+     * Deal with the wake-up calls this rewrite has stranded.
      *
-     * Modelled on `EnrollmentGate::cancelOpenRuns()` in automations, and for
-     * the same reason: cancelling a run without cancelling its wake-up call
-     * leaves the call to fire anyway, and cancelling the call without closing
-     * the run leaves a run that says `waiting` forever with nothing left to
-     * wake it. Both, or neither.
+     * Two outcomes, because there are two ways to strand one:
      *
-     * @param  list<string>  $nodeKeys  the keys the automation has *after* this save
-     * @return int runs ended
+     *  - **The step survived, only its gap was removed.** Taking a step's wait
+     *    down to zero deletes `delay_N` while `mail_N` stays. The person is
+     *    not losing a mail, they are losing a wait — which is exactly what the
+     *    editor asked for. Their wake-up call is moved to the node in front of
+     *    `mail_N`, so they get that mail on the next run of the scheduler
+     *    instead of being cancelled. This is the same contract a shortened gap
+     *    has always had: a changed wait changes what a sleeping run gets next.
+     *  - **The step itself is gone.** Nothing to move them on to. The call is
+     *    cancelled and the run closed, with the reason on it.
+     *
+     * The cancelling half is modelled on `EnrollmentGate::cancelOpenRuns()` in
+     * automations, for the same reason it exists there: cancelling a run
+     * without its wake-up call leaves the call to fire anyway, and cancelling
+     * the call without closing the run leaves a run that says `waiting`
+     * forever with nothing left to wake it. Both, or neither.
+     *
+     * **This reaches straight into two of the sibling's tables, and that is a
+     * placeholder, not a design.** Automations exposes no public way to ask
+     * "which runs are waiting on this flow" or to move one along;
+     * `EnrollmentGate::cancelOpenRuns()` is `protected` and carries an
+     * enrolment signature that does not fit here. A ticket for that interface
+     * is filed on the automations side; when it lands, this method is what
+     * calls it.
+     *
+     * **Known gap:** only a run that is *asleep* is seen. A run being walked
+     * right now — its scheduled job already `dispatched`, the run `running` —
+     * has no pending wake-up call to find, so it is neither counted in the
+     * warning nor settled here. It hits the removed node inside `walk()` and
+     * fails there. The window is the length of one run, and closing it needs
+     * the same interface as above.
+     *
+     * @param  array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}  $graph  the graph as it is *after* this save
+     * @return array{moved: int, ended: int}
      */
-    protected function endOrphanedRuns(Sequence $sequence, Automation $automation, array $nodeKeys): int
+    protected function settleStrandedRuns(Sequence $sequence, Automation $automation, array $graph): array
     {
-        $jobs = $this->pendingJobsOutside((int) $automation->id, $nodeKeys)->get(['id', 'automation_run_id']);
+        $stranded = $this->classifyStranded((int) $automation->id, $graph);
 
-        if ($jobs->isEmpty()) {
-            return 0;
+        foreach ($stranded['repoint'] as $jobId => $nodeKey) {
+            AutomationScheduledJob::query()->whereKey($jobId)->update(['node_key' => $nodeKey]);
         }
 
-        AutomationScheduledJob::query()
-            ->whereIn('id', $jobs->pluck('id')->all())
-            ->update(['status' => AutomationScheduledJob::STATUS_CANCELLED]);
+        $cancel = $stranded['cancel'];
 
-        $runIds = $jobs->pluck('automation_run_id')->filter()->unique()->values()->all();
+        if ($cancel !== []) {
+            AutomationScheduledJob::query()
+                ->whereIn('id', array_keys($cancel))
+                ->update(['status' => AutomationScheduledJob::STATUS_CANCELLED]);
 
-        if ($runIds !== []) {
-            AutomationRun::query()
-                ->whereIn('id', $runIds)
-                ->whereIn('status', [
-                    AutomationRun::STATUS_WAITING,
-                    AutomationRun::STATUS_QUEUED,
-                    AutomationRun::STATUS_RUNNING,
-                ])
-                ->update([
-                    'status' => AutomationRun::STATUS_CANCELLED,
-                    'error_message' => sprintf(
-                        'Cancelled: the sequence "%s" was shortened and the step this run was waiting for no longer exists.',
-                        $sequence->handle,
-                    ),
-                    'finished_at' => now(),
-                ]);
+            $runIds = array_values(array_unique(array_filter($cancel)));
+
+            if ($runIds !== []) {
+                AutomationRun::query()
+                    ->whereIn('id', $runIds)
+                    ->whereIn('status', [
+                        AutomationRun::STATUS_WAITING,
+                        AutomationRun::STATUS_QUEUED,
+                        AutomationRun::STATUS_RUNNING,
+                    ])
+                    ->update([
+                        'status' => AutomationRun::STATUS_CANCELLED,
+                        'error_message' => sprintf(
+                            'Cancelled: the sequence "%s" was shortened and the step this run was waiting for no longer exists.',
+                            $sequence->handle,
+                        ),
+                        'finished_at' => now(),
+                    ]);
+            }
         }
 
-        return $jobs->count();
+        return ['moved' => count($stranded['repoint']), 'ended' => count($cancel)];
     }
 
     /**
-     * Wake-up calls of this automation that point at a node key not in $keys.
+     * Split the stranded wake-up calls into the ones that can be moved on and
+     * the ones that cannot.
      *
-     * Callers run this inside the automation's own brand; the builder is not
-     * handed out beyond this class for that reason.
+     * Callers run this inside the automation's own brand.
      *
-     * @param  list<string>  $keys
-     * @return Builder<AutomationScheduledJob>
+     * @param  array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}  $graph
+     * @return array{repoint: array<int, string>, cancel: array<int, int|null>} job id → new node key / job id → run id
      */
-    protected function pendingJobsOutside(int $automationId, array $keys)
+    protected function classifyStranded(int $automationId, array $graph): array
     {
-        return AutomationScheduledJob::query()
+        $keys = array_column($graph['nodes'], 'node_key');
+
+        // What now feeds each node. `delay_2` gone means `mail_2` is fed by
+        // whatever came before the gap, and resuming *after* that node walks
+        // straight into `mail_2`.
+        $feeds = [];
+
+        foreach ($graph['edges'] as $edge) {
+            $feeds[$edge['to_node_key']] = $edge['from_node_key'];
+        }
+
+        $jobs = AutomationScheduledJob::query()
             ->where('automation_id', $automationId)
             ->whereIn('status', [AutomationScheduledJob::STATUS_PENDING, AutomationScheduledJob::STATUS_QUEUED])
-            ->whereNotIn('node_key', $keys);
+            ->whereNotIn('node_key', $keys)
+            ->get(['id', 'automation_run_id', 'node_key']);
+
+        $repoint = [];
+        $cancel = [];
+
+        foreach ($jobs as $job) {
+            $step = preg_match('/^delay_(\d+)$/', (string) $job->node_key, $m) ? 'mail_'.$m[1] : null;
+
+            if ($step !== null && isset($feeds[$step])) {
+                $repoint[(int) $job->id] = $feeds[$step];
+
+                continue;
+            }
+
+            $cancel[(int) $job->id] = $job->automation_run_id === null ? null : (int) $job->automation_run_id;
+        }
+
+        return ['repoint' => $repoint, 'cancel' => $cancel];
     }
 
     /**
@@ -359,8 +506,8 @@ class SequenceSync
      */
     public function state(Sequence $sequence): string
     {
-        if (! static::available()) {
-            return self::STATE_UNAVAILABLE;
+        if (($reason = static::unavailableReason()) !== null) {
+            return $reason;
         }
 
         return $this->stateOf($this->automationFor($sequence));
@@ -375,8 +522,8 @@ class SequenceSync
      */
     public function stateOf(?Automation $automation): string
     {
-        if (! static::available()) {
-            return self::STATE_UNAVAILABLE;
+        if (($reason = static::unavailableReason()) !== null) {
+            return $reason;
         }
 
         if ($automation === null) {

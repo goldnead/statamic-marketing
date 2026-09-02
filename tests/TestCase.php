@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Tests;
 
 use Goldnead\BrandContext\Sending\SaidRecently;
 use Goldnead\Leadhub\ServiceProvider;
+use Goldnead\Marketing\Sequences\SequenceSync;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
@@ -22,6 +23,13 @@ abstract class TestCase extends OrchestraTestCase
         // without this a line suppressed in one test would be missing from the
         // next one that expects it.
         SaidRecently::forget();
+
+        // SequenceSync memoises whether automations is installed and on which
+        // storage driver, because the check behind it is an uncached
+        // Schema::hasTable(). The memo is per process, and a process here runs
+        // every test — so a case that migrates or changes the driver would
+        // otherwise be answered from the case before it.
+        SequenceSync::forgetAvailability();
 
         // Marketing runtime tables + LeadHub tables (hard dependency).
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');

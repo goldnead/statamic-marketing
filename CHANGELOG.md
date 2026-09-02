@@ -18,11 +18,22 @@ Opt-out und Häufigkeitsdeckel.
 
 Die Knoten-Schlüssel sind positionsfest (`trigger`, `mail_1`, `delay_2`, `mail_2`, …): ein zweites
 Speichern überschreibt den Graphen, ohne einen Lauf zu verlieren, der in `delay_2` schläft. **Wer
-die Sequenz kürzt, wird vorher gefragt**: ein Speichern, das einen Knoten entfernt, auf dem gerade
-jemand wartet, wird abgelehnt und nennt die Zahl der betroffenen Läufe. Nach der Bestätigung werden
-diese Läufe sofort beendet, der Weckruf abgesagt und der Lauf als `cancelled` mit Begründung
-geschlossen, statt Tage später mit „Cannot resume — node not found" in einem Log zu scheitern, das
-auf der Marketing-Seite niemand liest. Der
+einen Schritt entfernt, wird vorher gefragt**: ein Speichern, das einen Schritt entfernt, auf dem
+gerade jemand wartet, wird abgelehnt und nennt die Zahl der betroffenen Personen. Nach der
+Bestätigung werden diese Läufe sofort beendet, der Weckruf abgesagt und der Lauf als `cancelled`
+mit Begründung geschlossen, statt Tage später mit „Cannot resume — node not found" in einem Log zu
+scheitern, das auf der Marketing-Seite niemand liest. In der Aktivität der Automation stehen sie
+damit unter „Ausgestiegen", nicht unter „Fehlgeschlagen".
+
+Eine Wartezeit auf 0 zu setzen ist **kein** Entfernen: `delay_n` fällt weg, `mail_n` bleibt, und wer
+in dieser Lücke schläft, wird vor die Mail gesetzt statt abgesagt. Ohne Rückfrage, weil niemand eine
+Mail verliert.
+
+Sequenzen brauchen automations auf dem **`database`**-Treiber. Mit `flat_file` gibt es keine
+Automations-Zeile, auf die eine Sequenz zeigen kann, und keine Möglichkeit zu fragen, wer gerade in
+einem Ablauf wartet — jede der Sicherungen oben läse still Null. Die Schirme sagen das stattdessen
+(„Automations legt seine Abläufe als Dateien ab, Sequenz läuft nicht"), und es wird nichts
+geschrieben. Der
 Auslöser bekommt *einmal je Person*, sofern die Trigger-Konfiguration nichts anderes sagt. Der
 Betreff steht ausdrücklich am Knoten: der des Schritts, sonst der der Vorlage zum Zeitpunkt des
 Speicherns; ohne beides wird der Schritt beim Speichern abgelehnt.

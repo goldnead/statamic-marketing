@@ -13,7 +13,18 @@ const props = defineProps([
     'createUrl',            // string
     'canManage',            // bool
     'automationsAvailable', // bool — false: sequences can be written but nothing runs
+    'unavailableReason',    // 'unavailable' | 'unsupported_storage' | null
 ]);
+
+// Not installed and installed-on-the-wrong-driver are different problems with
+// different fixes, so they get different sentences.
+const onFlatFiles = computed(() => props.unavailableReason === 'unsupported_storage');
+
+const unavailableNote = computed(() => (
+    onFlatFiles.value
+        ? __('marketing::sequences.unsupported_storage_note')
+        : __('marketing::sequences.unavailable_note')
+));
 
 const isEmpty = computed(() => props.sequences.length === 0);
 
@@ -81,8 +92,12 @@ function destroy() {
             <div v-if="!automationsAvailable" class="mx-auto mt-6 max-w-2xl">
                 <Alert
                     variant="warning"
-                    :heading="__('marketing::sequences.empty_automations')"
-                    :text="__('marketing::sequences.empty_automations_description')"
+                    :heading="onFlatFiles
+                        ? __('marketing::sequences.empty_unsupported_storage')
+                        : __('marketing::sequences.empty_automations')"
+                    :text="onFlatFiles
+                        ? __('marketing::sequences.empty_unsupported_storage_description')
+                        : __('marketing::sequences.empty_automations_description')"
                 />
             </div>
         </template>
@@ -105,7 +120,7 @@ function destroy() {
                 v-if="!automationsAvailable"
                 class="mb-4"
                 variant="warning"
-                :text="__('marketing::sequences.unavailable_note')"
+                :text="unavailableNote"
             />
 
             <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>

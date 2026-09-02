@@ -17,8 +17,18 @@ const props = defineProps([
     'lists',                   // [{ value, label }]
     'units',                   // [{ value, label }]
     'automationsAvailable',    // bool
+    'unavailableReason',       // 'unavailable' | 'unsupported_storage' | null
     'emailTemplatesAvailable', // bool
 ]);
+
+// Two different reasons a sequence does not run, and they need two different
+// sentences: "automations is not installed" is wrong when it is installed and
+// merely keeping its flows in files.
+const unavailableNote = computed(() => (
+    props.unavailableReason === 'unsupported_storage'
+        ? __('marketing::sequences.unsupported_storage_note')
+        : __('marketing::sequences.unavailable_note')
+));
 
 const isCreating = computed(() => ! props.updateUrl);
 
@@ -235,7 +245,7 @@ function stateColor(state) {
             v-if="!automationsAvailable"
             class="mb-4"
             variant="warning"
-            :text="__('marketing::sequences.unavailable_note')"
+            :text="unavailableNote"
         />
 
         <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
@@ -414,7 +424,7 @@ function stateColor(state) {
                                     />
                                 </div>
                                 <Text size="sm" class="text-gray-600 dark:text-gray-400">
-                                    {{ automationsAvailable ? __('marketing::sequences.managed_note') : __('marketing::sequences.unavailable_note') }}
+                                    {{ automationsAvailable ? __('marketing::sequences.managed_note') : unavailableNote }}
                                 </Text>
                                 <Button
                                     v-if="sequence.automation_url"

@@ -128,6 +128,10 @@ class Automations
 
 namespace Goldnead\StatamicAutomations\Models;
 
+/**
+ * @property int $id
+ * @property string $status
+ */
 class AutomationRun extends \Illuminate\Database\Eloquent\Model
 {
     public const STATUS_QUEUED = 'queued';
@@ -139,6 +143,12 @@ class AutomationRun extends \Illuminate\Database\Eloquent\Model
     public const STATUS_CANCELLED = 'cancelled';
 }
 
+/**
+ * @property int $id
+ * @property int|null $automation_run_id
+ * @property string $node_key
+ * @property string $status
+ */
 class AutomationScheduledJob extends \Illuminate\Database\Eloquent\Model
 {
     public const STATUS_PENDING = 'pending';

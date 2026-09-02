@@ -162,14 +162,20 @@ What the generated automation looks like, and why:
 - Node keys are positional — `trigger`, `mail_1`, `delay_2`, `mail_2`, … — so a
   second save rewrites the graph without moving a run that is asleep in
   `delay_2` off its node. Changing a template, a subject, a gap, or the order
-  of the steps is a change of content for a run already under way. **Removing
-  steps is not**, and the editor is asked before it happens: a save that would
-  take away a node somebody is waiting on is refused with the number of people
-  it affects. Confirm it and those runs are ended right there — the wake-up
-  call cancelled, the run closed as `cancelled` with the reason on it — instead
-  of failing days later with `Cannot resume — node 'mail_3' not found in
-  automation` in a log nobody on this side reads. Shortening a series people
+  of the steps is a change of content for a run already under way. Setting a
+  gap to zero is too: `delay_n` goes, `mail_n` stays, and anyone asleep in that
+  gap is moved to just in front of the mail rather than being cancelled.
+  **Removing a step is not**, and the editor is asked before it happens: a save
+  that would take away a step somebody is waiting on is refused with the number
+  of people it affects. Confirm it and those runs are ended right there — the
+  wake-up call cancelled, the run closed as `cancelled` with the reason on it —
+  instead of failing days later with `Cannot resume — node 'mail_3' not found
+  in automation` in a log nobody on this side reads. Shortening a series people
   are currently in is a decision, not a detail.
+- Sequences need automations on its **`database`** storage driver. On
+  `flat_file` there is no automation row to point at and no way to ask who is
+  waiting in a flow, so every guard above would silently read zero. The screens
+  say so instead, and nothing is written.
 - The trigger's re-entry rule is *once per person* unless the trigger config
   says otherwise. A series is something a person goes through once.
 - Each mail node carries the subject explicitly: the step's own subject, or

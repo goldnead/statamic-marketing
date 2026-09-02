@@ -82,6 +82,9 @@ class SequenceController extends Controller
             'createUrl' => cp_route('marketing.sequences.create'),
             'canManage' => $this->userCan($request, 'manage marketing sequences'),
             'automationsAvailable' => SequenceSync::available(),
+            // Which sentence the screen shows when it is not: automations is
+            // missing, or it is there on a storage driver sequences cannot use.
+            'unavailableReason' => SequenceSync::unavailableReason(),
         ]);
     }
 
@@ -111,14 +114,36 @@ class SequenceController extends Controller
         // and the handle guard above would then refuse the retry.
         try {
             $sequence = DB::transaction(function () use ($data, $handle): Sequence {
-                $sequence = Sequence::query()->create([
-                    'handle' => $handle,
-                    'title' => $data['title'],
-                    'trigger' => $data['trigger'],
-                    'trigger_config' => $data['trigger_config'] ?? [],
-                    'list_handle' => $data['list'],
-                    'enabled' => (bool) ($data['enabled'] ?? false),
-                ]);
+                // The catch sits on this one statement, not on the block: the
+                // sync below writes an automation whose handle has its own
+                // unique index (`SequenceSync::freeHandle()`), and a 23000
+                // from there is not this field's problem. Wrapped wider, a
+                // collision over there would have reported "handle taken" at
+                // the sequence handle the editor just typed.
+                try {
+                    $sequence = Sequence::query()->create([
+                        'handle' => $handle,
+                        'title' => $data['title'],
+                        'trigger' => $data['trigger'],
+                        'trigger_config' => $data['trigger_config'] ?? [],
+                        'list_handle' => $data['list'],
+                        'enabled' => (bool) ($data['enabled'] ?? false),
+                    ]);
+                } catch (QueryException $e) {
+                    // The `exists()` check above and this insert are two steps,
+                    // and a second request can land between them. The unique
+                    // index catches it either way; caught here it becomes a
+                    // message at the field instead of a 500. Only the integrity
+                    // violation — every other database failure is something
+                    // else and travels on to the handler below.
+                    if (! $this->isDuplicateHandle($e)) {
+                        throw $e;
+                    }
+
+                    throw ValidationException::withMessages([
+                        'handle' => __('marketing::sequences.flashes.handle_taken'),
+                    ]);
+                }
 
                 $this->writeSteps($sequence, $data['steps']);
 
@@ -126,19 +151,8 @@ class SequenceController extends Controller
 
                 return $sequence;
             });
-        } catch (QueryException $e) {
-            // The `exists()` check above and this insert are two steps, and a
-            // second request can land between them. The unique index catches
-            // it either way; caught here it becomes a message at the field
-            // instead of a 500. Only the integrity violation — every other
-            // database failure is something else and has to keep travelling.
-            if (! $this->isDuplicateHandle($e)) {
-                throw $e;
-            }
-
-            throw ValidationException::withMessages([
-                'handle' => __('marketing::sequences.flashes.handle_taken'),
-            ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             report($e);
 
@@ -394,6 +408,9 @@ class SequenceController extends Controller
                 'label' => __('marketing::sequences.units.'.$unit),
             ], SequenceStep::UNITS),
             'automationsAvailable' => SequenceSync::available(),
+            // Which sentence the screen shows when it is not: automations is
+            // missing, or it is there on a storage driver sequences cannot use.
+            'unavailableReason' => SequenceSync::unavailableReason(),
             'emailTemplatesAvailable' => EmailTemplateOptions::installed(),
         ];
     }

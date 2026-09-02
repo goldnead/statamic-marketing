@@ -9,6 +9,8 @@
  * local checkout) to exercise it.
  */
 
+use Goldnead\BrandContext\Facades\BrandContext;
+use Goldnead\BrandContext\Models\Brand;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Integrations\Automations\Actions\SendMarketingEmailAction;
@@ -329,6 +331,61 @@ it('ends the waiting runs when the shortening is confirmed, instead of failing t
         ->and($run->fresh()->error_message)->toContain('after_purchase');
 });
 
+it('moves a sleeping run on instead of cancelling it when only the gap is removed', function (): void {
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload());
+
+    $run = sleepingRunOn('delay_2');
+    $job = AutomationScheduledJob::query()->where('automation_run_id', $run->id)->firstOrFail();
+
+    // Both steps stay, the wait before the second one goes to zero. `delay_2`
+    // disappears from the graph, `mail_2` does not — so nobody is losing a
+    // mail and there is nothing to ask about.
+    $this->patch(cp_route('marketing.sequences.update', 'after_purchase'), managedSequencePayload([
+        'steps' => [
+            ['template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days'],
+            ['template' => 'tipps', 'subject_override' => 'Tipps', 'delay_amount' => 0, 'delay_unit' => 'days'],
+        ],
+    ]))->assertSessionHasNoErrors();
+
+    expect(managedAutomation()->nodes->pluck('node_key')->all())->toBe(['trigger', 'mail_1', 'mail_2']);
+
+    // The wake-up call now points in front of mail_2, so resuming after it
+    // walks straight into the mail the person was waiting for.
+    expect($job->fresh()->node_key)->toBe('mail_1')
+        ->and($job->fresh()->status)->toBe(AutomationScheduledJob::STATUS_PENDING)
+        ->and($run->fresh()->status)->toBe(AutomationRun::STATUS_WAITING)
+        ->and($run->fresh()->error_message)->toBeNull();
+});
+
+it('asks about a shortening even when a gap is dropped in the same save', function (): void {
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload([
+        'steps' => [
+            ['template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days'],
+            ['template' => 'tipps', 'subject_override' => 'Tipps', 'delay_amount' => 3, 'delay_unit' => 'days'],
+            ['template' => 'feedback', 'subject_override' => 'Feedback', 'delay_amount' => 7, 'delay_unit' => 'days'],
+        ],
+    ]))->assertSessionHasNoErrors();
+
+    $rescued = sleepingRunOn('delay_2');   // gap survives as a step, dropped to zero
+    $doomed = sleepingRunOn('delay_3');    // the step itself goes
+
+    $this->from(cp_route('marketing.sequences.edit', 'after_purchase'))
+        ->patch(cp_route('marketing.sequences.update', 'after_purchase'), managedSequencePayload([
+            'steps' => [
+                ['template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days'],
+                ['template' => 'tipps', 'subject_override' => 'Tipps', 'delay_amount' => 0, 'delay_unit' => 'days'],
+            ],
+        ]))
+        ->assertSessionHasErrors('confirm_shrink');
+
+    // Only the one that really loses its step is counted. The rescued one is
+    // not padding in the warning.
+    expect(session('errors')->first('confirm_shrink'))->toStartWith('One person is waiting');
+
+    expect($rescued->fresh()->status)->toBe(AutomationRun::STATUS_WAITING)
+        ->and($doomed->fresh()->status)->toBe(AutomationRun::STATUS_WAITING);
+});
+
 it('leaves a run alone when its node survives the save', function (): void {
     $this->post(cp_route('marketing.sequences.store'), managedSequencePayload());
 
@@ -348,26 +405,151 @@ it('leaves a run alone when its node survives the save', function (): void {
         ->toBe(AutomationScheduledJob::STATUS_PENDING);
 });
 
-it('reads the listing with one query for all automations, not one per row', function (): void {
-    foreach (['erste', 'zweite', 'dritte'] as $index => $handle) {
+/**
+ * The flat-file driver: automations is installed, but its flows live in files.
+ *
+ * Everything the sequence guards rest on is an Eloquent read — the automation
+ * row behind `automation_id`, and `automation_scheduled_jobs` for the people a
+ * save would strand. On this driver `save()` returns a model that was never
+ * persisted, so all of it would answer "nothing", and the shrink warning would
+ * report zero waiting people forever. Sequences therefore say plainly that
+ * they need the database driver instead of half-working.
+ */
+it('refuses to run on the flat-file driver, and says which one it needs', function (): void {
+    config()->set('automations.storage.driver', 'flat_file');
+    SequenceSync::forgetAvailability();
+
+    expect(SequenceSync::available())->toBeFalse()
+        ->and(SequenceSync::unavailableReason())->toBe(SequenceSync::STATE_UNSUPPORTED_STORAGE);
+
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload())
+        ->assertSessionHasNoErrors();
+
+    // The sequence is kept, nothing was written into the engine, and the CP
+    // does not claim automations is missing — it is installed.
+    $sequence = Sequence::query()->where('handle', 'after_purchase')->firstOrFail();
+
+    expect($sequence->automation_id)->toBeNull()
+        ->and(Automation::query()->count())->toBe(0)
+        ->and(app(SequenceSync::class)->state($sequence))->toBe(SequenceSync::STATE_UNSUPPORTED_STORAGE);
+
+    $props = json_decode(
+        $this->withHeaders(['X-Inertia' => 'true'])->get(cp_route('marketing.sequences.index'))->getContent(),
+        true,
+    )['props'];
+
+    expect($props['automationsAvailable'])->toBeFalse()
+        ->and($props['unavailableReason'])->toBe(SequenceSync::STATE_UNSUPPORTED_STORAGE)
+        ->and($props['sequences'][0]['state'])->toBe(SequenceSync::STATE_UNSUPPORTED_STORAGE);
+});
+
+/**
+ * Every query the listing sends, and the ones that name a table.
+ *
+ * The whole log, not a filter on `automations`: the first version of this test
+ * counted only that table and therefore did not see that reading the state per
+ * row still cost a `Schema::hasTable()` round trip each time. A per-row cost
+ * has to show up here whichever table it lands on.
+ *
+ * @return array{total: int, automations: int, props: array<string, mixed>}
+ */
+function listingQueries(): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $response = test()->withHeaders(['X-Inertia' => 'true'])->get(cp_route('marketing.sequences.index'));
+    $response->assertOk();
+
+    $log = collect(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    return [
+        'total' => $log->count(),
+        'automations' => $log->filter(fn (array $e) => str_contains($e['query'], 'from "automations"'))->count(),
+        'props' => json_decode($response->getContent(), true)['props'] ?? [],
+    ];
+}
+
+it('reads the listing without a single query per row', function (): void {
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload([
+        'handle' => 'erste', 'title' => 'Serie 1',
+    ]))->assertSessionHasNoErrors();
+
+    // Warm-up: the first control panel request of a test primes caches that
+    // have nothing to do with the number of sequences.
+    listingQueries();
+
+    $one = listingQueries();
+
+    foreach (['zweite' => 'Serie 2', 'dritte' => 'Serie 3'] as $handle => $title) {
         $this->post(cp_route('marketing.sequences.store'), managedSequencePayload([
-            'handle' => $handle,
-            'title' => 'Serie '.$index,
+            'handle' => $handle, 'title' => $title,
         ]))->assertSessionHasNoErrors();
     }
 
     expect(Automation::query()->count())->toBe(3);
 
+    $three = listingQueries();
+
+    // Three rows cost exactly what one row costs. Not "about the same".
+    expect($three['total'])->toBe($one['total'])
+        ->and($three['automations'])->toBe(1)
+        ->and($one['automations'])->toBe(1);
+
+    // And the batch did not cost the answer: every row still reports its own
+    // state, read off the automation that was loaded for it.
+    expect(collect($three['props']['sequences'])->pluck('state')->all())
+        ->toBe([SequenceSync::STATE_DISABLED, SequenceSync::STATE_DISABLED, SequenceSync::STATE_DISABLED]);
+});
+
+it('loads the automations of two brands in one query each, not one per sequence', function (): void {
+    config()->set('brand-context.multi_brand', true);
+    app('brand-context')->forget();
+
+    $brands = [
+        Brand::create(['handle' => 'brand-a', 'name' => 'Brand A']),
+        Brand::create(['handle' => 'brand-b', 'name' => 'Brand B']),
+    ];
+
+    $sequences = collect();
+
+    foreach ($brands as $i => $brand) {
+        BrandContext::runFor($brand, function () use ($i, $sequences): void {
+            // A marketing handle is unique across ALL brands — the public
+            // subscribe endpoint derives the brand from it — so each brand
+            // needs a list of its own name.
+            $list = "newsletter-{$i}";
+
+            app(MailingListRepository::class)->save(new MailingList(handle: $list, name: "Newsletter {$i}"));
+
+            foreach (['eins', 'zwei'] as $n) {
+                $this->post(cp_route('marketing.sequences.store'), managedSequencePayload([
+                    'handle' => "b{$i}_{$n}",
+                    'title' => "Serie {$i} {$n}",
+                    'list' => $list,
+                    'trigger_config' => ['list' => $list],
+                ]))->assertSessionHasNoErrors();
+            }
+
+            $sequences->push(...Sequence::query()->get()->all());
+        });
+    }
+
+    expect($sequences)->toHaveCount(4);
+
+    DB::flushQueryLog();
     DB::enableQueryLog();
 
-    $this->withHeaders(['X-Inertia' => 'true'])->get(cp_route('marketing.sequences.index'))->assertOk();
+    $automations = app(SequenceSync::class)->automationsFor($sequences);
 
-    $automationQueries = collect(DB::getQueryLog())
-        ->filter(fn (array $entry) => str_contains($entry['query'], 'from "automations"'))
+    $queries = collect(DB::getQueryLog())
+        ->filter(fn (array $e) => str_contains($e['query'], 'from "automations"'))
         ->count();
-
     DB::disableQueryLog();
 
-    // One for the batch. Three rows must not cost three.
-    expect($automationQueries)->toBeLessThanOrEqual(1);
+    // Two brands, four sequences: two queries. The loop is per brand, not per
+    // row — which is the part nothing held before.
+    expect($queries)->toBe(2)
+        ->and($automations)->toHaveCount(4);
 });

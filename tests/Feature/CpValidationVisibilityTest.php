@@ -127,22 +127,46 @@ test('every key a page claims to render at its field is actually rendered there'
 });
 
 test('every field the CP validates has somewhere to show its error', function (): void {
-    // Keys the server reports that belong to no input: a refused send, a
-    // campaign that is no longer editable, a sequence whose automation could
-    // not be written. They are covered by the summary.
-    $generalKeys = ['send', 'status', 'automation'];
+    // Keys the server reports that belong to no single input. They are covered
+    // by the summary above the form:
+    //
+    //  - `send`, `status`: a refused send, a campaign no longer editable.
+    //  - `automation`: the sequence was written but its automation was not.
+    //  - `trigger_config`: the trigger's settings are a whole object. Each
+    //    field inside it renders its own error (`formErrors['trigger_config.x']`
+    //    at the field); an error on the object itself belongs to none of them.
+    $generalKeys = ['send', 'status', 'automation', 'trigger_config'];
 
     $validated = [];
 
-    foreach (Finder::create()->files()->in(dirname(__DIR__, 2).'/src/Http/Controllers/Cp')->name('*.php') as $file) {
-        preg_match_all('/validate\(\[(.*?)\n\s*\]\)/s', $file->getContents(), $blocks);
+    // Two shapes, because controllers write rules both ways: inline in the
+    // validate() call, and built up in a `$rules = [...]` variable first. Only
+    // the inline one was matched until 2.20.0, so the sequence editor — which
+    // builds its rules in a variable — contributed not a single key to this
+    // check, and the one field whose error had nowhere to go was found by a
+    // different test.
+    $ruleBlocks = [
+        '/validate\(\[(.*?)\n\s*\]\)/s',
+        '/\$rules\s*=\s*\[(.*?)\n\s*\];/s',
+    ];
 
-        foreach ($blocks[1] as $block) {
-            preg_match_all("/'([a-z_]+)'\s*=>\s*\[/", $block, $keys);
-            $validated = array_merge($validated, $keys[1]);
+    foreach (Finder::create()->files()->in(dirname(__DIR__, 2).'/src/Http/Controllers/Cp')->name('*.php') as $file) {
+        $contents = $file->getContents();
+
+        foreach ($ruleBlocks as $pattern) {
+            preg_match_all($pattern, $contents, $blocks);
+
+            foreach ($blocks[1] as $block) {
+                preg_match_all("/'([a-z_]+)'\s*=>\s*\[/", $block, $keys);
+                $validated = array_merge($validated, $keys[1]);
+            }
         }
 
-        preg_match_all("/withErrors\(\['([a-z_]+)'/", $file->getContents(), $flashed);
+        // Keys added to a rule set one at a time: `$rules['handle'] = [...]`.
+        preg_match_all("/\\\$rules\['([a-z_]+)'\]\s*=\s*\[/", $contents, $appended);
+        $validated = array_merge($validated, $appended[1]);
+
+        preg_match_all("/withErrors\(\s*\[\s*'([a-z_]+)'/s", $contents, $flashed);
         $validated = array_merge($validated, $flashed[1]);
     }
 
