@@ -150,6 +150,58 @@ it('registers itself with LeadHub when the registry is there', function (): void
     expect($panel['rows'][0]['label'])->toBe('Der Chorleiter-Brief');
 });
 
+// ── "Add to list" ───────────────────────────────────────────────────────────
+//
+// The panel could only ever report: somebody who saw that a person was on no
+// list had to leave, find the list and type the address in again. The action is
+// expressed through LeadHub's select-shaped panel action, so LeadHub posts what
+// it is handed and still knows nothing about lists. Every branch below is a way
+// the offer can be wrong, and a wrong offer renders a button that does nothing.
+
+it('offers the lists this person is not on yet', function (): void {
+    $lists = app(MailingListRepository::class);
+    $lists->save(new MailingList(handle: 'kursinfos', name: 'Kursinfos'));
+
+    ($this->subscribe)('maria@example.com', Subscription::STATUS_SUBSCRIBED);
+
+    $action = ($this->panel)(Contact::create(['email' => 'maria@example.com']))['action'];
+
+    // On `newsletter` already, so only the other list is offered.
+    expect($action['select']['options'])->toHaveCount(1)
+        ->and($action['select']['options'][0]['value'])->toBe('kursinfos')
+        ->and($action['select']['options'][0]['label'])->toBe('Kursinfos')
+        ->and($action['select']['options'][0]['url'])->toContain('kursinfos')
+        // The address travels in the payload — that is the whole point: LeadHub
+        // posts it without knowing what it is.
+        ->and($action['select']['options'][0]['payload'])->toBe(['email' => 'maria@example.com']);
+});
+
+it('offers a list again once the person has unsubscribed from it', function (): void {
+    // Unsubscribed is not "on the list". Re-adding somebody who asked to leave
+    // has to stay possible — they may ask to come back.
+    ($this->subscribe)('maria@example.com', Subscription::STATUS_UNSUBSCRIBED);
+
+    $action = ($this->panel)(Contact::create(['email' => 'maria@example.com']))['action'];
+
+    expect($action['select']['options'])->toHaveCount(1)
+        ->and($action['select']['options'][0]['value'])->toBe('newsletter');
+});
+
+it('offers nothing when every list already has this person', function (): void {
+    ($this->subscribe)('maria@example.com', Subscription::STATUS_SUBSCRIBED);
+
+    // An empty picker is a worse answer than no picker.
+    expect(($this->panel)(Contact::create(['email' => 'maria@example.com']))['action'])->toBeNull();
+});
+
+it('offers nothing to a reader who may not manage subscribers', function (): void {
+    $plain = User::make()->email('reader@example.com');
+    $plain->save();
+    $this->actingAs($plain);
+
+    expect(($this->panel)(Contact::create(['email' => 'neu@example.com']))['action'])->toBeNull();
+});
+
 it('is skipped on a LeadHub too old to have the registry', function (): void {
     // `method_exists` and not a version constraint: this package requires
     // leadhub ^1.4|^2.0 and the registry arrived in 2.2, so an older one must

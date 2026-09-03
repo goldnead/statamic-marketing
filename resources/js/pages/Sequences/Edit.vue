@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea, Switch,
+    Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
+    Badge, Field, Input, Select, Textarea, Switch,
     ConfirmationModal, Text, Description, Alert,
 } from '@statamic/cms/ui';
 
@@ -227,12 +228,16 @@ function stateColor(state) {
                 :color="stateColor(sequence.state)"
                 :text="__(`marketing::sequences.states.${sequence.state}`)"
             />
-            <Button
-                v-if="deleteUrl"
-                :text="__('Delete')"
-                variant="danger"
-                @click="showDeleteConfirm = true"
-            />
+            <Dropdown v-if="deleteUrl">
+                <DropdownMenu>
+                    <DropdownItem
+                        :text="__('Delete')"
+                        icon="trash"
+                        variant="destructive"
+                        @click="showDeleteConfirm = true"
+                    />
+                </DropdownMenu>
+            </Dropdown>
             <Button
                 :text="__('Save')"
                 variant="primary"
@@ -248,11 +253,9 @@ function stateColor(state) {
             :text="unavailableNote"
         />
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <div class="grid gap-6 lg:grid-cols-3">
             <div class="lg:col-span-2 space-y-4">

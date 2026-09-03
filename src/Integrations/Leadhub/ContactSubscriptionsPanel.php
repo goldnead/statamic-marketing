@@ -71,6 +71,62 @@ class ContactSubscriptionsPanel
             'description' => __('marketing::leadhub.panel_description'),
             'empty' => __('marketing::leadhub.panel_empty'),
             'rows' => $rows,
+            'action' => $this->addAction($contact, $subscriptions),
+        ];
+    }
+
+    /**
+     * "Put this person on a list", offered on the contact screen.
+     *
+     * The panel could only ever report until now: a reader who saw that
+     * somebody was on no list had to leave, find the list, and type the
+     * address back in. Expressed through the registry's select-shaped action,
+     * so LeadHub posts what it is handed and still knows nothing about lists.
+     *
+     * Null when the reader may not manage subscribers, or when every list
+     * already has this person — an empty picker is a worse answer than none.
+     */
+    protected function addAction(mixed $contact, mixed $subscriptions): ?array
+    {
+        if (! Gate::allows('manage marketing subscribers')) {
+            return null;
+        }
+
+        $email = is_object($contact) ? ($contact->email ?? null) : null;
+
+        if (! is_string($email) || trim($email) === '') {
+            return null;
+        }
+
+        // Lists this person is on. A second subscribe to the same list is
+        // harmless underneath, but offering it says the row above is not there.
+        $taken = collect($subscriptions)
+            ->reject(fn (Subscription $s) => $s->status === Subscription::STATUS_UNSUBSCRIBED)
+            ->pluck('list_handle')
+            ->all();
+
+        $options = $this->lists->all()
+            ->reject(fn ($list) => in_array($list->handle, $taken, true))
+            ->map(fn ($list) => [
+                'value' => $list->handle,
+                'label' => $list->name,
+                'url' => cp_route('marketing.lists.subscribers.store', $list->handle),
+                'payload' => ['email' => $email],
+            ])
+            ->values()
+            ->all();
+
+        if ($options === []) {
+            return null;
+        }
+
+        return [
+            'text' => __('marketing::leadhub.panel_add'),
+            'icon' => 'plus',
+            'select' => [
+                'placeholder' => __('marketing::leadhub.panel_add_placeholder'),
+                'options' => $options,
+            ],
         ];
     }
 

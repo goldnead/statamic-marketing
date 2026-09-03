@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Panel, Badge, Button, DropdownItem, ConfirmationModal,
+    Header, Listing, Alert, Badge, Button, DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -44,7 +44,7 @@ function destroy() {
     <Head :title="[__('Lists'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="__('Lists')" icon="list">
+        <Header :title="__('Lists')" icon="layout-list">
             <Button
                 v-if="canManage"
                 :href="createUrl"
@@ -53,11 +53,9 @@ function destroy() {
             />
         </Header>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <Listing
             :items="lists"

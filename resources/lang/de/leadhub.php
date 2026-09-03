@@ -4,6 +4,8 @@ return [
     'panel_heading' => 'Verteiler',
     'panel_description' => 'Was diese Person bekommt, und seit wann. Gefunden über die E-Mail-Adresse, deshalb steht eine noch nicht bestätigte Anmeldung auch hier.',
     'panel_empty' => 'In keinem Verteiler.',
+    'panel_add' => 'In Verteiler aufnehmen',
+    'panel_add_placeholder' => 'Verteiler wählen…',
 
     'status_subscribed' => 'Angemeldet',
     'status_pending' => 'Nicht bestätigt',

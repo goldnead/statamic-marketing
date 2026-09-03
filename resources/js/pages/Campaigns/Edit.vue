@@ -2,7 +2,8 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Button, Badge, Field, Input, Select, Textarea,
+    Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
+    Badge, Field, Input, Select, Textarea,
     ConfirmationModal, Text, CommandPaletteItem, ToggleGroup, ToggleItem,
     Alert, PublishContainer, PublishFieldsProvider, PublishFields,
 } from '@statamic/cms/ui';
@@ -374,12 +375,16 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                 :color="statusColor(campaign.status)"
                 :text="campaign.status"
             />
-            <Button
-                v-if="deleteUrl"
-                :text="__('Delete')"
-                variant="danger"
-                @click="showDeleteConfirm = true"
-            />
+            <Dropdown v-if="deleteUrl">
+                <DropdownMenu>
+                    <DropdownItem
+                        :text="__('Delete')"
+                        icon="trash"
+                        variant="destructive"
+                        @click="showDeleteConfirm = true"
+                    />
+                </DropdownMenu>
+            </Dropdown>
             <Button
                 v-if="isEditable"
                 :text="__('Save')"
@@ -389,23 +394,26 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
             />
         </Header>
 
-        <!-- Locked campaigns can no longer be edited -->
-        <Panel v-if="!isEditable" class="mb-4">
-            <div class="p-4">
-                <Text size="sm">
-                {{ __('This campaign has been sent or is currently sending and can no longer be edited.') }}
-                </Text>
+        <!-- Locked campaigns can no longer be edited. A notice, not a section:
+             Alert is the CP's banner, so it does not need the Panel > Card
+             sandwich a section would (ui-vocabulary §9 antipattern 19). -->
+        <Alert v-if="!isEditable" variant="default" class="mb-4">
+            <!-- One child, not two: Alert's root is `flex items-start gap-3`,
+                 so a bare <Text> and a bare <Link> become two flex items and
+                 the sentence runs straight into the link. Alert already sets
+                 `text-sm` and the variant's colour, and styles a <p> inside
+                 itself, so the paragraph carries no classes of its own. -->
+            <div>
+                <p>{{ __('This campaign has been sent or is currently sending and can no longer be edited.') }}</p>
                 <Link :href="showUrl" class="font-medium hover:underline">
                     {{ __('View the report') }} →
                 </Link>
             </div>
-        </Panel>
+        </Alert>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <template v-if="isEditable">
             <div class="grid gap-6 lg:grid-cols-3">

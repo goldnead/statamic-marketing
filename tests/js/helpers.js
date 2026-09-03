@@ -44,15 +44,24 @@ export function captureRouter() {
 }
 
 /**
- * Presses the button carrying this label, the way a person would.
+ * Presses the control carrying this label, the way a person would.
  *
- * The stubs render every scalar attribute, so a button is located by what the
+ * The stubs render every scalar attribute, so a control is located by what the
  * template labelled it with rather than by its position, and the handler that
  * is invoked is the one the template actually bound to `@click`.
+ *
+ * `DropdownItem` counts as well as `Button`: a destructive page action is not
+ * a `Button variant="danger"` in the header, it is a `DropdownItem
+ * variant="destructive"` in the header's `…` menu (ui-vocabulary §9
+ * antipattern 24). To the person clicking it that is the same press, so the
+ * test that asserts what a refused delete shows should not have to know which
+ * of the two the page happens to render.
  */
 export function press(wrapper, label) {
-    const button = wrapper.findAllComponents({ name: 'Button' })
-        .find((candidate) => candidate.attributes('data-attr-text') === label);
+    const button = [
+        ...wrapper.findAllComponents({ name: 'Button' }),
+        ...wrapper.findAllComponents({ name: 'DropdownItem' }),
+    ].find((candidate) => candidate.attributes('data-attr-text') === label);
 
     if (! button) {
         throw new Error(`No button labelled "${label}" is rendered.`);

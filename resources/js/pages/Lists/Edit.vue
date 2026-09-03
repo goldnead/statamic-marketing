@@ -2,7 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Button, Field, Input, Select, Textarea, ConfirmationModal,
+    Header, Panel, Card, Alert, Button, Dropdown, DropdownMenu, DropdownItem,
+    Field, Input, Select, Textarea, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -94,21 +95,23 @@ function destroy() {
     <Head :title="[isCreating ? __('Create list') : list.name, __('Lists'), __('Marketing')]" />
 
     <div class="max-w-3xl mx-auto">
-        <Header :title="isCreating ? __('Create list') : name" icon="list">
-            <Button
-                v-if="deleteUrl"
-                :text="__('Delete')"
-                variant="danger"
-                @click="showDeleteConfirm = true"
-            />
+        <Header :title="isCreating ? __('Create list') : name" icon="layout-list">
+            <Dropdown v-if="deleteUrl">
+                <DropdownMenu>
+                    <DropdownItem
+                        :text="__('Delete')"
+                        icon="trash"
+                        variant="destructive"
+                        @click="showDeleteConfirm = true"
+                    />
+                </DropdownMenu>
+            </Dropdown>
             <Button :text="__('Save')" variant="primary" :disabled="!name.trim()" @click="save" />
         </Header>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <Panel :heading="__('Details')">
             <Card>

@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Switch, Field, Text,
+    Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Alert, Switch, Field, Text,
     Select, Tabs, TabList, TabTrigger, TabContent,
+    Table, TableColumns, TableColumn, TableRows, TableRow, TableCell,
 } from '@statamic/cms/ui';
 import BarChart from '../../components/BarChart.vue';
 
@@ -399,11 +400,9 @@ const subline = computed(() => {
             <span v-if="subline">{{ subline }}</span>
         </p>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <!-- Web archive. Not on the edit form: that form closes when the
              campaign is sent, which is when this question actually gets
@@ -546,33 +545,36 @@ const subline = computed(() => {
                     <div v-if="variantRows.length" class="mb-6">
                         <Subheading :text="__('A/B variants')" class="mb-2" />
                         <Card>
+                            <!-- Core's Table, not Listing: these are two
+                                 aggregate rows (one per variant), not a record
+                                 list. Nothing here can be searched, sorted,
+                                 selected, paginated or acted on, which is all
+                                 Listing exists to provide. -->
                             <div class="overflow-x-auto">
-                                <table class="w-full text-sm">
-                                    <thead>
-                                        <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
-                                            <th class="py-2 pe-4 font-medium">{{ __('Variant') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Subject') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Recipients') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Sample size') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Open rate') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Click rate') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('Bounced') }}</th>
-                                            <th class="py-2 font-medium">{{ __('Unsubscribed') }}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="row in variantRows" :key="row.variant" class="border-t border-gray-200 dark:border-gray-700">
-                                            <td class="py-2 pe-4 font-medium uppercase">{{ row.variant }}</td>
-                                            <td class="py-2 pe-4 text-gray-500 dark:text-gray-400">{{ row.subject || '—' }}</td>
-                                            <td class="py-2 pe-4">{{ row.recipients }}</td>
-                                            <td class="py-2 pe-4">{{ row.sample_size }}</td>
-                                            <td class="py-2 pe-4">{{ row.open_rate }}% <span class="text-xs text-gray-400">({{ row.opened }})</span></td>
-                                            <td class="py-2 pe-4">{{ row.click_rate }}% <span class="text-xs text-gray-400">({{ row.clicked }})</span></td>
-                                            <td class="py-2 pe-4">{{ row.bounced }}</td>
-                                            <td class="py-2">{{ row.unsubscribed }}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                <Table>
+                                    <TableColumns>
+                                        <TableColumn>{{ __('Variant') }}</TableColumn>
+                                        <TableColumn>{{ __('Subject') }}</TableColumn>
+                                        <TableColumn>{{ __('Recipients') }}</TableColumn>
+                                        <TableColumn>{{ __('Sample size') }}</TableColumn>
+                                        <TableColumn>{{ __('Open rate') }}</TableColumn>
+                                        <TableColumn>{{ __('Click rate') }}</TableColumn>
+                                        <TableColumn>{{ __('Bounced') }}</TableColumn>
+                                        <TableColumn>{{ __('Unsubscribed') }}</TableColumn>
+                                    </TableColumns>
+                                    <TableRows>
+                                        <TableRow v-for="row in variantRows" :key="row.variant">
+                                            <TableCell><Text variant="strong" class="uppercase">{{ row.variant }}</Text></TableCell>
+                                            <TableCell><Text variant="subtle">{{ row.subject || '—' }}</Text></TableCell>
+                                            <TableCell>{{ row.recipients }}</TableCell>
+                                            <TableCell>{{ row.sample_size }}</TableCell>
+                                            <TableCell>{{ row.open_rate }}% <Text size="xs" variant="subtle">({{ row.opened }})</Text></TableCell>
+                                            <TableCell>{{ row.click_rate }}% <Text size="xs" variant="subtle">({{ row.clicked }})</Text></TableCell>
+                                            <TableCell>{{ row.bounced }}</TableCell>
+                                            <TableCell>{{ row.unsubscribed }}</TableCell>
+                                        </TableRow>
+                                    </TableRows>
+                                </Table>
                             </div>
                             <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                                 {{ __('Rates are measured against the sample size (delivered messages). This report does not declare a winner — read the difference against the sample size before drawing a conclusion.') }}
@@ -704,25 +706,28 @@ const subline = computed(() => {
                     <div v-if="urlBreakdown && urlBreakdown.length" class="mt-6">
                         <Subheading :text="__('marketing::campaigns.report.urls_heading')" class="mb-2" />
                         <Card>
+                            <!-- Core's Table for the same reason as the A/B
+                                 breakdown above: an aggregate over the whole
+                                 campaign, grouped by URL. It is not the page's
+                                 record list — that is the Listing above it,
+                                 which paginates server-side. -->
                             <div class="overflow-x-auto">
-                                <table class="w-full text-sm">
-                                    <thead>
-                                        <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
-                                            <th class="py-2 pe-4 font-medium">{{ __('marketing::campaigns.report.url') }}</th>
-                                            <th class="py-2 pe-4 font-medium">{{ __('marketing::campaigns.report.url_clicks') }}</th>
-                                            <th class="py-2 font-medium">{{ __('marketing::campaigns.report.url_people') }}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr v-for="link in urlBreakdown" :key="link.url" class="border-t border-gray-200 dark:border-gray-700">
-                                            <td class="py-2 pe-4">
+                                <Table>
+                                    <TableColumns>
+                                        <TableColumn>{{ __('marketing::campaigns.report.url') }}</TableColumn>
+                                        <TableColumn>{{ __('marketing::campaigns.report.url_clicks') }}</TableColumn>
+                                        <TableColumn>{{ __('marketing::campaigns.report.url_people') }}</TableColumn>
+                                    </TableColumns>
+                                    <TableRows>
+                                        <TableRow v-for="link in urlBreakdown" :key="link.url">
+                                            <TableCell>
                                                 <a :href="link.url" target="_blank" rel="noopener noreferrer" class="hover:underline break-all">{{ link.url }}</a>
-                                            </td>
-                                            <td class="py-2 pe-4">{{ link.clicks }}</td>
-                                            <td class="py-2">{{ link.people }}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                            </TableCell>
+                                            <TableCell>{{ link.clicks }}</TableCell>
+                                            <TableCell>{{ link.people }}</TableCell>
+                                        </TableRow>
+                                    </TableRows>
+                                </Table>
                             </div>
                         </Card>
                     </div>

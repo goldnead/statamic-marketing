@@ -2,7 +2,8 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Button, Field, Input, CodeEditor, Alert,
+    Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
+    Field, Input, CodeEditor, Alert,
     ToggleGroup, ToggleItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
@@ -184,20 +185,22 @@ function destroy() {
 
     <div class="max-w-page mx-auto" data-max-width-wrapper>
         <Header :title="isCreating ? __('marketing::templates.create') : name" icon="template-theme-design-layout">
-            <Button
-                v-if="deleteUrl"
-                :text="__('Delete')"
-                variant="danger"
-                @click="showDeleteConfirm = true"
-            />
+            <Dropdown v-if="deleteUrl">
+                <DropdownMenu>
+                    <DropdownItem
+                        :text="__('Delete')"
+                        icon="trash"
+                        variant="destructive"
+                        @click="showDeleteConfirm = true"
+                    />
+                </DropdownMenu>
+            </Dropdown>
             <Button :text="__('Save')" variant="primary" :disabled="!name.trim()" @click="save" />
         </Header>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <Panel :heading="__('Details')" class="mb-4">
             <Card>

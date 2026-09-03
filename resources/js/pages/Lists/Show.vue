@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Button, Badge, Field, Input, Select, Listing,
+    Header, Panel, Card, Alert, Button, Badge, Field, Input, Select, Listing,
     DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
@@ -150,7 +150,7 @@ function destroy() {
     <Head :title="[list.name, __('Lists'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="list.name" icon="list">
+        <Header :title="list.name" icon="layout-list">
             <Button v-if="canManage" :href="editUrl" :text="__('Edit')" variant="default" />
         </Header>
 
@@ -167,30 +167,33 @@ function destroy() {
             {{ list.description }}
         </p>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <!-- Add subscriber -->
         <Panel v-if="canManageSubscribers" :heading="__('marketing::subscribers.add')" class="mb-4">
-            <div class="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-end">
-                <!-- Not `flex-1`: that gives a flex-basis of 0, and Field
-                     brings its own `min-w-0`, so the column collapsed to zero
-                     width and the next field sat on top of it. An explicit
-                     width is what the two neighbours already use. -->
-                <Field :label="__('Email')" class="w-full sm:w-80" :error="formErrors.email">
-                    <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
-                </Field>
-                <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44" :error="formErrors.first_name">
-                    <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />
-                </Field>
-                <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44" :error="formErrors.last_name">
-                    <Input v-model="newLastName" :placeholder="__('marketing::subscribers.optional')" />
-                </Field>
-                <Button :text="__('marketing::subscribers.add')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />
-            </div>
+            <!-- The padding belongs to Card, not to the grey Panel: inputs and
+                 buttons on bare grey are the loudest non-core signal there is
+                 (ui-vocabulary §9 antipattern 19). -->
+            <Card>
+                <div class="flex flex-col sm:flex-row gap-2 items-start sm:items-end">
+                    <!-- Not `flex-1`: that gives a flex-basis of 0, and Field
+                         brings its own `min-w-0`, so the column collapsed to zero
+                         width and the next field sat on top of it. An explicit
+                         width is what the two neighbours already use. -->
+                    <Field :label="__('Email')" class="w-full sm:w-80" :error="formErrors.email">
+                        <Input v-model="newEmail" type="email" placeholder="jane@example.com" />
+                    </Field>
+                    <Field :label="__('marketing::subscribers.first_name')" class="w-full sm:w-44" :error="formErrors.first_name">
+                        <Input v-model="newFirstName" :placeholder="__('marketing::subscribers.optional')" />
+                    </Field>
+                    <Field :label="__('marketing::subscribers.last_name')" class="w-full sm:w-44" :error="formErrors.last_name">
+                        <Input v-model="newLastName" :placeholder="__('marketing::subscribers.optional')" />
+                    </Field>
+                    <Button :text="__('marketing::subscribers.add')" variant="primary" :disabled="!newEmail.trim()" @click="addSubscriber" />
+                </div>
+            </Card>
         </Panel>
 
         <!-- Filters -->
@@ -265,7 +268,7 @@ function destroy() {
                 <DropdownItem
                     v-if="canManageSubscribers && row.status !== 'unsubscribed'"
                     :text="__('marketing::subscribers.actions.unsubscribe')"
-                    icon="archive"
+                    icon="x-square"
                     @click="unsubscribe(row)"
                 />
                 <DropdownItem

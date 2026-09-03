@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Panel, Button, DropdownItem, ConfirmationModal,
+    Header, Listing, Alert, Button, DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -57,11 +57,9 @@ function destroy() {
             {{ __('marketing::templates.intro') }}
         </p>
 
-        <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-            <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-            </div>
-        </Panel>
+        <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+            <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+        </Alert>
 
         <Listing
             :items="templates"

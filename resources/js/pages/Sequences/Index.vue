@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import {
-    Header, Listing, Panel, Badge, Button, DropdownItem, ConfirmationModal, Text,
+    Header, Listing, Badge, Button, DropdownItem, ConfirmationModal, Text,
     Icon, EmptyStateMenu, EmptyStateItem, CommandPaletteItem, Alert,
 } from '@statamic/cms/ui';
 
@@ -123,11 +123,9 @@ function destroy() {
                 :text="unavailableNote"
             />
 
-            <Panel v-if="generalErrors.length" class="mb-4" data-marketing-form-errors>
-                <div class="p-4 text-sm text-red-600 dark:text-red-400">
-                    <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
-                </div>
-            </Panel>
+            <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
+                <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
+            </Alert>
 
             <Listing
                 :items="sequences"
@@ -171,7 +169,7 @@ function destroy() {
                     <DropdownItem
                         v-if="row.automation_url"
                         :text="__('marketing::sequences.open_automation')"
-                        icon="flow"
+                        icon="workflow"
                         :href="row.automation_url"
                     />
                     <DropdownItem
