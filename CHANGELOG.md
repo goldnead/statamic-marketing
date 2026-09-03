@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.21.0 — 2026-09-03
+
+### Neu: „In Verteiler aufnehmen" am LeadHub-Kontakt
+
+Die Aktion hängt am Auswahl-Vertrag der LeadHub-Registry: die Option trägt Ziel-URL und Nutzlast,
+LeadHub muss nicht wissen, was ein Verteiler ist. Vier Tests decken die Abbruchzweige ab — keine
+Berechtigung, keine Adresse, alle Listen bereits belegt, und ein Abgemeldeter, der wieder
+angeboten wird.
+
+### Behoben: 22 Befunde des UI-Sweeps
+
+Alle echt, keiner ein Falsch-Positiv.
+
+- **Vier Icon-Namen, die es nicht gibt.** Bei `archive` bewusst `x-square` statt der naheliegenden
+  Vorgabe: die Aktion ist ein Unsubscribe, keine Archivierung.
+- **Zehn Fehlerbanner und ein Hinweis sind jetzt `Alert`**, das Abonnenten-Formular sitzt in einer
+  `Card`. `data-marketing-form-errors` blieb an allen zehn Stellen erhalten — zwei Testsuiten
+  hängen daran.
+- **Vier rote Kopfknöpfe ins `…`-Menü.**
+- **Zwei handgebaute Tabellen auf Cores `Table`** — bewusst nicht `Listing`: es sind Aggregate ohne
+  Suche, Sortierung, Auswahl oder Paginierung.
+- `press()` im Testhelfer findet jetzt `Button` und `DropdownItem`.
+
 ## 2.20.0 — 2026-09-02
 
 ### Neu: Sequenzen als eigener Schirm (Register K·13)
