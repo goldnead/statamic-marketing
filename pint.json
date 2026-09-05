@@ -1,5 +1,8 @@
 {
     "preset": "laravel",
+    "notName": [
+        "insights-table-metric.php"
+    ],
     "rules": {
         "php_unit_method_casing": false
     }
