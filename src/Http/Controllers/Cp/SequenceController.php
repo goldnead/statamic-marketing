@@ -499,7 +499,9 @@ class SequenceController extends Controller
 
         if (! array_key_exists($source, $sources)) {
             try {
-                $sources[$source] = app('automations')->optionSources()->resolve($source, request());
+                $sources[$source] = self::asOptions(
+                    app('automations')->optionSources()->resolve($source, request())
+                );
             } catch (\Throwable) {
                 // No resolver, no automations, a sibling that threw: the field
                 // falls back to the text input rather than to a broken screen.
@@ -508,6 +510,55 @@ class SequenceController extends Controller
         }
 
         return $sources[$source];
+    }
+
+    /**
+     * Whatever the sibling handed back, as options this screen can render.
+     *
+     * **The resolver lives in another addon.** It is registered by whoever
+     * installed it, it can be replaced by the host, and nothing in this package
+     * type-checks what it returns. Taking that value on trust is how one badly
+     * shaped option source turns a settings screen into a blank page — the same
+     * failure `brand-context` was hardened against on 07.09.2026, one addon
+     * over.
+     *
+     * So: only entries that are actually an option get through. Anything else
+     * is dropped rather than passed on, and the field falls back to a text
+     * input — the state it was in before this feature existed, which is
+     * survivable. A half-rendered select is not.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    protected static function asOptions(mixed $resolved): array
+    {
+        if (! is_array($resolved)) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach ($resolved as $entry) {
+            if (! is_array($entry) || ! array_key_exists('value', $entry)) {
+                continue;
+            }
+
+            $value = $entry['value'];
+
+            if (! is_string($value) && ! is_int($value)) {
+                continue;
+            }
+
+            // Ohne Beschriftung der Wert selbst: eine Auswahl mit leerem Text
+            // ist unbedienbar, und der Handle ist immer noch besser als nichts.
+            $label = $entry['label'] ?? null;
+
+            $out[] = [
+                'value' => (string) $value,
+                'label' => is_string($label) && $label !== '' ? $label : (string) $value,
+            ];
+        }
+
+        return $out;
     }
 
     /**
