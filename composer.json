@@ -62,7 +62,7 @@
             "description": "Email marketing and newsletters directly inside your Statamic Control Panel.",
             "url": "https://github.com/goldnead/statamic-marketing",
             "developer": "Adrian Goldner",
-            "developer-url": "https://gldnr.studio",
+            "developer-url": "https://adriangoldner.dev",
             "vite": {
                 "input": [
                     "resources/js/cp.js",
