@@ -5,9 +5,11 @@ namespace Goldnead\Marketing\Tests;
 use Goldnead\BrandContext\Sending\SaidRecently;
 use Goldnead\Leadhub\ServiceProvider;
 use Goldnead\Marketing\Sequences\SequenceSync;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
+use Statamic\Addons\Manifest;
 use Statamic\Providers\StatamicServiceProvider;
 
 abstract class TestCase extends OrchestraTestCase
@@ -55,6 +57,8 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function defineEnvironment($app): void
     {
+        $this->buildAddonManifest($app);
+
         $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
 
         $app['config']->set('database.default', 'testing');
@@ -78,6 +82,44 @@ abstract class TestCase extends OrchestraTestCase
 
         $tmpRoot = sys_get_temp_dir().'/marketing-test-'.getmypid();
         $app['config']->set('marketing.storage.flat.path', $tmpRoot.'/content');
+    }
+
+    /**
+     * Make the installed sibling addons known to Statamic as addons.
+     *
+     * A sibling's routes, views, blueprints and translations are not booted
+     * because its ServiceProvider is registered — that only gets the class
+     * loaded. `AddonServiceProvider::boot()` looks the provider up in
+     * Statamic's addon manifest first and returns without doing anything when
+     * it is not in there. That is why marketing's report could link to
+     * `statamic.cp.leadhub.contacts.show`: the route exists only if LeadHub is
+     * a manifest entry.
+     *
+     * Statamic builds that manifest from `<basePath>/vendor/composer/installed.json`,
+     * and under testbench the base path is testbench's own skeleton app, which
+     * has no `vendor/`. So the manifest it builds for itself is always empty —
+     * unless somebody has left a `vendor` symlink in that skeleton, which is
+     * what made this suite green on one developer machine and red in CI, where
+     * the checkout is fresh. Reading the file it caches is no fix either: the
+     * file is the leftover.
+     *
+     * So the manifest is built here from THIS package's vendor directory,
+     * which is the one that actually holds the siblings on every machine. It
+     * is rebuilt for every test rather than read from a cache, and its cache
+     * file goes to a scratch path outside the tree — a manifest the suite
+     * inherits instead of building is the whole defect.
+     */
+    protected function buildAddonManifest($app): void
+    {
+        $manifest = new Manifest(
+            new Filesystem,
+            dirname(__DIR__),
+            sys_get_temp_dir().'/marketing-addons-'.getmypid().'.php'
+        );
+
+        $manifest->build();
+
+        $app->instance(Manifest::class, $manifest);
     }
 
     /**
