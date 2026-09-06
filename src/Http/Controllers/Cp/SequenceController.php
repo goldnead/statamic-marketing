@@ -436,6 +436,8 @@ class SequenceController extends Controller
             return [];
         }
 
+        $sources = [];
+
         return collect($triggers)
             ->map(fn (array $trigger) => [
                 'value' => (string) $trigger['handle'],
@@ -452,7 +454,7 @@ class SequenceController extends Controller
                         'handle' => $field['handle'],
                         'label' => (string) ($field['label'] ?? $field['handle']),
                         'type' => (string) ($field['type'] ?? 'text'),
-                        'options' => is_array($field['options'] ?? null) ? array_values($field['options']) : [],
+                        'options' => $this->fieldOptions($field, $sources),
                         'required' => (bool) ($field['required'] ?? false),
                         'help' => isset($field['help']) ? (string) $field['help'] : null,
                         'default' => $field['default'] ?? null,
@@ -463,6 +465,49 @@ class SequenceController extends Controller
             ->sortBy([['group', 'asc'], ['label', 'asc']])
             ->values()
             ->all();
+    }
+
+    /**
+     * The choices behind one trigger field.
+     *
+     * A node schema either carries its options outright or names an
+     * `options_source` — the handle of a resolver in the automations
+     * OptionSourceRegistry, which is where every dynamic list in this family
+     * already lives (products, lists, forms, funnels, webhook destinations).
+     * Sequences resolve it here rather than fetching the automations options
+     * endpoint from the browser: that endpoint asks for `view automations`, and
+     * somebody who may edit a sequence need not have it.
+     *
+     * `$sources` is a per-request memo, so twenty triggers filtering on the same
+     * product list ask the catalogue once.
+     *
+     * @param  array<string, mixed>  $field
+     * @param  array<string, array<int, array{value: string, label: string}>>  $sources
+     * @return array<int, mixed>
+     */
+    protected function fieldOptions(array $field, array &$sources): array
+    {
+        if (is_array($field['options'] ?? null) && $field['options'] !== []) {
+            return array_values($field['options']);
+        }
+
+        $source = $field['options_source'] ?? null;
+
+        if (! is_string($source) || $source === '') {
+            return [];
+        }
+
+        if (! array_key_exists($source, $sources)) {
+            try {
+                $sources[$source] = app('automations')->optionSources()->resolve($source, request());
+            } catch (\Throwable) {
+                // No resolver, no automations, a sibling that threw: the field
+                // falls back to the text input rather than to a broken screen.
+                $sources[$source] = [];
+            }
+        }
+
+        return $sources[$source];
     }
 
     /**

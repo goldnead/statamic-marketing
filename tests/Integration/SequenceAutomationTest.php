@@ -225,6 +225,21 @@ it('offers the registered triggers to the editor', function (): void {
     expect(collect($trigger['schema'])->pluck('handle')->all())->not->toContain('_restart_policy');
 });
 
+it('resolves a trigger filter from the automations option registry instead of asking for a handle', function (): void {
+    $response = $this->withHeaders(['X-Inertia' => 'true'])->get(cp_route('marketing.sequences.create'));
+
+    $props = json_decode($response->getContent(), true)['props'];
+    $trigger = collect($props['triggers'])->firstWhere('value', 'marketing.subscribed');
+    $field = collect($trigger['schema'])->firstWhere('handle', 'list');
+
+    // The list filter is a choice, not a typing exercise: the schema names an
+    // `options_source` and the editor gets the resolved list with it. An empty
+    // `options` here is the old behaviour — the screen falls back to a free
+    // text input and the user has to know the handle.
+    expect($field['type'])->toBe('select')
+        ->and(collect($field['options'])->pluck('value')->all())->toContain('newsletter');
+});
+
 it('refuses a trigger the engine does not know', function (): void {
     $this->from(cp_route('marketing.sequences.create'))
         ->post(cp_route('marketing.sequences.store'), managedSequencePayload(['trigger' => 'nothing.ever']))
