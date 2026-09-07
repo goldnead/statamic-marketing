@@ -16,8 +16,10 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
         Route::get('/', [ListController::class, 'index'])->name('index');
         Route::get('/create', [ListController::class, 'create'])->name('create');
         Route::post('/', [ListController::class, 'store'])->name('store');
+        // Kein `/{handle}/edit`: die Detailseite ist das Formular. Eine zweite
+        // Seite mit denselben drei Feldern waere eine zweite Stelle, an der die
+        // naechste Aenderung gemacht oder vergessen wird.
         Route::get('/{handle}', [ListController::class, 'show'])->name('show');
-        Route::get('/{handle}/edit', [ListController::class, 'edit'])->name('edit');
         Route::patch('/{handle}', [ListController::class, 'update'])->name('update');
         Route::delete('/{handle}', [ListController::class, 'destroy'])->name('destroy');
 

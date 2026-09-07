@@ -56,15 +56,42 @@ function errorAtField(wrapper, label) {
     return field?.attributes('data-attr-error');
 }
 
-describe('Lists/Edit', () => {
+/*
+ * Die Liste selbst, auf ihrer Detailseite.
+ *
+ * Diese Faelle standen bis zum 07.09.2026 unter `Lists/Edit`, weil das Aendern
+ * einer Liste dort passierte. Es passiert jetzt auf der Detailseite, also
+ * pruefen sie dort — dasselbe Verhalten am neuen Ort, nicht weniger Verhalten.
+ *
+ * Die Seite traegt zwei Formulare mit getrennten Fehler-Ablagen. Die
+ * Zusammenfassung der Liste hat deshalb einen eigenen Anker; `summary()` aus
+ * den Helfern findet den des Abonnenten-Formulars.
+ */
+describe('Lists/Show (die Liste selbst)', () => {
+    function listSummary(wrapper) {
+        const found = wrapper.find('[data-marketing-list-errors]');
+
+        return found.exists() ? found : null;
+    }
+
     function mountPage(props = {}) {
-        return mount(ListsEdit, {
+        return mount(ListsShow, {
             props: {
-                list: { handle: 'newsletter', name: 'Newsletter', description: null, double_opt_in: null },
-                storeUrl: null,
+                list: {
+                    handle: 'newsletter', name: 'Newsletter', description: null,
+                    double_opt_in: null, double_opt_in_effective: true,
+                },
+                stats: { subscribed: 0, pending: 0, unsubscribed: 0, bounced: 0, complained: 0, total: 0 },
+                subscribers: [],
+                columns: [],
+                pagination: { current_page: 1, last_page: 1, total: 0 },
+                filters: { status: '', search: '' },
                 updateUrl: '/cp/marketing/lists/newsletter',
                 deleteUrl: '/cp/marketing/lists/newsletter',
                 defaultDoubleOptIn: true,
+                addSubscriberUrl: '/cp/marketing/lists/newsletter/subscribers',
+                canManageSubscribers: true,
+                canManage: true,
                 ...props,
             },
         });
@@ -82,12 +109,12 @@ describe('Lists/Edit', () => {
     it('shows an error that belongs to no field in the summary', async () => {
         const wrapper = mountPage();
 
-        expect(summary(wrapper), 'the summary is rendered before there is anything to say').toBeNull();
+        expect(listSummary(wrapper), 'the summary is rendered before there is anything to say').toBeNull();
 
         press(wrapper, 'Save');
         await reject(wrapper, lastCall(), { list: 'That list is in use and cannot be renamed.' });
 
-        expect(summary(wrapper)?.text()).toContain('That list is in use and cannot be renamed.');
+        expect(listSummary(wrapper)?.text()).toContain('That list is in use and cannot be renamed.');
     });
 
     it('clears what it showed once the next attempt succeeds', async () => {
@@ -102,14 +129,21 @@ describe('Lists/Edit', () => {
         await wrapper.vm.$nextTick();
 
         expect(errorAtField(wrapper, 'Name')).toBeUndefined();
-        expect(summary(wrapper)).toBeNull();
+        expect(listSummary(wrapper)).toBeNull();
     });
 
     it('reports a refused delete instead of leaving the screen unchanged', async () => {
         const wrapper = mountPage();
 
         press(wrapper, 'Delete');
-        const modal = wrapper.findComponent({ name: 'ConfirmationModal' });
+
+        // Am Titel gesucht, nicht am ersten Treffer: die Seite traegt zwei
+        // Bestaetigungen (Liste und Abonnent), und `findComponent` nimmt die,
+        // die zuerst im Baum steht. Die falsche zu bestaetigen sieht aus wie
+        // "die Seite hat nichts abgeschickt".
+        const modal = wrapper.findAllComponents({ name: 'ConfirmationModal' })
+            .find((candidate) => candidate.attributes('data-attr-title') === 'Delete list');
+
         modal.vm.$attrs.onConfirm();
 
         await reject(wrapper, lastCall(), { list: 'Delete every campaign using this list first.' });
@@ -128,7 +162,6 @@ describe('Lists/Show', () => {
                 columns: [],
                 pagination: { current_page: 1, last_page: 1, total: 0 },
                 filters: { status: '', search: '' },
-                editUrl: '/cp/marketing/lists/newsletter/edit',
                 addSubscriberUrl: '/cp/marketing/lists/newsletter/subscribers',
                 canManageSubscribers: true,
                 canManage: true,
@@ -313,14 +346,24 @@ describe('a key whose field is not on screen', () => {
         expect(visibleText(wrapper)).toContain('That handle is already taken.');
     });
 
-    it('renders a rejected list handle on the edit page, where there is no handle field', async () => {
-        const wrapper = mount(ListsEdit, {
+    it('renders a rejected list handle on the detail page, where there is no handle field', async () => {
+        const wrapper = mount(ListsShow, {
             props: {
-                list: { handle: 'newsletter', name: 'Newsletter', description: null, double_opt_in: null },
-                storeUrl: null,
+                list: {
+                    handle: 'newsletter', name: 'Newsletter', description: null,
+                    double_opt_in: null, double_opt_in_effective: true,
+                },
+                stats: { subscribed: 0, pending: 0, unsubscribed: 0, bounced: 0, complained: 0, total: 0 },
+                subscribers: [],
+                columns: [],
+                pagination: { current_page: 1, last_page: 1, total: 0 },
+                filters: { status: '', search: '' },
                 updateUrl: '/cp/marketing/lists/newsletter',
                 deleteUrl: null,
                 defaultDoubleOptIn: true,
+                addSubscriberUrl: '/cp/marketing/lists/newsletter/subscribers',
+                canManageSubscribers: true,
+                canManage: true,
             },
         });
 

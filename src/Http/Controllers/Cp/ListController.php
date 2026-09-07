@@ -248,20 +248,12 @@ class ListController extends Controller
         })->all();
     }
 
-    public function edit(Request $request, string $handle)
-    {
-        $this->authorizeOrFail($request, 'manage marketing lists');
-
-        $list = $this->lists->find($handle);
-        abort_unless($list, 404);
-
-        return Inertia::render('marketing::Lists/Edit', [
-            'list' => $list->toArray(),
-            'updateUrl' => cp_route('marketing.lists.update', $handle),
-            'deleteUrl' => cp_route('marketing.lists.destroy', $handle),
-            'defaultDoubleOptIn' => (bool) config('marketing.subscriptions.double_opt_in', true),
-        ]);
-    }
+    /*
+     * `edit()` ist entfallen. Die Detailseite ist das Formular, wie beim
+     * Collection-Entry — siehe `show()`. `Lists/Edit.vue` bleibt, aber nur noch
+     * fuer `create()`: dort gibt es keine Detailseite, auf der man tippen
+     * koennte, weil die Liste noch nicht existiert.
+     */
 
     public function update(Request $request, string $handle)
     {

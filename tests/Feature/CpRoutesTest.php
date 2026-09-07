@@ -50,8 +50,9 @@ dataset('cp pages', [
     'dashboard' => ['marketing.dashboard', [], 'marketing::Dashboard'],
     'lists index' => ['marketing.lists.index', [], 'marketing::Lists/Index'],
     'lists create' => ['marketing.lists.create', [], 'marketing::Lists/Edit'],
+    // Kein 'lists edit': die Detailseite ist das Formular, eine Bearbeiten-Seite
+    // gibt es nicht mehr.
     'lists show' => ['marketing.lists.show', ['newsletter'], 'marketing::Lists/Show'],
-    'lists edit' => ['marketing.lists.edit', ['newsletter'], 'marketing::Lists/Edit'],
     'campaigns index' => ['marketing.campaigns.index', [], 'marketing::Campaigns/Index'],
     'campaigns create' => ['marketing.campaigns.create', [], 'marketing::Campaigns/Edit'],
     'campaigns show' => ['marketing.campaigns.show', ['welcome'], 'marketing::Campaigns/Show'],

@@ -1,31 +1,30 @@
 <script setup>
+// Eine Liste anlegen. Nur das.
+//
+// Bis 07.09.2026 war diese Datei zweierlei: das Anlegen-Formular und ein
+// zweites Bearbeiten-Formular auf eigener Seite. Das Zweite ist entfallen —
+// die Detailseite ist jetzt das Formular, wie beim Collection-Entry. Was hier
+// stand, um beide Faelle zu bedienen (updateUrl, deleteUrl, das
+// Loeschen-Modal, `isCreating`), ist mit ihm gegangen: dieselben drei Felder in
+// zwei Dateien sind zwei Stellen, an denen die naechste Aenderung gemacht oder
+// vergessen wird.
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Alert, Button, Dropdown, DropdownMenu, DropdownItem,
-    Field, Input, Select, Textarea, ConfirmationModal,
+    Header, Panel, Card, Alert, Button, Field, Input, Select, Textarea,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
-    'list',                 // { handle, name, description, double_opt_in } | null on create
-    'storeUrl',             // POST endpoint (create only)
-    'updateUrl',            // PATCH endpoint (edit only)
-    'deleteUrl',            // DELETE endpoint (edit only)
-    'defaultDoubleOptIn',   // bool — the config default used when double_opt_in is null
+    'storeUrl',             // POST endpoint
+    'defaultDoubleOptIn',   // bool — die Vorgabe aus der Config
 ]);
 
-const isCreating = computed(() => ! props.updateUrl);
+const name = ref('');
+const handle = ref('');
+const description = ref('');
 
-const name = ref(props.list?.name || '');
-const handle = ref(props.list?.handle || '');
-const description = ref(props.list?.description || '');
-
-// null = use the config default, true/false = explicit override.
-const doubleOptIn = ref(
-    props.list?.double_opt_in === true ? 'on'
-        : props.list?.double_opt_in === false ? 'off'
-        : 'default'
-);
+// 'default' = der Config folgen, 'on'/'off' = ausdrueckliche Abweichung.
+const doubleOptIn = ref('default');
 
 const doubleOptInOptions = computed(() => [
     { value: 'default', label: `${__('Default')} (${props.defaultDoubleOptIn ? __('On') : __('Off')})` },
@@ -33,79 +32,40 @@ const doubleOptInOptions = computed(() => [
     { value: 'off', label: __('Off') },
 ]);
 
-const showDeleteConfirm = ref(false);
-
-function payload() {
-    return {
-        name: name.value,
-        ...(isCreating.value ? { handle: handle.value || null } : {}),
-        description: description.value || null,
-        double_opt_in: doubleOptIn.value === 'default' ? null : doubleOptIn.value === 'on',
-    };
-}
-
-// A rejected list used to look like a dead Save button: the response came back
-// with errors, nothing was written, and the screen did not change. Errors now
-// land on the field they belong to.
+// Eine abgewiesene Liste sah frueher aus wie ein toter Speichern-Knopf: die
+// Antwort kam mit Fehlern zurueck, nichts wurde geschrieben, und der Bildschirm
+// aenderte sich nicht. Fehler landen jetzt an dem Feld, zu dem sie gehoeren.
 const formErrors = ref({});
 
-// Keys rendered next to their own field. Anything else has no field to sit at
-// and goes into the summary above the form, or it would be invisible again.
 const fieldKeys = ['name', 'handle', 'description', 'double_opt_in'];
-
-// Which of those keys actually has a field on screen right now. The handle
-// input is only rendered while creating (`v-if="isCreating"`), so on an update
-// a rejected handle has nowhere to sit — and being on the list above would
-// filter it out of the summary as "already shown at its field". It would then
-// be shown nowhere at all, which is the exact failure 1.5.3 set out to end.
-const keysWithAVisibleField = computed(() =>
-    fieldKeys.filter((key) => key !== 'handle' || isCreating.value)
-);
 
 const generalErrors = computed(() =>
     Object.entries(formErrors.value)
-        .filter(([key]) => ! keysWithAVisibleField.value.includes(key))
+        .filter(([key]) => ! fieldKeys.includes(key))
         .map(([, message]) => message)
 );
 
 function save() {
     if (! name.value.trim()) return;
 
-    const options = {
+    router.post(props.storeUrl, {
+        name: name.value,
+        handle: handle.value || null,
+        description: description.value || null,
+        double_opt_in: doubleOptIn.value === 'default' ? null : doubleOptIn.value === 'on',
+    }, {
         preserveScroll: true,
         onError: (errors) => { formErrors.value = errors || {}; },
         onSuccess: () => { formErrors.value = {}; },
-    };
-
-    if (isCreating.value) {
-        router.post(props.storeUrl, payload(), options);
-    } else {
-        router.patch(props.updateUrl, payload(), options);
-    }
-}
-
-function destroy() {
-    router.delete(props.deleteUrl, {
-        onError: (errors) => { formErrors.value = errors || {}; },
     });
 }
 </script>
 
 <template>
-    <Head :title="[isCreating ? __('Create list') : list.name, __('Lists'), __('Marketing')]" />
+    <Head :title="[__('Create list'), __('Lists'), __('Marketing')]" />
 
     <div class="max-w-3xl mx-auto">
-        <Header :title="isCreating ? __('Create list') : name" icon="layout-list">
-            <Dropdown v-if="deleteUrl">
-                <DropdownMenu>
-                    <DropdownItem
-                        :text="__('Delete')"
-                        icon="trash"
-                        variant="destructive"
-                        @click="showDeleteConfirm = true"
-                    />
-                </DropdownMenu>
-            </Dropdown>
+        <Header :title="__('Create list')" icon="layout-list">
             <Button :text="__('Save')" variant="primary" :disabled="!name.trim()" @click="save" />
         </Header>
 
@@ -120,7 +80,7 @@ function destroy() {
                         <Input v-model="name" :placeholder="__('e.g. Newsletter')" />
                     </Field>
 
-                    <Field v-if="isCreating" :label="__('Handle')" :error="formErrors.handle">
+                    <Field :label="__('Handle')" :error="formErrors.handle">
                         <Input v-model="handle" placeholder="newsletter" />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             {{ __('Lowercase letters, numbers and underscores (snake_case). Leave empty to generate from the name.') }}
@@ -140,15 +100,5 @@ function destroy() {
                 </div>
             </Card>
         </Panel>
-
-        <ConfirmationModal
-            :open="showDeleteConfirm"
-            :title="__('Delete list')"
-            :body-text="__('Delete this list and all of its subscriptions? This cannot be undone.')"
-            danger
-            :button-text="__('Delete')"
-            @cancel="showDeleteConfirm = false"
-            @confirm="destroy"
-        />
     </div>
 </template>
