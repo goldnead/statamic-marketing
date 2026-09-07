@@ -6,7 +6,7 @@ import {
 } from '@statamic/cms/ui';
 
 const props = defineProps([
-    'lists',        // [{ id, handle, name, double_opt_in, subscribed, pending, show_url, edit_url, delete_url }]
+    'lists',        // [{ id, handle, name, double_opt_in, subscribed, pending, show_url, delete_url }]
     'columns',      // Array<Column>
     'createUrl',    // string
     'canManage',    // bool
@@ -86,12 +86,10 @@ function destroy() {
             </template>
 
             <template #prepended-row-actions="{ row }">
-                <DropdownItem
-                    v-if="canManage"
-                    :text="__('Edit')"
-                    icon="edit"
-                    :href="row.edit_url"
-                />
+                <!-- Kein "Bearbeiten" mehr: die Detailseite hinter dem Namen
+                     ist das Formular. Ein zweiter Weg auf eine zweite Seite
+                     mit denselben Feldern war genau der Bruch, den das
+                     Collection-Entry-Vorbild nicht hat. -->
                 <DropdownItem
                     v-if="canManage"
                     :text="__('Delete')"

@@ -2,8 +2,8 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
-    Header, Panel, Card, Alert, Button, Badge, Field, Input, Select, Listing,
-    DropdownItem, ConfirmationModal,
+    Header, Panel, Card, Alert, Button, Badge, Field, Input, Select, Textarea, Listing,
+    Dropdown, DropdownMenu, DropdownItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
@@ -13,7 +13,9 @@ const props = defineProps([
     'columns',                 // Array<Column>
     'pagination',              // { current_page, last_page, total }
     'filters',                 // { status, search }
-    'editUrl',                 // string
+    'updateUrl',               // PATCH endpoint — die Detailseite ist das Formular
+    'deleteUrl',               // DELETE endpoint
+    'defaultDoubleOptIn',      // bool — die Vorgabe aus der Config
     'addSubscriberUrl',        // POST endpoint
     'canManageSubscribers',    // bool
     'canManage',               // bool
@@ -21,6 +23,65 @@ const props = defineProps([
 
 const status = ref(props.filters.status || '');
 const search = ref(props.filters.search || '');
+
+// -- Die Liste selbst ------------------------------------------------------
+//
+// Bis hierher fuehrte jede Aenderung auf ein zweites Formular auf einer
+// eigenen Seite. Beim Collection-Entry gibt es diesen Bruch nicht: die
+// Detailseite ist das Formular, Speichern sitzt oben rechts, Loeschen im
+// "…"-Menue daneben. Genau so hier.
+//
+// Eigene Fehler-Ablage statt der geteilten unten: auf dieser Seite stehen zwei
+// Formulare (Liste und "Abonnent hinzufuegen"). Eine gemeinsame Ablage haette
+// beim Speichern der Liste die Fehler des anderen Formulars weggeraeumt und
+// umgekehrt.
+const name = ref(props.list.name || '');
+const description = ref(props.list.description || '');
+
+// null = die Vorgabe aus der Config, true/false = ausdrueckliche Abweichung.
+const doubleOptIn = ref(
+    props.list.double_opt_in === true ? 'on'
+        : props.list.double_opt_in === false ? 'off'
+        : 'default'
+);
+
+const doubleOptInOptions = computed(() => [
+    { value: 'default', label: `${__('Default')} (${props.defaultDoubleOptIn ? __('On') : __('Off')})` },
+    { value: 'on', label: __('On') },
+    { value: 'off', label: __('Off') },
+]);
+
+const detailErrors = ref({});
+const detailFieldKeys = ['name', 'description', 'double_opt_in'];
+
+const detailGeneralErrors = computed(() =>
+    Object.entries(detailErrors.value)
+        .filter(([key]) => ! detailFieldKeys.includes(key))
+        .map(([, message]) => message)
+);
+
+const showListDeleteConfirm = ref(false);
+
+function saveList() {
+    if (! name.value.trim()) return;
+
+    router.patch(props.updateUrl, {
+        name: name.value,
+        description: description.value || null,
+        double_opt_in: doubleOptIn.value === 'default' ? null : doubleOptIn.value === 'on',
+    }, {
+        preserveScroll: true,
+        onError: (errors) => { detailErrors.value = errors || {}; },
+        onSuccess: () => { detailErrors.value = {}; },
+    });
+}
+
+function destroyList() {
+    router.delete(props.deleteUrl, {
+        onError: (errors) => { detailErrors.value = errors || {}; },
+        onFinish: () => { showListDeleteConfirm.value = false; },
+    });
+}
 
 const newEmail = ref('');
 const newFirstName = ref('');
@@ -150,8 +211,26 @@ function destroy() {
     <Head :title="[list.name, __('Lists'), __('Marketing')]" />
 
     <div class="max-w-page mx-auto">
-        <Header :title="list.name" icon="layout-list">
-            <Button v-if="canManage" :href="editUrl" :text="__('Edit')" variant="default" />
+        <Header :title="canManage ? name : list.name" icon="layout-list">
+            <!-- Loeschen sitzt im "…"-Menue neben Speichern, nicht als eigener
+                 Knopf und nicht in der Seitenleiste — wie beim Entry. -->
+            <Dropdown v-if="canManage && deleteUrl">
+                <DropdownMenu>
+                    <DropdownItem
+                        :text="__('Delete')"
+                        icon="trash"
+                        variant="destructive"
+                        @click="showListDeleteConfirm = true"
+                    />
+                </DropdownMenu>
+            </Dropdown>
+            <Button
+                v-if="canManage && updateUrl"
+                :text="__('Save')"
+                variant="primary"
+                :disabled="!name.trim()"
+                @click="saveList"
+            />
         </Header>
 
         <div class="flex flex-wrap items-center gap-2 -mt-4 mb-6">
@@ -163,9 +242,37 @@ function destroy() {
             />
         </div>
 
-        <p v-if="list.description" class="text-sm text-gray-500 dark:text-gray-400 -mt-2 mb-4">
+        <!-- Nur fuer Leser ohne Schreibrecht. Wer schreiben darf, sieht die
+             Beschreibung als Feld weiter unten statt zweimal. -->
+        <p v-if="! canManage && list.description" class="text-sm text-gray-500 dark:text-gray-400 -mt-2 mb-4">
             {{ list.description }}
         </p>
+
+        <Alert v-if="detailGeneralErrors.length" variant="error" class="mb-4" data-marketing-list-errors>
+            <p v-for="(message, index) in detailGeneralErrors" :key="index">{{ message }}</p>
+        </Alert>
+
+        <!-- Die Liste selbst, editierbar. -->
+        <Panel v-if="canManage && updateUrl" :heading="__('Details')" class="mb-4">
+            <Card>
+                <div class="space-y-4">
+                    <Field :label="__('Name')" :error="detailErrors.name">
+                        <Input v-model="name" :placeholder="__('e.g. Newsletter')" />
+                    </Field>
+
+                    <Field :label="__('Description')" :error="detailErrors.description">
+                        <Textarea v-model="description" rows="3" :placeholder="__('Optional description for this list.')" />
+                    </Field>
+
+                    <Field :label="__('Double opt-in')" :error="detailErrors.double_opt_in">
+                        <Select v-model="doubleOptIn" :options="doubleOptInOptions" />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {{ __('Whether new subscribers must confirm their email address before being subscribed.') }}
+                        </p>
+                    </Field>
+                </div>
+            </Card>
+        </Panel>
 
         <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
             <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
@@ -307,6 +414,16 @@ function destroy() {
             :button-text="__('marketing::subscribers.actions.delete')"
             @cancel="subscriberToDelete = null"
             @confirm="destroy"
+        />
+
+        <ConfirmationModal
+            :open="showListDeleteConfirm"
+            :title="__('Delete list')"
+            :body-text="__('Delete this list and all of its subscriptions? This cannot be undone.')"
+            danger
+            :button-text="__('Delete')"
+            @cancel="showListDeleteConfirm = false"
+            @confirm="destroyList"
         />
     </div>
 </template>

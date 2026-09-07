@@ -36,7 +36,6 @@ class ListController extends Controller
                 'subscribed' => $listStats['subscribed'],
                 'pending' => $listStats['pending'],
                 'show_url' => cp_route('marketing.lists.show', $list->handle),
-                'edit_url' => cp_route('marketing.lists.edit', $list->handle),
                 'delete_url' => cp_route('marketing.lists.destroy', $list->handle),
             ];
         })->values()->all();
@@ -165,7 +164,13 @@ class ListController extends Controller
                 'total' => $page->total(),
             ],
             'filters' => ['status' => $status, 'search' => (string) $request->input('search', '')],
-            'editUrl' => cp_route('marketing.lists.edit', $handle),
+            // Die Detailseite ist das Formular, wie beim Collection-Entry:
+            // Speichern oben rechts, Loeschen im "…"-Menue daneben. Vorher
+            // fuehrte ein Bearbeiten-Knopf von hier auf eine zweite Seite mit
+            // denselben drei Feldern darauf.
+            'updateUrl' => cp_route('marketing.lists.update', $handle),
+            'deleteUrl' => cp_route('marketing.lists.destroy', $handle),
+            'defaultDoubleOptIn' => (bool) config('marketing.subscriptions.double_opt_in', true),
             'addSubscriberUrl' => cp_route('marketing.lists.subscribers.store', $handle),
             'canManageSubscribers' => $this->userCan($request, 'manage marketing subscribers'),
             'canManage' => $this->userCan($request, 'manage marketing lists'),
