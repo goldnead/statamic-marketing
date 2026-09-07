@@ -38,6 +38,29 @@ use Illuminate\Support\Facades\Schema;
  * The standalone `type` index stays. A composite cannot serve a query that
  * does not name its leading column, so dropping it would trade one problem for
  * another.
+ *
+ * WHY `down()` TAKES THE FOREIGN KEY APART FIRST
+ * ----------------------------------------------
+ * InnoDB requires an index whose leading column is the referencing column, and
+ * it keeps exactly one: adding `(message_id, type)` makes the index MySQL
+ * created for `marketing_message_events_message_id_foreign` redundant, and
+ * MySQL **drops it in the same statement**. Measured on MySQL 8.0.46, not
+ * assumed — after `up()` the only index left on `message_id` is this one.
+ *
+ * A plain `dropIndex` in `down()` therefore takes the last index the foreign
+ * key has, and InnoDB refuses:
+ *
+ *     SQLSTATE[HY000] 1553 Cannot drop index 'mme_message_id_type_index':
+ *     needed in a foreign key constraint
+ *
+ * SQLite has neither the requirement nor the refusal, which is why the whole
+ * SQLite matrix stayed green while every MySQL run died in the rollback that
+ * `loadMigrationsFrom()` performs after each test.
+ *
+ * So the constraint is released, the index dropped, the constraint put back —
+ * and MySQL recreates its own index for it, which is exactly the state before
+ * `up()`. Leaving the index standing instead was the other candidate and is
+ * worse: a `down()` that does not undo its `up()` is not a rollback.
  */
 return new class extends Migration
 {
@@ -51,7 +74,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('marketing_message_events', function (Blueprint $table) {
+            $table->dropForeign(['message_id']);
             $table->dropIndex('mme_message_id_type_index');
+            $table->foreign('message_id')->references('id')->on('marketing_messages')->cascadeOnDelete();
         });
     }
 };
