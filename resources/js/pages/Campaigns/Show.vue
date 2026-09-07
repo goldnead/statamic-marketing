@@ -31,6 +31,7 @@ const props = defineProps([
     'editable',      // bool
     'archive',       // { enabled, released, live, sendable_only, url, update_url }
     'canManage',     // bool
+    'mailPreviewUrl', // string|null — Versand-Schnappschuss; null, solange nichts raus ist
 ]);
 
 // Mirrors the server's `archive.released`. Kept as local state so the switch
@@ -444,6 +445,31 @@ const subline = computed(() => {
                         <Card v-for="tile in statTiles" :key="tile.label" class="h-full">
                             <Subheading :text="tile.label" />
                             <Heading size="lg" class="mt-2 tabular-nums" :text="String(tile.value)" />
+                        </Card>
+                    </div>
+
+                    <!-- Die Mail selbst. Sie stand hier bisher nirgends: die
+                         Detailseite zeigte ausschliesslich Zahlen ueber eine
+                         Mail, die man nirgends ansehen konnte.
+
+                         Der Rahmen ist ein iframe und keine eingebettete
+                         Ansicht. Eine Mail bringt ein vollstaendiges Dokument
+                         mit eigenen `body`-Regeln mit; direkt in die Seite
+                         gelegt wuerde sie das Control Panel um sich herum
+                         umstylen.
+
+                         Die Hinweisleiste ueber der Mail kommt aus dem
+                         Schnappschuss selbst und sagt dort, woher die
+                         eingesetzten Werte stammen. Sie wird hier bewusst
+                         nicht ein zweites Mal danebengeschrieben. -->
+                    <div v-if="mailPreviewUrl" class="mb-6" data-marketing-mail-preview>
+                        <Subheading :text="__('marketing::campaigns.report.mail_heading')" class="mb-2" />
+                        <Card>
+                            <iframe
+                                :src="mailPreviewUrl"
+                                class="w-full h-[42rem] rounded border border-gray-200 dark:border-gray-700 bg-white"
+                                :title="__('marketing::campaigns.report.mail_heading')"
+                            />
                         </Card>
                     </div>
 

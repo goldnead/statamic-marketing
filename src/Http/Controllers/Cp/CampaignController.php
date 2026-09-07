@@ -10,6 +10,7 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignReport;
@@ -30,6 +31,9 @@ use Statamic\Support\Str;
 
 class CampaignController extends Controller
 {
+    /** Wie in {@see StartCampaignJob}: optionales Addon, deshalb als String. */
+    private const SNAPSHOTS = 'Goldnead\\EmailTemplates\\Snapshots\\Snapshots';
+
     public function __construct(
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
@@ -208,7 +212,35 @@ class CampaignController extends Controller
                 'update_url' => cp_route('marketing.campaigns.archive', $handle),
             ],
             'canManage' => $canManage,
+            'mailPreviewUrl' => $this->mailPreviewUrl($campaign),
         ]);
+    }
+
+    /**
+     * Die Mail, die rausging — als CP-Adresse fuer ein `<iframe>`.
+     *
+     * Kommt aus dem Versand-Schnappschuss in `statamic-email-templates`. Der
+     * haelt die Vorlage mit ihren Platzhaltern; eingesetzt wird erst beim
+     * Ansehen, und nichts davon wird gespeichert.
+     *
+     * `null` heisst dreierlei, und alle drei enden gleich: Addon nicht
+     * installiert, Schnappschuesse abgeschaltet oder Migration nicht gelaufen,
+     * oder diese Kampagne ist noch nicht raus. Die Seite zeigt dann kein
+     * Mail-Panel statt eines Rahmens mit 404 darin.
+     *
+     * Eine Kampagne ist genau ein Schnappschuss: nach dem Versand ist sie nicht
+     * mehr bearbeitbar ({@see Campaign::isEditable()}), es kann also keine
+     * zweite Fassung geben, an der `latestForOwner()` vorbeigreifen wuerde.
+     */
+    protected function mailPreviewUrl(Campaign $campaign): ?string
+    {
+        if (! class_exists(self::SNAPSHOTS)) {
+            return null;
+        }
+
+        $class = self::SNAPSHOTS;
+
+        return $class::previewUrl($class::latestForOwner('marketing:campaign', $campaign->handle));
     }
 
     /**

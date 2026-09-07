@@ -12,6 +12,7 @@ use Goldnead\Marketing\Events\CampaignSending;
 use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\VariantAssigner;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
@@ -29,6 +30,15 @@ class StartCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
+    /**
+     * Die Snapshot-Schicht, als String gehalten statt importiert.
+     *
+     * `goldnead/statamic-email-templates` ist hier eine optionale Abhaengigkeit.
+     * Ein `use` waere ein harter Import und wuerde jeden Versand auf einer
+     * Installation ohne dieses Addon zerreissen.
+     */
+    private const SNAPSHOTS = 'Goldnead\\EmailTemplates\\Snapshots\\Snapshots';
+
     public function __construct(public string $campaignHandle) {}
 
     public function handle(
@@ -44,6 +54,8 @@ class StartCampaignJob implements ShouldQueue
         }
 
         event(new CampaignSending($campaign));
+
+        $this->recordSnapshot($campaign);
 
         $queue = (string) config('marketing.sending.queue', 'default');
         $perMinute = (int) config('marketing.sending.messages_per_minute', 0);
@@ -154,6 +166,45 @@ class StartCampaignJob implements ShouldQueue
 
             event(new CampaignSent($campaign));
         }
+    }
+
+    /**
+     * Einmal je Versand festhalten, was rausgeht.
+     *
+     * Hier und nirgends sonst. Das ist die eine Stelle, an der die Vorlage
+     * feststeht und der Versand beginnt: davor steht der Entwurf, danach faechert
+     * sich alles in eine Zeile je Empfaenger auf. In `SendMessageJob` waere es
+     * ein Schnappschuss je Empfaenger, im `CampaignRenderer` einer je
+     * Rendervorgang — beides genau die Bauart, die diese Schicht vermeidet.
+     *
+     * Uebergeben wird die Vorlage mit ihren Platzhaltern, nie die gerenderte
+     * Mail eines Empfaengers. Die Schicht weist gerenderten Inhalt zwar ab, aber
+     * eine Abweisung heisst: kein Schnappschuss, und das faellt erst auf der
+     * Detailseite auf. Siehe {@see CampaignRenderer::templateAtSendTime()}.
+     *
+     * Als Eigentuemer steht das Handle der Kampagne. Die Kampagne hat keine
+     * andere Identitaet: `marketing_messages.campaign_handle`, jede CP-Route und
+     * beide Ablagen (Datenbank wie Flatfile) benennen sie so.
+     *
+     * Der Renderer wird hier aus dem Container geholt statt in `handle()`
+     * hineingereicht, damit die Signatur von `handle()` bleibt, wie sie ist.
+     */
+    protected function recordSnapshot(Campaign $campaign): void
+    {
+        if (! class_exists(self::SNAPSHOTS)) {
+            return;
+        }
+
+        $class = self::SNAPSHOTS;
+
+        $class::record('marketing:campaign', $campaign->handle, [
+            'subject' => $campaign->subject,
+            'body' => app(CampaignRenderer::class)->templateAtSendTime($campaign),
+            'slug' => $campaign->templateHandle,
+        ], array_filter([
+            'sender_name' => $campaign->fromName,
+            'sender_email' => $campaign->fromEmail,
+        ]));
     }
 
     /**

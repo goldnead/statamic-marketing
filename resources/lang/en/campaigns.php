@@ -59,6 +59,7 @@ return [
         ],
         'all_statuses' => 'All statuses',
         'export' => 'Export as CSV',
+        'mail_heading' => 'The mail that went out',
         'opens_heading' => 'Opens',
         'opens_total' => 'Opens in total',
         'opens_human' => 'By a person',

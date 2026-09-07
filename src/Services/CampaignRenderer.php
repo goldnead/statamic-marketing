@@ -74,6 +74,44 @@ class CampaignRenderer
         return $this->build($campaign, $list, null, null, archive: true);
     }
 
+    /**
+     * Die Vorlage, wie sie beim Versand steht: das Layout mit eingesetztem
+     * Kampagnentext, alle uebrigen `{{ … }}` unangetastet.
+     *
+     * Fuer den Versand-Schnappschuss, und bewusst nicht {@see render()}. Was
+     * `render()` liefert, gehoert einem Empfaenger: signierte
+     * Selbstbedienungs-Links, umgeschriebene Klicks, Zaehlpixel. Davon darf
+     * nichts in eine Tabelle, die genau deshalb ohne Frist und ohne
+     * Loeschkonzept auskommt, weil kein personenbezogener Text darin steht.
+     *
+     * Zwei Schritte aus {@see build()} kommen mit, einer nicht:
+     *
+     *  - Der Kampagnentext wird eingesetzt, denn ohne ihn haelt der
+     *    Schnappschuss einen leeren Rahmen fest.
+     *  - Die Anschriftenzeile kommt mit. Sie ist Pflichtangabe nach § 5 DDG
+     *    und stand in jeder Mail, die rausging.
+     *  - Der Selbstbedienungs-Fuss kommt **nicht** mit. Er traegt die
+     *    signierten Adressen einer bestimmten Person.
+     *
+     * Ersetzt wird per Ausdruck statt per Antlers: Antlers wuerde alle
+     * uebrigen Platzhalter mit aufloesen, und die sollen stehen bleiben.
+     */
+    public function templateAtSendTime(Campaign $campaign): string
+    {
+        $layout = $this->resolveTemplateHtml($campaign->templateHandle);
+
+        // Callback statt Ersatz-String: ein `$` oder `\` im Kampagnentext waere
+        // sonst eine Rueckwaertsreferenz und wuerde stillschweigend etwas
+        // anderes einsetzen als das, was geschrieben wurde.
+        $html = preg_replace_callback(
+            '/\{\{\s*content\s*\}\}/',
+            fn () => $campaign->content,
+            $layout,
+        );
+
+        return $this->ensurePostalLine(is_string($html) ? $html : $layout);
+    }
+
     protected function build(
         Campaign $campaign,
         MailingList $list,
