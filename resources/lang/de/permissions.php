@@ -8,4 +8,5 @@ return [
     'manage_campaigns' => 'Kampagnen verwalten',
     'send_campaigns' => 'Kampagnen versenden',
     'manage_sequences' => 'Sequenzen verwalten',
+    'manage_settings' => 'Marketing-Einstellungen verwalten',
 ];

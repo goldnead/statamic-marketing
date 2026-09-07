@@ -8,4 +8,5 @@ return [
     'manage_campaigns' => 'Manage campaigns',
     'send_campaigns' => 'Send campaigns',
     'manage_sequences' => 'Manage sequences',
+    'manage_settings' => 'Manage marketing settings',
 ];

@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing;
 
+use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
@@ -33,6 +34,7 @@ use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
 use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
 use Goldnead\Marketing\Support\ConfiguredPostalLine;
+use Goldnead\Marketing\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Log;
 use Statamic\Facades\CP\Nav;
@@ -151,6 +153,19 @@ class ServiceProvider extends AddonServiceProvider
         // booted() would fire before sibling addons have booted.
         $this->registerSiblingBridges();
         $this->registerInsightsMetrics();
+
+        // Die eigenen Einstellungen beim gemeinsamen Bildschirm der Suite
+        // anmelden.
+        //
+        // In boot(), nicht in bootAddon(), und das ist keine Stilfrage:
+        // brand-context wendet die gespeicherten Ueberschreibungen aus einem
+        // `app->booted()`-Rueckruf an, damit vorher jedes boot() an der Reihe
+        // war. bootAddon() laeuft selbst schon aus einem `app->booted()`, und
+        // welcher von beiden zuerst feuert, haengt an der Paket-Ladereihenfolge
+        // — die Anmeldung dort wuerde auf manchen Installationen ankommen und
+        // auf anderen nicht, ohne dass etwas auf dem Bildschirm sagt, auf
+        // welchen.
+        app(SettingsRegistry::class)->register(Settings::class);
     }
 
     /**
@@ -429,6 +444,12 @@ class ServiceProvider extends AddonServiceProvider
                             ]),
                         Permission::make('manage marketing sequences')
                             ->label(__('marketing::permissions.manage_sequences')),
+                        // Neu, nicht umbenannt. Die fuenf Rechte darueber
+                        // bleiben Wort fuer Wort, wie sie sind: ein
+                        // umbenanntes Recht ist ein stiller Rechteentzug fuer
+                        // jede Nutzergruppe, der es zugewiesen war.
+                        Permission::make('manage marketing settings')
+                            ->label(__('marketing::permissions.manage_settings')),
                     ]);
             });
         });
