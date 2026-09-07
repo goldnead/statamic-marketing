@@ -13,6 +13,7 @@ use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Marketing\Support\SendSnapshot;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Support\Facades\Log;
@@ -261,6 +262,25 @@ class SingleSend
         // After delivery, never before it. A mail that threw did not reach
         // anybody and may not consume their budget.
         $this->cap->record($email, $class, $brandId, $reference);
+
+        // Und aus demselben Grund an derselben Stelle: was rausging, wird
+        // festgehalten, was nicht rausging, nicht.
+        //
+        // Nur im Kampagnen-Modus. Ein Vorlagen-Versand ({@see sendTemplate()})
+        // hat keine Kampagne und damit keine Detailseite, auf der ein
+        // Schnappschuss etwas zu zeigen haette; sein Eigentuemer waere der
+        // Automations-Knoten, und den haelt `statamic-automations` selbst fest.
+        //
+        // Hier steht bewusst eine Zeile je Empfaenger im Aufruf und trotzdem
+        // eine Zeile in der Tabelle: der Schluessel ist
+        // `(owner_type, owner_id, content_hash)`, ein Knoten, der zehntausendmal
+        // feuert, bleibt eine Zeile und zaehlt `send_count` hoch. Ohne diesen
+        // Aufruf zeigte die Detailseite einer Kampagne, die nur ueber eine
+        // Automation verschickt wird, genau das, was der Befund vom 03.09.
+        // bemaengelt: Zahlen ohne die Mail dazu.
+        if ($campaignHandle !== null) {
+            SendSnapshot::recordCampaign($campaign, $this->renderer);
+        }
 
         event(new MessageSent($message->fresh()));
 

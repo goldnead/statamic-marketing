@@ -26,9 +26,18 @@ if (! class_exists(Snapshots::class)) {
          */
         public static array $recorded = [];
 
+        /**
+         * Aufrufe, die die Wache abgewiesen hat — damit ein Test den
+         * Unterschied zwischen "nichts festgehalten" und "abgewiesen" sieht.
+         *
+         * @var array<int, array{ownerType: ?string, ownerId: int|string|null, template: array<string, mixed>, meta: array<string, mixed>}>
+         */
+        public static array $refused = [];
+
         public static function reset(): void
         {
             self::$recorded = [];
+            self::$refused = [];
         }
 
         /**
@@ -41,9 +50,35 @@ if (! class_exists(Snapshots::class)) {
             array $template,
             array $meta = [],
         ): ?object {
+            // So streng wie das Original: gerenderte Mail eines Empfaengers
+            // wird abgewiesen, es gibt `null` zurueck und der Versand laeuft
+            // weiter. Ein Doppel, das alles annimmt, wuerde genau den Fehler
+            // durchlassen, gegen den diese Tests geschrieben sind.
+            foreach (['subject', 'body', 'plain_text'] as $feld) {
+                if (is_string($template[$feld] ?? null) && self::looksRendered($template[$feld])) {
+                    self::$refused[] = compact('ownerType', 'ownerId', 'template', 'meta');
+
+                    return null;
+                }
+            }
+
             self::$recorded[] = compact('ownerType', 'ownerId', 'template', 'meta');
 
             return (object) ['id' => count(self::$recorded)];
+        }
+
+        /** Woertlich aus dem Original. */
+        public static function looksRendered(string $html): bool
+        {
+            if ($html === '') {
+                return false;
+            }
+
+            if (preg_match('/[?&]signature=[a-f0-9]{16,}/i', $html) === 1) {
+                return true;
+            }
+
+            return preg_match('#/o/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.gif#i', $html) === 1;
         }
 
         /*

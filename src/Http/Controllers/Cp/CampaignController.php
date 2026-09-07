@@ -10,7 +10,6 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
-use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignReport;
@@ -19,6 +18,7 @@ use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\CampaignContentField;
 use Goldnead\Marketing\Support\EmailTemplateOptions;
 use Goldnead\Marketing\Support\HandleOwnership;
+use Goldnead\Marketing\Support\SendSnapshot;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
@@ -31,9 +31,6 @@ use Statamic\Support\Str;
 
 class CampaignController extends Controller
 {
-    /** Wie in {@see StartCampaignJob}: optionales Addon, deshalb als String. */
-    private const SNAPSHOTS = 'Goldnead\\EmailTemplates\\Snapshots\\Snapshots';
-
     public function __construct(
         protected CampaignRepository $campaigns,
         protected MailingListRepository $lists,
@@ -234,13 +231,7 @@ class CampaignController extends Controller
      */
     protected function mailPreviewUrl(Campaign $campaign): ?string
     {
-        if (! class_exists(self::SNAPSHOTS)) {
-            return null;
-        }
-
-        $class = self::SNAPSHOTS;
-
-        return $class::previewUrl($class::latestForOwner('marketing:campaign', $campaign->handle));
+        return SendSnapshot::previewUrlFor($campaign);
     }
 
     /**

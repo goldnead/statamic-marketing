@@ -103,8 +103,14 @@ class CampaignRenderer
         // Callback statt Ersatz-String: ein `$` oder `\` im Kampagnentext waere
         // sonst eine Rueckwaertsreferenz und wuerde stillschweigend etwas
         // anderes einsetzen als das, was geschrieben wurde.
+        //
+        // Der optionale Teil hinter dem Namen faengt die Antlers-Schreibweise
+        // mit Modifier (`{{ content|raw }}`) mit ab. Ohne ihn bliebe der
+        // Platzhalter stehen und der Schnappschuss haette den Kampagnentext
+        // verloren — und zwar lautlos, weil `build()` ihn ueber Antlers
+        // aufloest und die Mail deshalb richtig aussieht.
         $html = preg_replace_callback(
-            '/\{\{\s*content\s*\}\}/',
+            '/\{\{\s*content\s*(?:\|[^}]*)?\}\}/',
             fn () => $campaign->content,
             $layout,
         );

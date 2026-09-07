@@ -12,8 +12,9 @@ use Goldnead\Marketing\Events\CampaignSending;
 use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
-use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Marketing\Sending\SingleSend;
 use Goldnead\Marketing\Services\VariantAssigner;
+use Goldnead\Marketing\Support\SendSnapshot;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Bus\Queueable;
@@ -29,15 +30,6 @@ use Illuminate\Support\Facades\Log;
 class StartCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
-
-    /**
-     * Die Snapshot-Schicht, als String gehalten statt importiert.
-     *
-     * `goldnead/statamic-email-templates` ist hier eine optionale Abhaengigkeit.
-     * Ein `use` waere ein harter Import und wuerde jeden Versand auf einer
-     * Installation ohne dieses Addon zerreissen.
-     */
-    private const SNAPSHOTS = 'Goldnead\\EmailTemplates\\Snapshots\\Snapshots';
 
     public function __construct(public string $campaignHandle) {}
 
@@ -182,29 +174,14 @@ class StartCampaignJob implements ShouldQueue
      * eine Abweisung heisst: kein Schnappschuss, und das faellt erst auf der
      * Detailseite auf. Siehe {@see CampaignRenderer::templateAtSendTime()}.
      *
-     * Als Eigentuemer steht das Handle der Kampagne. Die Kampagne hat keine
-     * andere Identitaet: `marketing_messages.campaign_handle`, jede CP-Route und
-     * beide Ablagen (Datenbank wie Flatfile) benennen sie so.
-     *
-     * Der Renderer wird hier aus dem Container geholt statt in `handle()`
-     * hineingereicht, damit die Signatur von `handle()` bleibt, wie sie ist.
+     * Der Einzelversand aus einer Automation geht nicht hier durch, sondern
+     * durch {@see SingleSend}, und haelt dort seinen
+     * eigenen Schnappschuss fest. Beide reichen dieselbe Vorlage derselben
+     * Kampagne ein, also fasst der Inhalts-Hash sie zu einer Zeile zusammen.
      */
     protected function recordSnapshot(Campaign $campaign): void
     {
-        if (! class_exists(self::SNAPSHOTS)) {
-            return;
-        }
-
-        $class = self::SNAPSHOTS;
-
-        $class::record('marketing:campaign', $campaign->handle, [
-            'subject' => $campaign->subject,
-            'body' => app(CampaignRenderer::class)->templateAtSendTime($campaign),
-            'slug' => $campaign->templateHandle,
-        ], array_filter([
-            'sender_name' => $campaign->fromName,
-            'sender_email' => $campaign->fromEmail,
-        ]));
+        SendSnapshot::recordCampaign($campaign);
     }
 
     /**

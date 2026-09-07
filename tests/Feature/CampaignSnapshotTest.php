@@ -10,6 +10,7 @@ use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Sending\SingleSend;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Goldnead\Marketing\Services\VariantAssigner;
@@ -167,5 +168,55 @@ it('haelt nichts fest, wenn die Kampagne gar nicht im Versand ist', function ():
 
     starteVersand();
 
+    expect(Snapshots::$recorded)->toBeEmpty();
+});
+
+/*
+ * Der zweite Sende-Weg.
+ *
+ * Eine Kampagne muss nicht ueber `StartCampaignJob` rausgehen. Ein
+ * E-Mail-Knoten in einer Automation schickt dieselbe Kampagne ueber
+ * {@see SingleSend} an eine Person nach der anderen. Ohne Schnappschuss dort
+ * zeigte die Detailseite einer solchen Kampagne genau das, was der Durchgang
+ * vom 03.09. bemaengelt hat: Zahlen ohne die Mail dazu.
+ */
+it('haelt auch den Einzelversand einer Kampagne fest', function (): void {
+    $abo = app(SubscriptionService::class)->subscribe($this->list, 'dora@example.com', ['first_name' => 'Dora']);
+
+    app(SingleSend::class)->send($this->campaign, $this->list, $abo->fresh());
+
+    expect(Snapshots::$recorded)->toHaveCount(1);
+    expect(Snapshots::$recorded[0]['ownerType'])->toBe('marketing:campaign');
+    expect(Snapshots::$recorded[0]['ownerId'])->toBe('september');
+
+    $vorlage = Snapshots::$recorded[0]['template'];
+    expect($vorlage['body'])->not->toContain('Dora');
+    expect($vorlage['body'])->not->toContain('dora@example.com');
+    expect($vorlage['body'])->toContain('{{ first_name }}');
+});
+
+it('macht aus zwei Einzelversanden derselben Kampagne keine zwei Aufzeichnungen zweier Mails', function (): void {
+    foreach ([['dora@example.com', 'Dora'], ['egon@example.com', 'Egon']] as [$mail, $vorname]) {
+        $abo = app(SubscriptionService::class)->subscribe($this->list, $mail, ['first_name' => $vorname]);
+        app(SingleSend::class)->send($this->campaign, $this->list, $abo->fresh());
+    }
+
+    // Zwei Aufrufe — die Schicht selbst fasst sie ueber den Inhalts-Hash zu
+    // einer Zeile zusammen und zaehlt `send_count` hoch. Was dieser Test
+    // sicherstellt, ist dass beide denselben Eigentuemer und denselben Inhalt
+    // einreichen, damit das Zusammenfassen ueberhaupt greifen kann.
+    expect(Snapshots::$recorded)->toHaveCount(2);
+    expect(Snapshots::$recorded[0]['ownerId'])->toBe(Snapshots::$recorded[1]['ownerId']);
+    expect(Snapshots::$recorded[0]['template'])->toBe(Snapshots::$recorded[1]['template']);
+});
+
+it('haelt fuer einen Vorlagen-Versand ohne Kampagne nichts fest', function (): void {
+    $abo = app(SubscriptionService::class)->subscribe($this->list, 'frida@example.com', ['first_name' => 'Frida']);
+
+    app(SingleSend::class)->sendTemplate('haus', 'Hallo', $this->list, $abo->fresh());
+
+    // Es gibt keine Kampagne und damit keine Detailseite, auf der etwas zu
+    // zeigen waere. Der Eigentuemer waere der Automations-Knoten, und den haelt
+    // statamic-automations selbst fest.
     expect(Snapshots::$recorded)->toBeEmpty();
 });
