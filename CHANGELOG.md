@@ -2,6 +2,22 @@
 
 ## 2.23.0 — 2026-09-08
 
+### Fixed: a setting can be reset to its packaged default again
+
+Saving anything in **Settings → Addon Settings** wrote a row for every value on the screen, not
+just the changed one, and no value could ever go back to following `config/marketing.php`. Every
+setting of the installation was nailed to its value on the day of the first save, and a package
+update could no longer move any of them.
+
+The cause was where this addon merged its own config. That happened during the boot phase, and
+`brand-context` takes its baseline of the packaged values from an earlier callback — so it read
+an empty config and remembered that emptiness. The merge now runs in `register()`, where Laravel
+expects it and where it is early enough for the baseline. Only the publishing stays in the boot
+phase.
+
+Nothing to do after updating: the settings screen writes the correct rows from the next save on,
+and a value already stored at its packaged default is dropped as soon as it is saved again.
+
 ### Fixed: an unmigrated install no longer answers HTTP 500
 
 The dashboard, lists, campaigns, sequences and templates screens used to die with `no such

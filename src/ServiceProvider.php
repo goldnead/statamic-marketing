@@ -85,6 +85,30 @@ class ServiceProvider extends AddonServiceProvider
     {
         parent::register();
 
+        // Die eigene Config zusammenfuehren, und zwar hier und nicht im Boot.
+        //
+        // `brand-context` haelt sich beim ersten Anwenden die Paketwerte als
+        // Baseline fest (`SettingsManager::baselineFor()`), und das laeuft aus
+        // `app->booted()`. Statamic ruft `bootAddon()` aus einem *eigenen*
+        // `app->booted()`-Rueckruf, der spaeter dran ist. Solange das Merge
+        // dort hing, war `config('marketing')` im Moment der Baseline noch
+        // leer — und `??=` friert diese Leere fuer den Rest des Prozesses ein.
+        //
+        // Was das kostet: `packagedDefault()` antwortet dann fuer jeden
+        // Schluessel mit `null`, kein gespeicherter Wert entspricht je seinem
+        // Paket-Default, und die Zeile in `brand_settings` wird nie geloescht.
+        // Jede Einstellung bleibt auf ihrem Wert festgenagelt und die
+        // Installation gegen kuenftige Paket-Updates eingefroren, ohne Fehler
+        // und ohne Meldung. Gefallen ist das an `SettingsEditorTest > es
+        // speichert eine Aenderung und laesst unveraenderte Werte
+        // ungespeichert`, ab brand-context 1.13.0.
+        //
+        // In `register()` ist ausserdem die Stelle, an der Laravel das Merge
+        // ohnehin erwartet, und an der es die Geschwister-Addons der Suite
+        // auch machen. Nur `publishes()` bleibt im Boot: das braucht die
+        // Pfad-Helfer der Anwendung.
+        $this->mergeConfigFrom(__DIR__.'/../config/marketing.php', 'marketing');
+
         $langPath = __DIR__.'/../resources/lang';
 
         $this->app->resolving('translator', function ($translator) use ($langPath) {
@@ -471,7 +495,9 @@ class ServiceProvider extends AddonServiceProvider
             __DIR__.'/../resources/lang' => $this->app->langPath('vendor/marketing'),
         ], 'marketing-translations');
 
-        $this->mergeConfigFrom(__DIR__.'/../config/marketing.php', 'marketing');
+        // Das Zusammenfuehren steht in `register()`, weil es dort frueh genug
+        // ist fuer die Baseline von brand-context; hier bleibt nur das
+        // Veroeffentlichen.
 
         return $this;
     }
