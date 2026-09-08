@@ -32,9 +32,11 @@ final class Setup
      */
     public static function guard(string $title, string ...$tables): ?Response
     {
+        $existing = self::existingTables();
+
         $missing = array_values(array_filter(
             $tables,
-            fn (string $table) => ! Schema::hasTable($table)
+            fn (string $table) => ! in_array($table, $existing, true)
         ));
 
         if ($missing === []) {
@@ -73,5 +75,43 @@ final class Setup
         return config('marketing.storage.driver', 'flat') === 'eloquent'
             ? array_values($tables)
             : [];
+    }
+
+    /**
+     * Every table this connection has, read in one go.
+     *
+     * `Schema::hasTable()` asks the database once per table, and the guard
+     * above is asked about up to five of them on the widest page — five schema
+     * round trips before the dashboard has drawn anything, on every single
+     * load, to answer a question that is only ever interesting on an install
+     * whose migrations never ran. `Schema::getTables()` answers the same
+     * question for all of them at a fixed cost, measured at two queries on
+     * SQLite and one information_schema read on MySQL.
+     *
+     * Deliberately NOT `getTableListing()`: since Laravel 13 that qualifies
+     * every name with its schema (`main.marketing_subscriptions` on SQLite),
+     * so a plain comparison against the names the callers pass would report
+     * every table as missing — an addon that answers "run php artisan migrate"
+     * on a fully migrated install. `getTables()` returns the bare name; the
+     * strip below is belt and braces for the drivers that qualify it anyway.
+     *
+     * Deliberately not memoized either: one guard runs per request, so a
+     * static cache would buy nothing and would go stale the moment a test or a
+     * migration changed the schema inside the same process.
+     *
+     * @return list<string>
+     */
+    protected static function existingTables(): array
+    {
+        return array_values(array_map(
+            static function (array $table): string {
+                $name = (string) ($table['name'] ?? '');
+
+                return str_contains($name, '.')
+                    ? substr($name, strrpos($name, '.') + 1)
+                    : $name;
+            },
+            Schema::getTables()
+        ));
     }
 }

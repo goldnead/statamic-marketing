@@ -157,16 +157,22 @@ it('keeps the whole page inside a small fixed budget, at one mailing list', func
     // The campaign half IS flat, and the test above is the one that holds it:
     // two campaigns and twelve cost the same. Lists are the open end.
     //
-    // Measured, not guessed, on twelve campaigns and one list: **7** on the
-    // flat driver, **9** on the eloquent one, and the same two numbers at fifty
-    // campaigns.
+    // Measured, not guessed, on twelve campaigns and one list: **9** on the
+    // flat driver, **11** on the eloquent one, and the same two numbers at
+    // fifty campaigns.
     //
     //   1  the list panel's grouped status counts
     //   2  the two subscriber totals on the tiles
     //   2  the bundled campaign figures: messages grouped, unsubscribes grouped
     //   2  list growth: sign-ups per day, sign-offs per day
+    //   2  the setup guard reading the table list once (`Setup::guard()`)
     //   +2 on the eloquent driver, which reads its campaigns and lists from
     //      tables where the flat driver reads files
+    //
+    // The guard's two are flat in the number of tables it is asked about, and
+    // that is the whole point: it used to call `Schema::hasTable()` once per
+    // table, which put this page at fourteen on the eloquent driver and is
+    // what this budget caught.
     //
     // For contrast, the loop this replaced: `forCampaign()` is eleven queries,
     // so the five rows of the summary table alone were fifty-five and the
