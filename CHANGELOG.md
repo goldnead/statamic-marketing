@@ -1,5 +1,112 @@
 # Changelog
 
+## 2.22.0 — 2026-09-07
+
+### Neu: 33 Werte je Marke aus dem Control Panel
+
+Der wichtigste davon ist die Postanschrift im Fußbereich: Pflichtangabe nach § 5 DDG, laut
+eigener Config je Marke zu setzen, bis hierher aber nur über eine einzige `.env`-Variable für
+alle Marken zugleich. Unter **Einstellungen → Addon-Einstellungen** steht jetzt ein Abschnitt für
+dieses Addon, mit sechs Gruppen:
+
+- **Absender:** Name, Adresse und die Postanschrift für den Fußbereich.
+- **Versand:** Bündelgröße, Nachrichten je Minute, Haltedauer eines Anspruchs, und das
+  Zeitfenster mit seiner Zeitzone.
+- **Anmeldungen:** Double-Opt-in, Fallenfeld, Gültigkeit der Bestätigung, ob die Bestätigung ein
+  POST sein muss, und die Drosselung je Liste und je Postfach.
+- **Nach dem Versand:** globales Opt-out beim Abmelden, Öffnungs- und Klickzählung, und der
+  Frequenzdeckel samt Aufschub.
+- **Archiv:** Titel, neutraler Name und die Länge des Feeds.
+- **LeadHub:** ob Abonnenten getaggt werden, mit welchem Präfix, und ob ein harter Bounce oder
+  eine Beschwerde den Kontakt auf Opt-out setzt.
+
+Gespeichert wird nur, was jemand geändert hat; alles andere folgt weiter
+`config/marketing.php`, so dass ein Paket-Update die Vorgaben mitbewegt.
+
+Draußen bleibt jeder Schlüssel, der beim Booten gelesen wird: `routes.prefix` und
+`archive.enabled`/`archive.prefix` stehen in `routes/web.php`, und `integrations.automations`,
+`integrations.webhook_manager` und `timeline.enabled` entscheiden über eine einmalige
+Registrierung aus `app->booted()` — sie stünden als Schalter da, die je nach Ladereihenfolge der
+Pakete wirken oder nicht. `delivery.mail_headers` ist eine verschachtelte Abbildung und wird auf
+der Seite benannt statt verschwiegen.
+
+**Neues Recht `manage marketing settings`.** Es hat zunächst niemand, und bis es einer Rolle
+zugewiesen ist, bleibt der Abschnitt unsichtbar, auch für Benutzer, die an diesem Addon sonst
+alles dürfen. Bestehende Rechte sind unverändert.
+
+**Voraussetzung: `goldnead/statamic-brand-context` ab 1.13.** Ältere Fassungen tragen die Seite,
+wenden ihre Werte aber nicht verlässlich an. Auf einer Installation mit einer einzigen Marke
+wurden die Einstellungen der zuletzt angemeldeten Addons gar nicht auf die Config gelegt: die
+Seite zeigte nach dem Neuladen den gespeicherten Wert, gelesen wurde die Paketvorgabe. Auf einer
+Rechnung stand dann die Verkäuferangabe aus dem Paket statt der eingetragenen, und hier wäre es
+die Postanschrift im Fußbereich. Dazu löschte bis 1.12 ein zweites Speichern desselben
+Abschnitts die Überschreibung des ersten, ohne Meldung. Wer zwischen dem 06.09. und diesem
+Update Werte gesetzt hat, sieht nach dem Aktualisieren nach, ob sie noch dastehen.
+
+### Neu: die versendete Mail steht auf der Detailseite der Kampagne
+
+Die Detailseite zeigte bisher ausschließlich Zahlen über eine Mail, die man nirgends ansehen
+konnte. Sie holt die Mail jetzt aus der Snapshot-Schicht von `statamic-email-templates`: der
+Start eines Versands hält die Vorlage einmal fest, die Detailseite hängt sie in ein iframe.
+
+Festgehalten wird die Vorlage mit ihren Platzhaltern, nicht die fertige Mail eines Empfängers —
+die gehört einer Person und trägt signierte Links und Zählpixel. Deshalb steht in der
+Snapshot-Zeile kein personenbezogener Text, und deshalb braucht sie keine Aufbewahrungsfrist und
+kein Löschkonzept.
+
+Auch der Einzelversand hält fest, was rausgeht. Eine Kampagne muss nicht über den Kampagnen-Job
+laufen: ein E-Mail-Knoten einer Automation schickt dieselbe Kampagne über `SingleSend` an eine
+Person nach der anderen, und deren Detailseite zeigte weiter Zahlen ohne die Mail dazu. Über den
+Inhalts-Hash bleiben zehntausend Auslösungen eine Zeile. Drei Kanten dabei mitrepariert: der
+aufgezeichnete Absender kam aus der Marke statt aus der Kette, die der Versand wirklich geht —
+die Kopfleiste der Vorschau behauptete damit einen Absender, der nie gesendet hat; der Ausdruck
+für den Kampagnentext traf die Antlers-Schreibweise mit Modifier nicht und hätte den Text
+lautlos verloren, weil die Mail selbst richtig aussieht; und der Klassenname der Schicht stand an
+drei Stellen als Zeichenkette, wo eine Umbenennung eine davon hätte stehen lassen.
+
+### Geändert: die Detailseite einer Liste ist das Formular
+
+Jede Änderung an einer Liste führte auf ein zweites Formular auf einer eigenen Seite. Beim
+Collection-Entry gibt es diesen Bruch nicht: Speichern sitzt oben rechts, Löschen im „…"-Menü
+daneben, die drei Felder in einer weißen Karte. Das Bearbeiten-Menü der Übersicht fällt weg, der
+Name führt auf die Seite, auf der man bearbeitet.
+
+Die alte Seite ist nicht nur abgehängt, sondern abgebaut: Route und Controller-Methode sind weg,
+`Lists/Edit.vue` legt nur noch an. Beim ersten Zug stand sie noch da und war nur nicht mehr
+verlinkt — damit lagen dieselben drei Felder samt Löschen-Dialog in zwei Dateien, und die
+nächste Änderung wäre in einer davon vergessen worden.
+
+### Neu: der Auslöser-Filter einer Sequenz bietet an, was da ist
+
+Der Auslöser einer Sequenz hat ein Objekt: eine Liste, ein Produkt, ein Formular, einen Funnel.
+Bisher war das ein Freitextfeld, man musste die Kennung kennen und abtippen. Der Grund lag hier,
+nicht in Automations: die Trigger-Optionen übernahmen aus dem Knoten-Schema nur die festen
+Auswahlwerte, nie die dynamische Quelle, und der Editor fällt bei leerer Liste auf ein Textfeld
+zurück. Aufgelöst wird über die bestehende `OptionSourceRegistry` von Automations, serverseitig
+statt per Abruf aus dem Browser: der Options-Endpunkt verlangt `view automations`, und wer eine
+Sequenz bearbeiten darf, muss das nicht dürfen.
+
+### Behoben: das Zurückrollen einer Migration scheiterte auf MySQL
+
+Das Zurückrollen von `2026_08_16_000001` starb auf MySQL mit „Cannot drop index
+'mme_message_id_type_index': needed in a foreign key constraint". InnoDB hält genau einen Index
+für einen Fremdschlüssel, und als die Migration `(message_id, type)` anlegte, hat MySQL den
+Index, den es sich für den Fremdschlüssel selbst angelegt hatte, in derselben Anweisung wieder
+entfernt. Danach ist der neue Index der einzige, den der Fremdschlüssel hat, und InnoDB gibt ihn
+nicht her. Das Zurückrollen löst deshalb erst den Fremdschlüssel, lässt den Index fallen und
+setzt den Fremdschlüssel neu; MySQL legt sich seinen eigenen Index dann wieder an, und der
+Zustand danach ist Index für Index der von vorher. Gemessen an MySQL 8.0.46, nicht angenommen.
+
+### Behoben: was ein fremdes Addon an Optionen zurückgibt, wird geprüft
+
+Der Optionsquellen-Auflöser lebt in einem anderen Addon, wird von dem registriert, der es
+installiert hat, und kann vom Host ersetzt werden. Nichts prüfte, was er zurückgibt. Genau daran
+hat am 07.09.2026 ein Addon weiter ein einzelnes Feld mit einem Wahrheitswert statt einer
+Zeichenkette alle fünf Abschnitte einer Einstellungsseite mitgenommen. Es geht jetzt nur noch
+durch, was wirklich eine Option ist; alles andere fällt weg, und das Feld fällt auf ein Textfeld
+zurück — der Zustand von vor diesem Feature, also überlebbar. Fehlt die Beschriftung, steht der
+Wert selbst da: die Kennung ist schlechter als ein Name, aber besser als eine leere Zeile.
+
 ## 2.21.0 — 2026-09-03
 
 ### Neu: „In Verteiler aufnehmen" am LeadHub-Kontakt
