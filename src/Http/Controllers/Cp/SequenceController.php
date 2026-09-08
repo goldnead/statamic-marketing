@@ -7,6 +7,7 @@ use Goldnead\Marketing\Models\Sequence;
 use Goldnead\Marketing\Models\SequenceStep;
 use Goldnead\Marketing\Sequences\SequenceSync;
 use Goldnead\Marketing\Support\EmailTemplateOptions;
+use Goldnead\Marketing\Support\Setup;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +34,19 @@ class SequenceController extends Controller
     public function index(Request $request)
     {
         $this->authorizeOrFail($request, 'view marketing');
+
+        // Only the two tables this controller owns. The automations side of the
+        // screen is not named here on purpose: `SequenceSync` already answers
+        // "is the engine there" with its own check and puts the reason in the
+        // state column, so a missing automations install is a badge on a page
+        // that works, not a page that refuses to load.
+        if ($setup = Setup::guard(
+            __('marketing::nav.sequences'),
+            'marketing_sequences',
+            'marketing_sequence_steps',
+        )) {
+            return $setup;
+        }
 
         $triggerLabels = collect($this->triggerOptions())->pluck('label', 'value');
 

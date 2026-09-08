@@ -19,6 +19,7 @@ use Goldnead\Marketing\Support\CampaignContentField;
 use Goldnead\Marketing\Support\EmailTemplateOptions;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Goldnead\Marketing\Support\SendSnapshot;
+use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
@@ -40,6 +41,17 @@ class CampaignController extends Controller
     public function index(Request $request, CampaignStats $stats)
     {
         $this->authorizeOrFail($request, 'view marketing');
+
+        // Recipients and the open rate per row: the messages, and the events
+        // behind the unsubscribe figure `CampaignStats` folds into them.
+        if ($setup = Setup::guard(
+            __('marketing::nav.campaigns'),
+            'marketing_messages',
+            'marketing_message_events',
+            ...Setup::definitionTables('marketing_campaigns'),
+        )) {
+            return $setup;
+        }
 
         $rows = $this->campaigns->all()->map(function (Campaign $campaign) use ($stats) {
             $campaignStats = $campaign->isDraft() ? null : $stats->forCampaign($campaign);

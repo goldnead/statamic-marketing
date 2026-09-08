@@ -11,6 +11,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\HandleOwnership;
+use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -24,6 +25,16 @@ class ListController extends Controller
     public function index(Request $request, CampaignStats $stats)
     {
         $this->authorizeOrFail($request, 'view marketing');
+
+        // The subscriber counts per row come from the subscriptions table
+        // whichever driver holds the list definitions themselves.
+        if ($setup = Setup::guard(
+            __('marketing::nav.lists'),
+            'marketing_subscriptions',
+            ...Setup::definitionTables('marketing_lists'),
+        )) {
+            return $setup;
+        }
 
         $rows = $this->lists->all()->map(function (MailingList $list) use ($stats) {
             $listStats = $stats->forList($list->handle);

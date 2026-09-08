@@ -6,6 +6,7 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Services\TemplatePreview;
 use Goldnead\Marketing\Support\HandleOwnership;
+use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Statamic\CP\Column;
@@ -18,6 +19,16 @@ class TemplateController extends Controller
     public function index(Request $request)
     {
         $this->authorizeOrFail($request, 'view marketing');
+
+        // The narrowest listing in the addon: layouts and nothing else. On the
+        // flat driver it reads no table at all, and the guard then has nothing
+        // to check — which is the honest answer, not an oversight.
+        if ($setup = Setup::guard(
+            __('marketing::nav.templates'),
+            ...Setup::definitionTables('marketing_templates'),
+        )) {
+            return $setup;
+        }
 
         $rows = $this->templates->all()->map(fn (EmailTemplate $template) => [
             'id' => $template->handle,

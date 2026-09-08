@@ -8,6 +8,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Services\SubscriptionGrowth;
+use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -33,6 +34,21 @@ class DashboardController extends Controller
         SubscriptionGrowth $growth,
     ) {
         $this->authorizeOrFail($request, 'view marketing');
+
+        // The widest guard in the addon, because this is the widest page:
+        // subscriber totals and the growth curve read the subscriptions, the
+        // engagement figures read the messages and their events, and the two
+        // definition tables are only read when this install keeps its lists and
+        // campaigns in the database rather than in YAML.
+        if ($setup = Setup::guard(
+            __('marketing::nav.dashboard'),
+            'marketing_subscriptions',
+            'marketing_messages',
+            'marketing_message_events',
+            ...Setup::definitionTables('marketing_lists', 'marketing_campaigns'),
+        )) {
+            return $setup;
+        }
 
         $listRows = $lists->all()->map(function ($list) use ($stats) {
             $listStats = $stats->forList($list->handle);

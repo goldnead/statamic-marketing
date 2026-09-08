@@ -16,6 +16,7 @@ import TemplatesIndex from './pages/Templates/Index.vue';
 import TemplatesEdit from './pages/Templates/Edit.vue';
 import SequencesIndex from './pages/Sequences/Index.vue';
 import SequencesEdit from './pages/Sequences/Edit.vue';
+import SetupRequired from './pages/SetupRequired.vue';
 
 Statamic.booting(() => {
     Statamic.$inertia.register('marketing::Dashboard', Dashboard);
@@ -29,4 +30,7 @@ Statamic.booting(() => {
     Statamic.$inertia.register('marketing::Templates/Edit', TemplatesEdit);
     Statamic.$inertia.register('marketing::Sequences/Index', SequencesIndex);
     Statamic.$inertia.register('marketing::Sequences/Edit', SequencesEdit);
+    // The one screen every listing above falls back to when its tables are not
+    // migrated yet. The name must read exactly as `Setup::guard()` writes it.
+    Statamic.$inertia.register('marketing::SetupRequired', SetupRequired);
 });
