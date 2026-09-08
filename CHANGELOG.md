@@ -2,263 +2,258 @@
 
 ## 2.22.0 — 2026-09-07
 
-### Neu: 33 Werte je Marke aus dem Control Panel
+### Added: 33 values per brand from the Control Panel
 
-Der wichtigste davon ist die Postanschrift im Fußbereich: Pflichtangabe nach § 5 DDG, laut
-eigener Config je Marke zu setzen, bis hierher aber nur über eine einzige `.env`-Variable für
-alle Marken zugleich. Unter **Einstellungen → Addon-Einstellungen** steht jetzt ein Abschnitt für
-dieses Addon, mit sechs Gruppen:
+The most important of them is the postal address in the footer: a mandatory disclosure under
+§ 5 DDG, to be set per brand according to this addon's own config, but until here only settable
+through a single `.env` variable for every brand at once. **Settings → Addon Settings** now
+carries a section for this addon, with six groups:
 
-- **Absender:** Name, Adresse und die Postanschrift für den Fußbereich.
-- **Versand:** Bündelgröße, Nachrichten je Minute, Haltedauer eines Anspruchs, und das
-  Zeitfenster mit seiner Zeitzone.
-- **Anmeldungen:** Double-Opt-in, Fallenfeld, Gültigkeit der Bestätigung, ob die Bestätigung ein
-  POST sein muss, und die Drosselung je Liste und je Postfach.
-- **Nach dem Versand:** globales Opt-out beim Abmelden, Öffnungs- und Klickzählung, und der
-  Frequenzdeckel samt Aufschub.
-- **Archiv:** Titel, neutraler Name und die Länge des Feeds.
-- **LeadHub:** ob Abonnenten getaggt werden, mit welchem Präfix, und ob ein harter Bounce oder
-  eine Beschwerde den Kontakt auf Opt-out setzt.
+- **Sender:** name, address and the postal address for the footer.
+- **Sending:** batch size, messages per minute, how long a claim is held, and the sending window
+  with its time zone.
+- **Sign-ups:** double opt-in, the honeypot field, how long a confirmation stays valid, whether
+  the confirmation has to be a POST, and the throttling per list and per mailbox.
+- **After sending:** global opt-out on unsubscribe, open and click counting, and the frequency
+  cap together with its deferral.
+- **Archive:** title, neutral name and the length of the feed.
+- **LeadHub:** whether subscribers are tagged, with which prefix, and whether a hard bounce or a
+  complaint sets the contact to opt-out.
 
-Gespeichert wird nur, was jemand geändert hat; alles andere folgt weiter
-`config/marketing.php`, so dass ein Paket-Update die Vorgaben mitbewegt.
+Only what somebody changed is stored; everything else keeps following
+`config/marketing.php`, so that a package update moves the defaults along with it.
 
-Draußen bleibt jeder Schlüssel, der beim Booten gelesen wird: `routes.prefix` und
-`archive.enabled`/`archive.prefix` stehen in `routes/web.php`, und `integrations.automations`,
-`integrations.webhook_manager` und `timeline.enabled` entscheiden über eine einmalige
-Registrierung aus `app->booted()` — sie stünden als Schalter da, die je nach Ladereihenfolge der
-Pakete wirken oder nicht. `delivery.mail_headers` ist eine verschachtelte Abbildung und wird auf
-der Seite benannt statt verschwiegen.
+Every key that is read at boot stays out: `routes.prefix` and
+`archive.enabled`/`archive.prefix` sit in `routes/web.php`, and `integrations.automations`,
+`integrations.webhook_manager` and `timeline.enabled` decide a one-time registration out of
+`app->booted()` — they would stand there as switches that take effect or do not, depending on the
+order the packages load in. `delivery.mail_headers` is a nested map and is named on the page
+rather than passed over in silence.
 
-**Neues Recht `manage marketing settings`.** Es hat zunächst niemand, und bis es einer Rolle
-zugewiesen ist, bleibt der Abschnitt unsichtbar, auch für Benutzer, die an diesem Addon sonst
-alles dürfen. Bestehende Rechte sind unverändert.
+**New permission `manage marketing settings`.** Nobody holds it at first, and until it is
+assigned to a role the section stays invisible, including for users who may do everything else in
+this addon. Existing permissions are unchanged.
 
-**Voraussetzung: `goldnead/statamic-brand-context` ab 1.13.** Ältere Fassungen tragen die Seite,
-wenden ihre Werte aber nicht verlässlich an. Auf einer Installation mit einer einzigen Marke
-wurden die Einstellungen der zuletzt angemeldeten Addons gar nicht auf die Config gelegt: die
-Seite zeigte nach dem Neuladen den gespeicherten Wert, gelesen wurde die Paketvorgabe. Auf einer
-Rechnung stand dann die Verkäuferangabe aus dem Paket statt der eingetragenen, und hier wäre es
-die Postanschrift im Fußbereich. Dazu löschte bis 1.12 ein zweites Speichern desselben
-Abschnitts die Überschreibung des ersten, ohne Meldung. Wer zwischen dem 06.09. und diesem
-Update Werte gesetzt hat, sieht nach dem Aktualisieren nach, ob sie noch dastehen.
+**Requires `goldnead/statamic-brand-context` 1.13 or newer.** Older versions carry the page but
+do not apply its values reliably. On an installation with a single brand, the settings of the
+addons that registered last were never written onto the config: after a reload the page showed
+the stored value while what got read was the package default. On an invoice that meant the
+seller details from the package instead of the ones entered, and here it would be the postal
+address in the footer. On top of that, up to 1.12 a second save of the same section deleted the
+first save's override, without a message. Anyone who set values between 06.09. and this update
+should check after updating that they are still there.
 
-### Neu: die versendete Mail steht auf der Detailseite der Kampagne
+### Added: the mail that went out is on the campaign's detail page
 
-Die Detailseite zeigte bisher ausschließlich Zahlen über eine Mail, die man nirgends ansehen
-konnte. Sie holt die Mail jetzt aus der Snapshot-Schicht von `statamic-email-templates`: der
-Start eines Versands hält die Vorlage einmal fest, die Detailseite hängt sie in ein iframe.
+Until now the detail page showed nothing but figures about a mail that could be looked at
+nowhere. It now fetches the mail from the snapshot layer of `statamic-email-templates`: the start
+of a send records the template once, and the detail page hangs it in an iframe.
 
-Festgehalten wird die Vorlage mit ihren Platzhaltern, nicht die fertige Mail eines Empfängers —
-die gehört einer Person und trägt signierte Links und Zählpixel. Deshalb steht in der
-Snapshot-Zeile kein personenbezogener Text, und deshalb braucht sie keine Aufbewahrungsfrist und
-kein Löschkonzept.
+What is recorded is the template with its placeholders, not a recipient's finished mail — that
+one belongs to a person and carries signed links and a tracking pixel. That is why the snapshot
+row holds no personal text, and why it needs no retention period and no deletion policy.
 
-Auch der Einzelversand hält fest, was rausgeht. Eine Kampagne muss nicht über den Kampagnen-Job
-laufen: ein E-Mail-Knoten einer Automation schickt dieselbe Kampagne über `SingleSend` an eine
-Person nach der anderen, und deren Detailseite zeigte weiter Zahlen ohne die Mail dazu. Über den
-Inhalts-Hash bleiben zehntausend Auslösungen eine Zeile. Drei Kanten dabei mitrepariert: der
-aufgezeichnete Absender kam aus der Marke statt aus der Kette, die der Versand wirklich geht —
-die Kopfleiste der Vorschau behauptete damit einen Absender, der nie gesendet hat; der Ausdruck
-für den Kampagnentext traf die Antlers-Schreibweise mit Modifier nicht und hätte den Text
-lautlos verloren, weil die Mail selbst richtig aussieht; und der Klassenname der Schicht stand an
-drei Stellen als Zeichenkette, wo eine Umbenennung eine davon hätte stehen lassen.
+The single send records what goes out as well. A campaign does not have to run through the
+campaign job: an automation's email node sends the same campaign through `SingleSend` to one
+person after another, and that campaign's detail page kept showing figures with no mail beside
+them. Through the content hash, ten thousand triggers stay one row. Three edges repaired along
+the way: the recorded sender came from the brand rather than from the chain the send really
+takes — so the preview's header claimed a sender that never sent; the expression for the
+campaign text did not match the Antlers spelling with a modifier and would have lost the text
+silently, because the mail itself looks right; and the layer's class name sat in three places as
+a string, where a rename would have left one of them standing.
 
-### Geändert: die Detailseite einer Liste ist das Formular
+### Changed: a list's detail page is the form
 
-Jede Änderung an einer Liste führte auf ein zweites Formular auf einer eigenen Seite. Beim
-Collection-Entry gibt es diesen Bruch nicht: Speichern sitzt oben rechts, Löschen im „…"-Menü
-daneben, die drei Felder in einer weißen Karte. Das Bearbeiten-Menü der Übersicht fällt weg, der
-Name führt auf die Seite, auf der man bearbeitet.
+Every change to a list led to a second form on a page of its own. With a collection entry there
+is no such break: Save sits top right, Delete in the “…” menu next to it, the three fields in a
+white card. The index's edit menu falls away, and the name leads to the page where the editing
+happens.
 
-Die alte Seite ist nicht nur abgehängt, sondern abgebaut: Route und Controller-Methode sind weg,
-`Lists/Edit.vue` legt nur noch an. Beim ersten Zug stand sie noch da und war nur nicht mehr
-verlinkt — damit lagen dieselben drei Felder samt Löschen-Dialog in zwei Dateien, und die
-nächste Änderung wäre in einer davon vergessen worden.
+The old page is not merely unhooked but taken down: the route and the controller method are gone,
+`Lists/Edit.vue` only creates now. On the first pass it was still standing and merely no longer
+linked — which left the same three fields, delete dialog included, in two files, and the next
+change would have been forgotten in one of them.
 
-### Neu: der Auslöser-Filter einer Sequenz bietet an, was da ist
+### Added: a sequence's trigger filter offers what is there
 
-Der Auslöser einer Sequenz hat ein Objekt: eine Liste, ein Produkt, ein Formular, einen Funnel.
-Bisher war das ein Freitextfeld, man musste die Kennung kennen und abtippen. Der Grund lag hier,
-nicht in Automations: die Trigger-Optionen übernahmen aus dem Knoten-Schema nur die festen
-Auswahlwerte, nie die dynamische Quelle, und der Editor fällt bei leerer Liste auf ein Textfeld
-zurück. Aufgelöst wird über die bestehende `OptionSourceRegistry` von Automations, serverseitig
-statt per Abruf aus dem Browser: der Options-Endpunkt verlangt `view automations`, und wer eine
-Sequenz bearbeiten darf, muss das nicht dürfen.
+A sequence's trigger has an object: a list, a product, a form, a funnel. Until now that was a
+free-text field and you had to know the handle and type it out. The cause was here, not in
+automations: the trigger options took only the fixed select values from the node schema, never
+the dynamic source, and the editor falls back to a text field when the list is empty. It is
+resolved through automations' existing `OptionSourceRegistry`, server-side rather than by a call
+out of the browser: the options endpoint demands `view automations`, and whoever may edit a
+sequence need not be allowed that.
 
-### Behoben: das Zurückrollen einer Migration scheiterte auf MySQL
+### Fixed: rolling a migration back failed on MySQL
 
-Das Zurückrollen von `2026_08_16_000001` starb auf MySQL mit „Cannot drop index
-'mme_message_id_type_index': needed in a foreign key constraint". InnoDB hält genau einen Index
-für einen Fremdschlüssel, und als die Migration `(message_id, type)` anlegte, hat MySQL den
-Index, den es sich für den Fremdschlüssel selbst angelegt hatte, in derselben Anweisung wieder
-entfernt. Danach ist der neue Index der einzige, den der Fremdschlüssel hat, und InnoDB gibt ihn
-nicht her. Das Zurückrollen löst deshalb erst den Fremdschlüssel, lässt den Index fallen und
-setzt den Fremdschlüssel neu; MySQL legt sich seinen eigenen Index dann wieder an, und der
-Zustand danach ist Index für Index der von vorher. Gemessen an MySQL 8.0.46, nicht angenommen.
+Rolling back `2026_08_16_000001` died on MySQL with “Cannot drop index
+'mme_message_id_type_index': needed in a foreign key constraint”. InnoDB keeps exactly one index
+for a foreign key, and when the migration created `(message_id, type)`, MySQL removed the index
+it had created for the foreign key itself in that same statement. After that the new index is the
+only one the foreign key has, and InnoDB will not give it up. The rollback therefore drops the
+foreign key first, lets the index go and adds the foreign key back; MySQL then creates its own
+index again, and the state afterwards is index for index the one from before. Measured against
+MySQL 8.0.46, not assumed.
 
-### Behoben: was ein fremdes Addon an Optionen zurückgibt, wird geprüft
+### Fixed: what another addon returns as options is checked
 
-Der Optionsquellen-Auflöser lebt in einem anderen Addon, wird von dem registriert, der es
-installiert hat, und kann vom Host ersetzt werden. Nichts prüfte, was er zurückgibt. Genau daran
-hat am 07.09.2026 ein Addon weiter ein einzelnes Feld mit einem Wahrheitswert statt einer
-Zeichenkette alle fünf Abschnitte einer Einstellungsseite mitgenommen. Es geht jetzt nur noch
-durch, was wirklich eine Option ist; alles andere fällt weg, und das Feld fällt auf ein Textfeld
-zurück — der Zustand von vor diesem Feature, also überlebbar. Fehlt die Beschriftung, steht der
-Wert selbst da: die Kennung ist schlechter als ein Name, aber besser als eine leere Zeile.
+The option-source resolver lives in another addon, is registered by whoever installed it, and can
+be replaced by the host. Nothing checked what it returns. That is exactly how, on 07.09.2026, one
+addon over, a single field carrying a boolean instead of a string took all five sections of a
+settings page down with it. Only what really is an option gets through now; everything else falls
+away, and the field falls back to a text field — the state from before this feature, so
+survivable. If the label is missing, the value itself stands there: a handle is worse than a
+name, but better than an empty line.
 
 ## 2.21.0 — 2026-09-03
 
-### Neu: „In Verteiler aufnehmen" am LeadHub-Kontakt
+### Added: “Add to list” on the LeadHub contact
 
-Die Aktion hängt am Auswahl-Vertrag der LeadHub-Registry: die Option trägt Ziel-URL und Nutzlast,
-LeadHub muss nicht wissen, was ein Verteiler ist. Vier Tests decken die Abbruchzweige ab — keine
-Berechtigung, keine Adresse, alle Listen bereits belegt, und ein Abgemeldeter, der wieder
-angeboten wird.
+The action hangs on the selection contract of the LeadHub registry: the option carries the target
+URL and the payload, so LeadHub does not have to know what a list is. Four tests cover the abort
+branches — no permission, no address, every list already taken, and an unsubscribed person who is
+offered again.
 
-### Behoben: 22 Befunde des UI-Sweeps
+### Fixed: 22 findings from the UI sweep
 
-Alle echt, keiner ein Falsch-Positiv.
+All real, none a false positive.
 
-- **Vier Icon-Namen, die es nicht gibt.** Bei `archive` bewusst `x-square` statt der naheliegenden
-  Vorgabe: die Aktion ist ein Unsubscribe, keine Archivierung.
-- **Zehn Fehlerbanner und ein Hinweis sind jetzt `Alert`**, das Abonnenten-Formular sitzt in einer
-  `Card`. `data-marketing-form-errors` blieb an allen zehn Stellen erhalten — zwei Testsuiten
-  hängen daran.
-- **Vier rote Kopfknöpfe ins `…`-Menü.**
-- **Zwei handgebaute Tabellen auf Cores `Table`** — bewusst nicht `Listing`: es sind Aggregate ohne
-  Suche, Sortierung, Auswahl oder Paginierung.
-- `press()` im Testhelfer findet jetzt `Button` und `DropdownItem`.
+- **Four icon names that do not exist.** For `archive`, `x-square` was chosen deliberately over
+  the obvious default: the action is an unsubscribe, not an archiving.
+- **Ten error banners and one notice are now `Alert`**, and the subscriber form sits in a
+  `Card`. `data-marketing-form-errors` was kept in all ten places — two test suites hang on it.
+- **Four red header buttons moved into the `…` menu.**
+- **Two hand-built tables moved onto core's `Table`** — deliberately not `Listing`: they are
+  aggregates without search, sorting, selection or pagination.
+- `press()` in the test helper now finds `Button` and `DropdownItem`.
 
 ## 2.20.0 — 2026-09-02
 
-### Neu: Sequenzen als eigener Schirm (Register K·13)
+### Added: sequences as a screen of their own (register K·13)
 
-Marketing → Sequenzen: eine Mailserie als Liste. Auslöser (jeder registrierte Automations-Trigger,
-etwa `payments.paid`, `funnels.completed`, `leadhub.lead_tag_added`), Verteiler als Quelle der
-Einwilligung, Schritte mit `et_templates`-Vorlage, optionalem Betreff und Wartezeit ab dem
-vorherigen Schritt. Neue Tabellen `marketing_sequences` und `marketing_sequence_steps`.
+Marketing → Sequences: a mail series as a list. A trigger (any registered automations trigger,
+for instance `payments.paid`, `funnels.completed`, `leadhub.lead_tag_added`), a list as the
+source of consent, and steps with an `et_templates` template, an optional subject and a wait
+measured from the previous step. New tables `marketing_sequences` and `marketing_sequence_steps`.
 
-**Eine Sequenz ist Sicht plus Generator, kein zweiter Scheduler.** Beim Speichern schreibt
-`Sequences\SequenceSync` genau die Automation, die man bisher von Hand baute: Trigger-Knoten, je
-Schritt `delay` (wenn eine Wartezeit gesetzt ist) und `marketing.send_email` im Vorlagen-Modus, in
-einer Linie verdrahtet, über `AutomationRepository::save()`. Warteschlange bleibt
-`automation_scheduled_jobs`, Versandweg bleibt der Marketing-Pfad mit Einwilligung, Sperrliste,
-Opt-out und Häufigkeitsdeckel.
+**A sequence is a view plus a generator, not a second scheduler.** On save,
+`Sequences\SequenceSync` writes exactly the automation you used to build by hand: a trigger node,
+per step a `delay` (where a wait is set) and `marketing.send_email` in template mode, wired up in
+one line, through `AutomationRepository::save()`. The queue stays `automation_scheduled_jobs`,
+and the delivery route stays the marketing path with consent, suppression list, opt-out and
+frequency cap.
 
-Die Knoten-Schlüssel sind positionsfest (`trigger`, `mail_1`, `delay_2`, `mail_2`, …): ein zweites
-Speichern überschreibt den Graphen, ohne einen Lauf zu verlieren, der in `delay_2` schläft. **Wer
-einen Schritt entfernt, wird vorher gefragt**: ein Speichern, das einen Schritt entfernt, auf dem
-gerade jemand wartet, wird abgelehnt und nennt die Zahl der betroffenen Personen. Nach der
-Bestätigung werden diese Läufe sofort beendet, der Weckruf abgesagt und der Lauf als `cancelled`
-mit Begründung geschlossen, statt Tage später mit „Cannot resume — node not found" in einem Log zu
-scheitern, das auf der Marketing-Seite niemand liest. In der Aktivität der Automation stehen sie
-damit unter „Ausgestiegen", nicht unter „Fehlgeschlagen".
+The node keys are position-fixed (`trigger`, `mail_1`, `delay_2`, `mail_2`, …): a second save
+overwrites the graph without losing a run that is asleep in `delay_2`. **Removing a step is
+confirmed first**: a save that removes a step somebody is currently waiting on is refused and
+names the number of people affected. After the confirmation those runs are ended at once, the
+wake-up call is cancelled and the run is closed as `cancelled` with a reason, instead of failing
+days later with “Cannot resume — node not found” in a log that nobody on the marketing side
+reads. In the automation's activity they therefore appear under “Exited”, not under “Failed”.
 
-Eine Wartezeit auf 0 zu setzen ist **kein** Entfernen: `delay_n` fällt weg, `mail_n` bleibt, und wer
-in dieser Lücke schläft, wird vor die Mail gesetzt statt abgesagt. Ohne Rückfrage, weil niemand eine
-Mail verliert.
+Setting a wait to 0 is **not** a removal: `delay_n` falls away, `mail_n` stays, and anyone asleep
+in that gap is placed in front of the mail rather than cancelled. Without a confirmation, because
+nobody loses a mail.
 
-Sequenzen brauchen automations auf dem **`database`**-Treiber. Mit `flat_file` gibt es keine
-Automations-Zeile, auf die eine Sequenz zeigen kann, und keine Möglichkeit zu fragen, wer gerade in
-einem Ablauf wartet — jede der Sicherungen oben läse still Null. Die Schirme sagen das stattdessen
-(„Automations legt seine Abläufe als Dateien ab, Sequenz läuft nicht"), und es wird nichts
-geschrieben. Der
-Auslöser bekommt *einmal je Person*, sofern die Trigger-Konfiguration nichts anderes sagt. Der
-Betreff steht ausdrücklich am Knoten: der des Schritts, sonst der der Vorlage zum Zeitpunkt des
-Speicherns; ohne beides wird der Schritt beim Speichern abgelehnt.
+Sequences need automations on the **`database`** driver. With `flat_file` there is no automation
+row for a sequence to point at, and no way to ask who is currently waiting in a flow — every one
+of the safeguards above would silently read zero. The screens say so instead (“automations stores
+its flows as files, this sequence does not run”), and nothing is written. The
+trigger fires *once per person* unless the trigger configuration says otherwise. The
+subject is stated explicitly on the node: the step's, otherwise the template's at the time of
+saving; without either, the step is refused on save.
 
-Die Automation trägt `created_by = marketing.sequence:<handle>` und eine Beschreibung, die die
-Sequenz nennt. **Markiert, nicht gesperrt**: automations hat keinen Schreibschutz für einen Flow,
-also lässt sich die Automation dort weiter bearbeiten, und das nächste Speichern der Sequenz
-überschreibt das. Beide Schirme sagen es. Löschen der Sequenz schaltet die Automation ab und
-behält sie mit ihren Läufen.
+The automation carries `created_by = marketing.sequence:<handle>` and a description naming the
+sequence. **Marked, not locked**: automations has no write protection for a flow, so the
+automation can still be edited over there, and the sequence's next save overwrites that. Both
+screens say so. Deleting the sequence switches the automation off and keeps it with its runs.
 
-Ohne `goldnead/statamic-automations` ist eine Sequenz speicherbar; Liste und Editor zeigen
-„Automations nicht installiert, Sequenz läuft nicht“, und es wird nichts versendet.
+Without `goldnead/statamic-automations` a sequence can be saved; the list and the editor show
+“automations is not installed, this sequence does not run”, and nothing is sent.
 
-Neue Berechtigung `manage marketing sequences`. Lesen ist `view marketing`.
+New permission `manage marketing sequences`. Reading is `view marketing`.
 
-### Neu: A/B-Testanteil an der Kampagne
+### Added: an A/B test share on the campaign
 
-Ein Broadcast **ist** die Kampagne, seit 1.0: Betreff, Text, Verteiler, Segment, geplanter und
-gesendeter Zeitpunkt, Zähler im Bericht, A/B über `variant_subject`. Es gibt deshalb kein zweites
-Objekt. Neu ist die Spalte `ab_share` (0 oder 10 bis 50 Prozent) mit Feld im Editor und
-Validierung, dazu ein Zeitzonen-Hinweis am Planungsfeld. **Der Gewinner-Versand ist noch nicht
-gebaut**: `ab_share` wird gespeichert und geprüft, ändert den Versand aber nicht. Das steht am
-Feld und im README.
+A broadcast **is** the campaign, and has been since 1.0: subject, text, list, segment, scheduled
+and sent time, counters in the report, A/B through `variant_subject`. There is therefore no
+second object. New is the column `ab_share` (0, or 10 to 50 per cent) with a field in the editor
+and validation, plus a time-zone note on the scheduling field. **The winner send is not built
+yet**: `ab_share` is stored and validated but does not change the send. That is stated on the
+field and in the README.
 
-### Geändert
+### Changed
 
-`Support\EmailTemplateOptions` ist die eine Stelle, die `et_templates` als Auswahl liest; der
-Kampagnen-Editor und der Sequenz-Editor nutzen sie beide.
+`Support\EmailTemplateOptions` is the one place that reads `et_templates` as a select; the
+campaign editor and the sequence editor both use it.
 
 ## 2.19.0 — 2026-08-29
 
-### Neu: die Zahlen dieses Addons erscheinen in Insights
+### Added: this addon's figures appear in Insights
 
-`statamic-insights` ist ab 1.1.0 keine Umsatzauswertung mehr, sondern die Auswertungs-Schicht der
-Familie: jedes Addon meldet an, was es zählen kann, und bekommt dafür Zeitraum, Vergleich mit dem
-Vorzeitraum, Diagramm, Aufteilungen und zwei fertige Schirme.
+From 1.1.0 `statamic-insights` is no longer a revenue report but the family's reporting layer: an
+addon registers what it can count and gets the period, the comparison against the period before,
+the chart, the breakdowns and two finished screens in return.
 
-Die Kopplung ist in **beide** Richtungen freiwillig. Ohne Insights fehlt hier nichts; ohne dieses
-Addon fehlt dort nur seine Gruppe. `suggest`, nie `require`.
+The coupling is optional in **both** directions. Without Insights nothing here is missing;
+without this addon only its own group is missing over there. `suggest`, never `require`.
 
-Jede Zahl hält sich an die Hausregeln des Vertrags: **null ist nicht null** (eine Quote ohne Nenner
-hat keine Antwort und zeigt keine 0 %), `available()` entscheidet über die Existenz und nie über die
-Daten, Lücken im Verlauf füllt Insights und nicht die Kennzahl, und ein Filter, den eine Zahl nicht
-versteht, wird ignoriert statt zum Fehler.
+Every figure follows the contract's house rules: **null is not zero** (a rate with no denominator
+has no answer and does not print 0 %), `available()` decides existence and never the data, gaps
+in a series are filled by Insights rather than by the metric, and a filter a metric does not
+understand is ignored rather than fatal.
 
-Sechs Zahlen: Abonnenten, Zuwachs, Bestand, Öffnungs-, Klick- und Beteiligungsrate.
+Six figures: subscribers, growth, list total, open rate, click rate and engagement rate.
 
-### Behoben: sechs Kacheln verschwanden, statt 0 zu zeigen
+### Fixed: six tiles disappeared instead of showing 0
 
-Wie bei leadhub beantwortete `available()` hier die Markenfrage und nahm damit die halbe Gruppe vom
-Schirm. Dazu verschluckte ein `catch (Throwable)` genau das fehlende Container-Binding, das jetzt
-offen geprüft wird — das war der Grund, warum der Fehlschlag still blieb. Der Block ist ersatzlos
-weg. Die beiden anderen `catch`-Blöcke bleiben: die decken eine kaputte Definitionsdatei ab, was
-etwas anderes ist.
+As in leadhub, `available()` answered the brand question here and thereby took half the group off
+the screen. On top of that a `catch (Throwable)` swallowed exactly the missing container binding
+that is now checked openly — that was the reason the failure stayed quiet. The block is gone
+without replacement. The two other `catch` blocks stay: those cover a broken definition file,
+which is a different thing.
 
-### Behoben: eine Zahl zählt nur noch die aktive Marke
+### Fixed: a figure now counts the active brand only
 
-Beim Bauen der Anbindung bekam diese Frage in der Familie vier verschiedene Antworten, und auf einem
-Schirm nebeneinander ist das schlimmer als gar keine: eine Kachel zeigte den Umsatz dreier fremder
-Marken, während die daneben korrekt filterte. Die Regel steht jetzt einmal in
-`TableMetric::brandScoped()`, als Abschrift von `BrandScope::apply()`; hier wird nur noch die Spalte
-genannt, und Zahl, Diagramm und jede Aufteilung verengen gemeinsam.
+While the integration was being built, this question got four different answers across the
+family, and side by side on one screen that is worse than no answer at all: one tile showed the
+revenue of three other brands while the one beside it filtered correctly. The rule now sits once
+in `TableMetric::brandScoped()`, as a transcript of `BrandScope::apply()`; here only the column
+is named, and the figure, the chart and every breakdown narrow together.
 
-Ist keine Marke gewählt, liest die Kachel **0 und bleibt stehen**. Ein Leser versteht eine Null;
-eine verschwundene Kachel bemerkt er nicht.
+With no brand selected the tile reads **0 and stays where it is**. A reader understands a zero;
+a tile that has vanished goes unnoticed.
 
 ## 2.18.0 — 2026-08-26
 
-### Added — Versandfenster in der Zeit der Empfängerin
+### Added — a sending window in the recipient's own time
 
-Ein Newsletter, der um 03:40 ankommt, liest sich wie eine Maschine. Einer, der um 03:40 **Ortszeit**
-ankommt, liest sich wie eine Maschine, die nicht weiß, wo man ist — und „um neun" von einem
-deutschen Server ist neun Uhr morgens für die meisten und mitten in der Nacht für die eine in
+A newsletter that arrives at 03:40 reads like a machine. One that arrives at 03:40 **local time**
+reads like a machine that does not know where you are — and “at nine” from a German server is
+nine in the morning for most people and the middle of the night for the one reader in
 Vancouver.
 
-`sending.window.from` / `.to` als ganze Stunden, gelesen in der Zeitzone der Empfängerin:
-`marketing_subscriptions.timezone`, dann die der Konfiguration, dann die der Anwendung. **Nie
-geraten** — eine falsche Zeitzone scheitert nicht, sie stellt zur falschen Stunde zu, und danach
-sagt nichts mehr, welche der drei Antworten benutzt wurde.
+`sending.window.from` / `.to` as whole hours, read in the recipient's time zone:
+`marketing_subscriptions.timezone`, then the configuration's, then the application's. **Never
+guessed** — a wrong time zone does not fail, it delivers at the wrong hour, and afterwards
+nothing says which of the three answers was used.
 
-**Ab Werk aus.** Beide Werte leer heißt: jede Stunde ist erlaubt, also genau das, was jede
-Installation heute tut. Ein Fenster, das niemand eingestellt hat, darf keine Post zurückhalten.
+**Off out of the box.** Both values empty means every hour is allowed, which is exactly what
+every installation does today. A window nobody set may not hold post back.
 
-Ein Fenster über Mitternacht (22 bis 6) wird verstanden. Die naive Prüfung `>= von && < bis` liest
-das als „nie" — eine stille Art, allen Versand anzuhalten.
+A window across midnight (22 to 6) is understood. The naive check `>= from && < to` reads that as
+“never” — a quiet way to stop all sending.
 
-Zurückgestellt wird auf **den Moment, an dem das Fenster öffnet**, nicht stündlich erneut versucht:
-ein Wiederholungslauf würde das Aufschub-Budget des Frequenzdeckels aufbrauchen und die Nachricht
-verwerfen, bevor der Morgen der Empfängerin je da war. Und er zahlt nicht auf den Deckel ein — „zu
-viel Post diese Woche" und „die falsche Stunde" sind verschiedene Fragen.
+A message is deferred to **the moment the window opens**, not retried hourly: a retry loop would
+use up the frequency cap's deferral budget and discard the message before the recipient's
+morning had ever arrived. And it does not count towards the cap — “too much post this week” and
+“the wrong hour” are different questions.
 
-**Auf `sync` wird das Fenster übergangen.** Dort gibt es keinen Arbeiter, der später wiederkommt.
-Der erste Bau hatte den Zweig an der falschen Stelle: die Nachricht wurde weder zurückgestellt noch
-gesendet, sie verschwand einfach — auf genau der Installation, auf der es niemandem auffällt.
-Gefunden vom Test, der für den umgekehrten Fall geschrieben war.
+**On `sync` the window is passed over.** There is no worker there that comes back later. The
+first build had the branch in the wrong place: the message was neither deferred nor sent, it
+simply vanished — on exactly the kind of installation where nobody notices. Found by the test
+that had been written for the opposite case.
 
 ## 2.17.0 — 2026-08-26
 
@@ -328,526 +323,508 @@ Gefunden vom Test, der für den umgekehrten Fall geschrieben war.
 
 ## 2.15.0 — 2026-08-24
 
-### Added — die Kampagnen-Vorschau ändert sich beim Tippen
+### Added — the campaign preview changes as you type
 
-Bisher zeigte sie die **gespeicherte** Fassung, und die Oberfläche sagte es auch
-dazu: „Save your changes first." Damit war sie drei Schritte vom Bearbeiteten
-entfernt — schreiben, speichern, ansehen.
+Until now it showed the **saved** version, and the interface said as much:
+“Save your changes first.” That put it three steps away from what was being
+edited — write, save, look.
 
-Jetzt dasselbe Muster wie bei den Vorlagen: ein POST auf
-`marketing.campaigns.live-preview` rendert, was gerade im Formular steht.
-Gerendert wird durch **denselben `CampaignRenderer`**, den der echte Versand
-nimmt; ein zweiter Renderer wäre ein zweites Ding, das man in Gleichschritt
-halten muss, und die erste Abweichung fände jemand in seinem Posteingang.
+Now the same pattern as for the layouts: a POST to
+`marketing.campaigns.live-preview` renders what is in the form at that moment.
+Rendering goes through **the same `CampaignRenderer`** the real send uses; a
+second renderer would be a second thing to keep in step, and somebody would find
+the first divergence in their inbox.
 
-**Nichts wird dabei gespeichert.** Die Kampagne wird aus den geschickten Werten
-gebaut und nach dem Rendern weggeworfen — ein Test hält das fest.
+**Nothing is stored in the process.** The campaign is built from the submitted
+values and thrown away after rendering — a test pins that.
 
-Der Rahmen behält `sandbox=""` und wechselt nur von `src` auf `srcdoc`: ein
-srcdoc-Rahmen ohne Tokens ist derselbe undurchsichtige Ursprung ohne Skripte.
-Der Link „Open in new tab" zeigt weiterhin auf die gespeicherte Fassung.
+The frame keeps `sandbox=""` and only switches from `src` to `srcdoc`: a
+srcdoc frame without tokens is the same opaque origin without scripts.
+The “Open in new tab” link still points at the saved version.
 
 
 ## 2.14.0 — 2026-08-24
 
-### Fixed — der Testversand behauptete vier Tore und hatte eines
+### Fixed — the test send claimed four gates and had one
 
-`CampaignSender::sendTest()` prüfte die Sperrliste und sonst nichts, während
-sein Docblock „gated like the real thing" sagte. Das ist die gefährlichere
-Hälfte: wer den Satz liest, hört auf zu prüfen.
+`CampaignSender::sendTest()` checked the suppression list and nothing else,
+while its docblock said “gated like the real thing”. That is the more dangerous
+half: whoever reads the sentence stops checking.
 
-Neu geprüft wird **`do_not_contact` am Kontakt** — die zweite „nie"-Fahne. Die
-Sperrliste hält, was ein Anbieter gemeldet hat; diese Fahne hält, was ein
-Mensch entschieden hat (Abmeldung mit globalem Opt-out, oder eine Hand im CRM).
-Keins folgt aus dem anderen. Der Fall, der bisher durchging, ist der
-naheliegende: „nur mal kurz zum Ansehen" an eine Kundin, die sich abgemeldet
-hat.
+Newly checked is **`do_not_contact` on the contact** — the second “never” flag.
+The suppression list holds what a provider reported; this flag holds what a
+person decided (an unsubscribe with a global opt-out, or a hand in the CRM).
+Neither follows from the other. The case that used to get through is the obvious
+one: “just a quick look” to a customer who has unsubscribed.
 
-**Bewusst nicht geprüft:** Abo-Status, Einwilligung und Frequenz-Deckel. Ein
-Testversand geht an eine Adresse, die der Absender eintippt — meist die eigene,
-die per Definition nicht auf der Liste steht. Ein Abo zu verlangen würde den
-Knopf für genau das kaputt machen, wofür er da ist. Der Docblock sagt das jetzt
-im Wortlaut, statt das Gegenteil zu behaupten.
+**Deliberately not checked:** subscription status, consent and the frequency
+cap. A test send goes to an address the sender types in — usually their own,
+which by definition is not on the list. Demanding a subscription would break the
+button for exactly what it is there for. The docblock now says so in as many
+words, instead of claiming the opposite.
 
 
 ## 2.13.0 — 2026-08-24
 
-### Changed — die Anbieterkennzeichnung wird aufgeloest, nicht gelesen
+### Changed — the provider identification is resolved, not read
 
-2.12.0 las `marketing.footer.postal_line` direkt. Das ist fuer eine Marke
-richtig und fuer sechs in einem Prozess falsch: alle sechs bekaemen dieselbe
-Anschrift — genau die Fehlerklasse, die die Absenderidentitaet schon hatte.
+2.12.0 read `marketing.footer.postal_line` directly. That is right for one brand
+and wrong for six in one process: all six would get the same postal address —
+exactly the class of error the sender identity already had.
 
-Neu: `Contracts\PostalLineResolver`. Die mitgelieferte Fassung
-(`Support\ConfiguredPostalLine`) liest weiterhin die Config, ein
-Mehrmarken-Host bindet seine eigene und liefert die Zeile der aktuellen Marke.
-**Fuer Ein-Marken-Installationen aendert sich nichts.**
+New: `Contracts\PostalLineResolver`. The shipped implementation
+(`Support\ConfiguredPostalLine`) still reads the config; a multi-brand host
+binds its own and supplies the line of the current brand.
+**For single-brand installations nothing changes.**
 
 ## 2.12.0 — 2026-08-24
 
-### Fixed — Werbepost konnte still ohne Anbieterkennzeichnung rausgehen
+### Fixed — marketing mail could go out silently without the provider identification
 
-`ensureSelfServiceFooter()` haengt seinen Fuss nur an, wenn die Vorlage **gar
-keinen** Selbstbedienungs-Weg enthaelt. Das mitgelieferte Ersatzlayout hat
-einen Abmeldelink — und **keine Anschrift**. Genau diese Kombination rutschte
-durch: Ausweg ja, Pflichtangabe nein.
+`ensureSelfServiceFooter()` only appends its footer when the template contains
+**no** self-service route at all. The shipped fallback layout has an unsubscribe
+link — and **no postal address**. Exactly that combination slipped through: a
+way out yes, the mandatory disclosure no.
 
-Es braucht dafuer nicht einmal eine Loeschung. Ein `et_templates`-Eintrag mit
-demselben Slug gewinnt gegen die Marketing-Vorlage und tauscht das Layout
-lautlos aus.
+It does not even take a deletion. An `et_templates` entry with the same slug
+wins over the marketing template and swaps the layout out silently.
 
-Zwei Aenderungen:
+Two changes:
 
-1. **Ein zweites Netz.** Ist `marketing.footer.postal_line` gesetzt und die
-   gerenderte Mail enthaelt sie nicht, haengt der Renderer sie an. Getrennt von
-   der Abmelde-Pruefung, weil eine Vorlage den Link haben kann und die
-   Anschrift nicht.
-2. **Der Rueckfall sagt es.** Loest ein Vorlagen-Handle nicht auf, steht das
-   jetzt im Log. Vorher war „umbenannt" von „geloescht" nicht zu unterscheiden
-   — und beides von „alles in Ordnung" auch nicht.
+1. **A second net.** If `marketing.footer.postal_line` is set and the rendered
+   mail does not contain it, the renderer appends it. Separate from the
+   unsubscribe check, because a template can have the link and not the postal
+   address.
+2. **The fallback says so.** If a template handle does not resolve, that is now
+   in the log. Before, “renamed” could not be told apart from “deleted” — and
+   neither of them from “everything is fine”.
 
-**Leer ausgeliefert.** Ein Addon kann die Anschrift seines Betreibers nicht
-erfinden, und eine erfundene waere schlimmer als keine. Auf einem Host mit
-mehreren Marken gehoert der Wert je Marke gesetzt.
+**Shipped empty.** An addon cannot invent its operator's postal address, and an
+invented one would be worse than none. On a host with several brands the value
+belongs set per brand.
 
-Die `text/plain`-Fassung war nie betroffen — dort kommt die Zeile aus der
-Mailable. Betroffen war die Darstellung, die fast jeder sieht.
+The `text/plain` version was never affected — there the line comes from the
+mailable. What was affected is the rendering almost everybody sees.
 
 
 ## 2.11.0 — 2026-08-22
 
-### Fixed — keine Werbemail mehr ohne sichtbaren Ausweg
+### Fixed — no more marketing mail without a visible way out
 
-`{{ unsubscribe_url }}` steht jeder Vorlage zur Verfügung, aber eine Vorlage
-kann es vergessen. Genau das ist passiert: die fünfteilige Willkommensstrecke
-von adriangoldner.com ging monatelang ohne sichtbaren Abmelde-Link raus. Der
-`List-Unsubscribe`-Kopfeintrag war da, doch den zeigt nicht jedes
-Mailprogramm — und wer ihn nicht sieht, hat keinen Weg hinaus.
+`{{ unsubscribe_url }}` is available to every template, but a template can
+forget it. That is exactly what happened: adriangoldner.com's five-part welcome
+sequence went out for months without a visible unsubscribe link. The
+`List-Unsubscribe` header was there, but not every mail client shows it — and
+whoever does not see it has no way out.
 
-Der Renderer hängt jetzt einen Fuß an, wenn die fertig gerenderte Mail auf
-keinen Selbstbedienungs-Weg zeigt. Eine Vorlage, die den Link selbst setzt,
-bleibt unangetastet.
+The renderer now appends a footer when the finished rendered mail points at no
+self-service route. A template that sets the link itself is left untouched.
 
-**Warum das so lange niemandem auffiel:** die mitgelieferte Ersatzvorlage trägt
-selbst einen Abmelde-Link. Die Lücke entstand nur dort, wo ein Host seinen
-eigenen Rahmen mitbringt — und dort schaut niemand mehr in die
-Addon-Vorlage. Deshalb liegt die Zusicherung jetzt im Renderer statt in einer
-Vorlage: sie gilt für jeden eigenen Rahmen, auch für künftige.
+**Why nobody noticed for so long:** the shipped fallback template carries an
+unsubscribe link itself. The gap only appeared where a host brings its own
+frame — and there nobody looks into the addon's template any more. That is why
+the guarantee now lives in the renderer rather than in a template: it holds for
+every custom frame, future ones included.
 
-### Added — Ausstieg aus einer einzelnen Serie
+### Added — leaving a single sequence
 
-`sequence_unsubscribe_url` steht bereit, wenn die Mail aus einer Automation
-kommt. Den Weg dorthin kennt `goldnead/statamic-automations`, nicht dieses
-Addon; fehlt das Paket, bleibt der Wert leer und der Fuß trägt nur die
-vollständige Abmeldung.
+`sequence_unsubscribe_url` is available when the mail comes out of an
+automation. The route to it is known by `goldnead/statamic-automations`, not by
+this addon; without that package the value stays empty and the footer carries
+only the full unsubscribe.
 
-**Im Fuß steht der Serien-Ausstieg vor der vollständigen Abmeldung.** Das ist
-keine Kosmetik: wer eine Willkommensstrecke loswerden will, will selten den
-Newsletter los. Stünde die vollständige Abmeldung vorn, klickt sie jemand, weil
-sie die erste ist — und ist dann ganz weg.
+**In the footer, leaving the sequence comes before the full unsubscribe.** That
+is not cosmetic: somebody who wants to be rid of a welcome sequence rarely wants
+to be rid of the newsletter. With the full unsubscribe first, somebody clicks it
+because it is the first one — and is then gone entirely.
 
 ### Changed
 
-`SingleSend::send()` und `sendTemplate()` nehmen ein optionales
-`$sequenceUuid`. Es steht am Ende der Signatur, damit bestehende Aufrufe
-unverändert bleiben.
+`SingleSend::send()` and `sendTemplate()` take an optional
+`$sequenceUuid`. It sits at the end of the signature so that existing calls stay
+unchanged.
 
 ## 2.10.0 — 2026-08-15
 
-### Added — drei Diagramme, jedes für eine Frage
+### Added — three charts, each for one question
 
-**Wann wird gelesen?** Der Kampagnen-Bericht bekommt auf der Übersicht eine
-Kurve der Öffnungen und Klicks über die Zeit seit dem Versand, stündlich
-gerastert und ab etwa drei Tagen Lesedauer täglich.
+**When is it read?** The campaign report gains, on its overview, a curve of
+opens and clicks over the time since the send, bucketed hourly and, from around
+three days of reading, daily.
 
-**Wird es besser oder schlechter?** Das Marketing-Dashboard zeigt Öffnungs- und
-Klickrate der letzten zwölf versendeten Kampagnen in Versandreihenfolge. Die
-Raten kommen unverändert aus `CampaignStats` — dieselbe Zahl, die auch auf der
-Kampagnenseite steht.
+**Is it getting better or worse?** The marketing dashboard shows the open and
+click rate of the last twelve sent campaigns in send order. The rates come
+unchanged from `CampaignStats` — the same figure that stands on the campaign
+page.
 
-**Wächst die Liste?** Anmeldungen gegen Abmeldungen je Woche über zwölf Wochen.
-Eine stille Woche ist eine Null im Verlauf, keine fehlende Woche.
+**Is the list growing?** Sign-ups against unsubscribes per week over twelve
+weeks. A quiet week is a zero in the series, not a missing week.
 
-Alles von Hand gezeichnet, keine neue Abhängigkeit; der CSP im Control Panel
-lässt ohnehin kein Skript von einem CDN zu. Jedes Diagramm trägt eine
-textliche Entsprechung für alle, die es nicht sehen können.
+All drawn by hand, no new dependency; the Control Panel's CSP does not allow a
+script from a CDN anyway. Every chart carries a textual equivalent for everyone
+who cannot see it.
 
-### Added — das Dashboard fragt nicht mehr je Kampagne einzeln
+### Added — the dashboard no longer queries campaign by campaign
 
-`CampaignStats::forCampaigns()` liefert die Zahlen für beliebig viele
-Kampagnen in **zwei** Abfragen. Vorher lief eine Schleife mit rund sechs
-Abfragen je Kampagne: für die fünf Zeilen der Übersicht bereits 55, für die
-zwölf des neuen Verlaufs wären es 132 gewesen. Gemessen und festgenagelt: die
-Dashboard-Seite bleibt bei derselben Abfragenzahl, ob sie zwei, zwölf oder
-fünfzig Kampagnen zeigt.
+`CampaignStats::forCampaigns()` delivers the figures for any number of
+campaigns in **two** queries. Before, a loop ran around six queries per
+campaign: 55 for the overview's five rows already, and 132 for the twelve of the
+new series. Measured and pinned: the dashboard page stays at the same number of
+queries whether it shows two, twelve or fifty campaigns.
 
-Beide Wege bauen ihr Ergebnis über dieselbe Methode, damit „Öffnungsrate" im
-Addon genau einmal definiert ist. Ein Test hält beide gegeneinander.
+Both routes build their result through the same method, so that “open rate” is
+defined exactly once in this addon. A test holds the two against each other.
 
-### Fixed — was die Kurve zuerst behauptet hat
+### Fixed — what the curve claimed at first
 
-Alles aus der Kritiker-Runde, und alles derselbe Fehler in verschiedenen
-Kleidern: das Diagramm sagte etwas anderes, als es meinte.
+All of it from the critic round, and all of it the same error in different
+clothes: the chart said something other than it meant.
 
-- **Der Vorlade-Block erschlug den Maßstab.** Apples Proxy holt das Zählpixel
-  für rund die Hälfte aller zugestellten Nachrichten in **einer** Stunde,
-  während sich das Lesen über zehn und mehr verteilt. Auf einer geteilten
-  Achse landete die höchste menschliche Stunde bei einem Zehntel, typische bei
-  zwei bis drei Prozent — drei bis fünf Pixel, und der Unterschied zwischen
-  Stunde 4 und Stunde 7 war einer. Die Achse misst jetzt am menschlichen
-  Maximum, der Vorlade-Balken schlägt an der Decke an, und **genau das ist die
-  Aussage**; sein wahrer Wert steht daneben. Ehrlich war die alte Darstellung
-  auch, nur unlesbar, und die Lesbarkeit war die Frage.
-- **Zwei Bedeutungen von „Öffnung" auf einer Tafel.** Die Kachel zählt
-  Nachrichten mit mindestens einer Öffnung, die Balken zählen die Vorgänge.
-  Wer eine Mail fünfmal öffnet, stand als 1 und als 5 da, hundert Pixel
-  auseinander, unkommentiert. Die Kacheln bleiben, wie sie sind; das Diagramm
-  sagt jetzt, was es zählt.
-- **Altkampagnen wurden als reine Menschen gezeichnet.** Die Spalte `machine`
-  hat Default `false`, also ist jede vor ihrer Einführung aufgezeichnete
-  Öffnung „ein Mensch" — die Zustellwand jeder archivierten Kampagne stand grün
-  im Diagramm, dessen ganzer Zweck die Trennung ist. Ein Satz sagt das jetzt,
-  aber nur, wenn für diese Kampagne tatsächlich nie eine Vorladung verzeichnet
-  wurde: eine kurz vor der Migration versendete Kampagne sammelt danach
-  weiter Öffnungen ein, und die tragen die Kennzeichnung. Eine Warnung über
-  einem orangen Balken wäre schlechter als keine.
-- **Ein einzelner Nachzügler kippte die Kurve dauerhaft aufs Tagesraster.** Die
-  Einheit kam aus dem letzten Ereignis überhaupt; ein Klick ein halbes Jahr
-  später machte aus drei Tagen Lesen drei von 90 Balken. Erneutes Öffnen nach
-  Wochen ist Alltag, `n = 1` nahm der Kurve also ihre Auflösung. Jetzt
-  entscheidet die Masse der Ereignisse, nicht der Ausreißer.
-- Ein Balken unter etwa 0,7 Prozent der Achse rendert subpixel und war damit
-  unsichtbar, während die Zusage lautete, ein nicht-leerer Zeitraum sei als
-  solcher erkennbar. Nicht-Null hat jetzt eine Mindesthöhe.
-- Der jüngste Balken des Engagement-Verlaufs ist systematisch zu niedrig, weil
-  eine gestern versendete Kampagne ihre Öffnungen noch nicht eingesammelt hat.
-  Ein Satz sagt das, wenn die jüngste keine 48 Stunden alt ist.
-- Beide Zähldiagramme nennen jetzt die Höhe ihrer Achse in Worten. Ohne das
-  macht ein einziger Import von fünfhundert Adressen ein Jahr organisches
-  Wachstum zu Härchen, ohne dass man es merkt.
+- **The prefetch block flattened the scale.** Apple's proxy fetches the tracking
+  pixel for roughly half of all delivered messages within **one** hour, while
+  the reading spreads over ten and more. On a shared axis the highest human hour
+  came out at a tenth, typical ones at two to three per cent — three to five
+  pixels, and the difference between hour 4 and hour 7 was one of them. The axis
+  now measures against the human maximum, the prefetch bar hits the ceiling, and
+  **that is precisely the statement**; its true value stands beside it. The old
+  rendering was honest too, merely unreadable, and readability was the question.
+- **Two meanings of “open” on one board.** The tile counts messages with at
+  least one open, the bars count the events. Somebody who opens a mail five
+  times stood there as 1 and as 5, a hundred pixels apart, without a word. The
+  tiles stay as they are; the chart now says what it counts.
+- **Old campaigns were drawn as pure humans.** The `machine` column defaults to
+  `false`, so every open recorded before it was introduced is “a human” — the
+  delivery-time spike of every archived campaign stood green in a chart whose
+  entire purpose is that separation. A sentence now says so, but only where no
+  prefetch was ever recorded for that campaign: a campaign sent shortly before
+  the migration keeps collecting opens afterwards, and those carry the marking.
+  A warning above an orange bar would be worse than none.
+- **A single straggler tipped the curve onto the daily grid for good.** The unit
+  came from the very last event; a click half a year later turned three days of
+  reading into three bars out of 90. Reopening weeks later is everyday, so
+  `n = 1` took the curve's resolution away. Now the mass of the events decides,
+  not the outlier.
+- A bar below roughly 0.7 per cent of the axis renders subpixel and was
+  therefore invisible, while the promise was that a non-empty period is
+  recognisable as one. Non-zero now has a minimum height.
+- The most recent bar of the engagement series is systematically too low,
+  because a campaign sent yesterday has not collected its opens yet. A sentence
+  says so when the most recent one is less than 48 hours old.
+- Both counting charts now name the height of their axis in words. Without that,
+  a single import of five hundred addresses turns a year of organic growth into
+  hairlines without anyone noticing.
 
-### Fixed — Wächter, die nicht bewachten
+### Fixed — guards that did not guard
 
-- Der Übersetzungs-Wächter sah nur Schlüssel, bei denen direkt nach `__(` ein
-  Anführungszeichen steht. Vier Schlüssel kamen aus einem Ternär und wurden nie
-  geprüft — ausgerechnet die Achsenbeschriftungen. Er liest jetzt den ganzen
-  Aufruf.
-- Ein Test versprach „identische Arrays" und verglich mit `==`. Jetzt `toBe`.
-- Ein Test hieß „die ganze Seite in einem festen Budget", maß aber mit einer
-  einzigen Liste, während das Dashboard weiterhin je Liste fragt. Er heißt
-  jetzt, was er tut.
+- The translation guard only saw keys with a quotation mark directly after
+  `__(`. Four keys came out of a ternary and were never checked — the axis
+  labels, of all things. It now reads the whole call.
+- A test promised “identical arrays” and compared with `==`. Now `toBe`.
+- A test was called “the whole page within a fixed budget” but measured with a
+  single list, while the dashboard still queries per list. It is now called what
+  it does.
 
-### Docs — Sommerzeit ist hier kein Problem, und das steht jetzt fest
+### Docs — daylight saving is not a problem here, and that is now pinned
 
-Im Herbst fallen beide realen Zwei-Uhr-Stunden in denselben Balken und werden
-einmal ausgegeben; nichts geht verloren, nichts zählt doppelt. Ein Test auf
-`Europe/Berlin` hält das fest, damit es harmlos bleibt.
+In autumn both real two-o'clock hours fall into the same bar and are printed
+once; nothing is lost, nothing counts twice. A test on `Europe/Berlin` pins it,
+so that it stays harmless.
 
 ## 2.9.0 — 2026-08-15
 
-### Added — der Kampagnen-Bericht
+### Added — the campaign report
 
-Die Kampagnenseite zeigte eine Handvoll Kacheln und eine flache Empfängerliste.
-Was mit einer Kampagne passiert ist und **bei wem**, stand nirgends: die einzige
-Leseabfrage auf `marketing_message_events` im ganzen Addon war die
-Abmelde-Zählung.
+The campaign page showed a handful of tiles and a flat list of recipients. What
+happened with a campaign and **to whom** stood nowhere: the only read query on
+`marketing_message_events` in the whole addon was the unsubscribe count.
 
-Jetzt fünf Reiter, jeder mit den Personen dahinter:
+Now five tabs, each with the people behind them:
 
-- **Übersicht** — Kennzahlen, A/B-Varianten und eine Zeitleiste von geplant bis
-  zur letzten Aktivität. Eine Station, die nicht stattgefunden hat, fehlt, statt
-  leer dazustehen.
-- **Zustellbarkeit** — filterbar nach Status. Bei einem Fehlversand steht jetzt
-  der Grund dabei; die Spalte lag seit je in der Datenbank und wurde nie
-  gezeigt.
-- **Öffnungen** — wer, wann zuerst, wie oft, und wie viel davon Maschine war.
-- **Klicks** — wer, wann, welcher Link, dazu die Aufschlüsselung nach Link.
-- **Abmeldungen** — wer und wann.
+- **Overview** — figures, A/B variants and a timeline from scheduled to the last
+  activity. A station that did not happen is missing rather than standing there
+  empty.
+- **Deliverability** — filterable by status. For a failed send the reason is now
+  shown; the column had been in the database all along and was never
+  displayed.
+- **Opens** — who, when first, how often, and how much of it was a machine.
+- **Clicks** — who, when, which link, plus the breakdown per link.
+- **Unsubscribes** — who and when.
 
-Jede Zeile verlinkt auf den LeadHub-Kontakt, wenn es einen gibt, und legt
-niemals einen an. Je Reiter ein CSV-Export derselben Auswahl, gestreamt und an
-`manage marketing campaigns` gebunden.
+Every row links to the LeadHub contact where there is one, and never creates
+one. Per tab a CSV export of the same selection, streamed and bound to
+`manage marketing campaigns`.
 
-**Ein Klick zählt als Mensch**, und das musste er: unter Apples Mail Privacy
-Protection holt der Proxy das Zählpixel für jede zugestellte Nachricht, die
-einzige verzeichnete Öffnung ist also die der Maschine. Nur Öffnungen zu zählen
-meldete „von niemandem gelesen" für eine Kampagne, durch die jemand geklickt hat
-— während der Hinweis direkt darunter sagt, dass genau der Klick einen Menschen
-beweist. Aus demselben Grund listet der Öffnungen-Reiter jetzt nach
-`first_opened_at` statt nach dem Zähler: wer Bilder blockiert und klickt, hat
-`opens = 0` und fehlte in einem Reiter, dessen erste Spalte dieser Zeitstempel
-ist.
+**A click counts as a human**, and it had to: under Apple's Mail Privacy
+Protection the proxy fetches the tracking pixel for every delivered message, so
+the only recorded open is the machine's. Counting opens alone reported “read by
+nobody” for a campaign somebody had clicked through — while the note directly
+below says that exactly that click proves a human. For the same reason the opens
+tab now lists by `first_opened_at` instead of by the counter: somebody who
+blocks images and clicks has `opens = 0` and was missing from a tab whose first
+column is that timestamp.
 
-Die alten Zahlen aus `CampaignStats` bleiben unverändert, damit jeder Vergleich
-mit einer früheren Kampagne gültig bleibt. Die neuen stehen daneben, mit eigenem
-Namen.
+The old figures from `CampaignStats` stay unchanged, so that every comparison
+with an earlier campaign stays valid. The new ones stand beside them, under
+their own names.
 
-### Fixed — die Kampagnenseite antwortete auf jeder Standardinstallation 500
+### Fixed — the campaign page answered 500 on every default installation
 
-`marketing.archive.show` wird nur registriert, wenn das Archiv angeschaltet ist,
-und ausgeliefert ist es **aus**. Die Seite baute den Link trotzdem unbedingt:
-`RouteNotFoundException`, also 500 statt fehlendem Link — seit das Archiv
-existiert.
+`marketing.archive.show` is only registered when the archive is switched on, and
+it ships **off**. The page built the link unconditionally all the same:
+`RouteNotFoundException`, so a 500 instead of a missing link — ever since the
+archive has existed.
 
-Unsichtbar geblieben, weil der Testaufbau das Archiv für die **gesamte** Suite
-anschaltet. Kein Test hat je die ausgelieferte Konfiguration betreten. Dafür
-gibt es jetzt eine eigene Suite `ShippedDefaults`; ohne den Fix fallen dort
-sechs von sieben Tests um.
+It stayed invisible because the test setup switches the archive on for the
+**entire** suite. No test ever entered the shipped configuration. There is now a
+suite of its own for that, `ShippedDefaults`; without the fix six of its seven
+tests fall over.
 
-### Fixed — Kleinigkeiten, die einen Leser in die Irre führen
+### Fixed — small things that mislead a reader
 
-- Die Zeitleiste konnte sich selbst widersprechen. „Versand gestartet" ist die
-  einzige abgeleitete Station (nichts zeichnet den Sendebeginn auf), und bei
-  nachträglich geschriebenen Nachrichten stand „Versendet 12. August, Versand
-  gestartet 15. August". Die Station entfällt jetzt, statt eine unmögliche
-  Reihenfolge zu drucken.
-- Der CSV-Export neutralisiert eine führende Formel. Die Namensfelder kommen aus
-  dem öffentlichen Anmeldeformular, ein Fremder wählt ihren Inhalt also selbst,
-  und Excel führt eine Zelle mit `=` beim Öffnen aus — bei der Person, die das
-  Recht auf den Export hat.
-- Der Hinweis zu Maschinen-Öffnungen steht auf jedem Reiter, der eine
-  Öffnungszahl zeigt, und auf keinem leeren.
-- Leerer Reiter: eine Meldung statt zwei. Und eine Kampagne ohne Datum trägt
-  keinen einsamen Trennpunkt hinter dem Betreff mehr.
+- The timeline could contradict itself. “Sending started” is the only derived
+  station (nothing records the start of a send), and with messages written after
+  the fact it read “Sent 12 August, sending started 15 August”. The station is
+  now dropped instead of printing an impossible order.
+- The CSV export neutralises a leading formula. The name fields come from the
+  public sign-up form, so a stranger chooses their content, and Excel executes a
+  cell beginning with `=` when opening it — on the machine of the person who
+  holds the export permission.
+- The note about machine opens is on every tab that shows an open count, and on
+  no empty one.
+- An empty tab: one message instead of two. And a campaign without a date no
+  longer carries a lonely separator dot behind the subject.
 
 ## 2.8.0 — 2026-08-15
 
-### Added — jede Mail steht jetzt am Kontakt
+### Added — every mail now stands on the contact
 
-Die Kontaktseite beantwortet „wer ist das und was läuft mit dieser Person".
-Was diese Person von uns bekommen hat, stand bisher nicht darin: die Fakten
-lagen vollständig in `marketing_messages`, nach Nachricht sortiert, also genau
-dort, wo niemand nachsieht, der einen Menschen ansieht.
+The contact page answers “who is this and what is going on with this person”.
+What that person had received from us was not in it until now: the facts lay
+complete in `marketing_messages`, sorted by message, which is exactly where
+nobody looks who is looking at a person.
 
-Versendet, geöffnet, geklickt, Bounce, Beschwerde: jedes davon schreibt jetzt
-einen Eintrag auf die LeadHub-Zeitleiste des Empfängers, mit Betreff, Kampagne
-und Liste als lesbare Zeilen statt als Payload-Dump.
+Sent, opened, clicked, bounced, complained: each of them now writes an entry
+onto the recipient's LeadHub timeline, with subject, campaign and list as
+readable lines rather than as a payload dump.
 
-Zwei Eigenschaften tragen das Ganze, und beide betreffen nicht den guten Fall:
+Two properties carry the whole thing, and neither concerns the good case:
 
-- **Ein Tracking-Pixel darf keinen CRM-Datensatz anlegen.** Zu einer Adresse
-  ohne Kontakt wird nichts geschrieben, auch nicht angelegt.
-- **Nichts auf diesem Weg darf aus einer zugestellten Mail einen Fehler
-  machen.** Der Weg hängt am Sendepfad und an zwei öffentlichen
-  Tracking-Endpunkten; er fängt alles und protokolliert gedrosselt.
+- **A tracking pixel may not create a CRM record.** For an address without a
+  contact nothing is written, and nothing is created either.
+- **Nothing on this path may turn a delivered mail into an error.** The path
+  hangs on the send path and on two public tracking endpoints; it catches
+  everything and logs at a throttled rate.
 
-Abschaltbar über `marketing.timeline.enabled`, einschränkbar auf einzelne Arten
-über `marketing.timeline.types` — fünfzigtausend Empfänger und pro Öffnung eine
-Zeile am Kontakt ist ein legitimer Wunsch, das nicht zu wollen.
+Switchable off through `marketing.timeline.enabled`, restrictable to individual
+types through `marketing.timeline.types` — fifty thousand recipients and one
+line on the contact per open is a legitimate reason not to want this.
 
-### Added — Öffnungen, die eine Maschine gemacht hat, heißen jetzt so
+### Added — opens made by a machine are now called that
 
-Apple Mail lädt das Zählpixel für jede zugestellte Nachricht vor, ob gelesen
-oder nicht; Sicherheits-Gateways wie Mimecast oder Proofpoint ebenso. Als
-Lektüre verbucht sagt das aus, jemand habe eine Mail angesehen, die niemand
-geöffnet hat.
+Apple Mail prefetches the tracking pixel for every delivered message, read or
+not; security gateways like Mimecast or Proofpoint do the same. Booked as
+reading, that says somebody looked at a mail nobody opened.
 
-Exakt unterscheiden lässt sich das nicht — Apples Mail Privacy Protection ist
-gebaut, um ununterscheidbar zu sein. `Support\MachineOpen` ist deshalb eine
-Heuristik, und die Richtung ihres Zweifels ist die Entscheidung: ein
-unbekannter Client zählt als Mensch. Einen echten Leser als Maschine zu führen
-ist der Fehler, der das Ganze schlechter macht als gar nichts.
+It cannot be told apart exactly — Apple's Mail Privacy Protection is built to be
+indistinguishable. `Support\MachineOpen` is therefore a heuristic, and the
+direction of its doubt is the decision: an unknown client counts as a human.
+Recording a real reader as a machine is the error that makes the whole thing
+worse than nothing at all.
 
-Bewusst nicht als Maschine gezählt: Gmails Bildproxy. Der lädt beim
-tatsächlichen Öffnen, seine Anfrage *ist* eine Lektüre.
+Deliberately not counted as a machine: Gmail's image proxy. It loads on the
+actual open, so its request *is* a reading.
 
-- **Die Zähler bleiben, wie sie waren.** `opens` zählt weiter alles. Der
-  Bericht vergleicht diese Kampagne mit jeder früheren; „Öffnungen" hier still
-  neu zu definieren sähe aus wie ein Einbruch, den es nie gab.
-- **Gespeichert wird die Antwort, nicht das Material.** Kein User-Agent, keine
-  IP — die Spalte `machine` auf `marketing_message_events` und sonst nichts.
-- Neues Ereignis `MessageOpenedByHuman`: hinter einem Scanner-Postfach ist die
-  erste Öffnung praktisch immer die der Maschine, `MessageOpened` hat dann
-  gefeuert und feuert nicht wieder. Ohne das zweite Ereignis stünde am Kontakt
-  für immer „vorgeladen" und nie einmal, dass die Person gelesen hat.
+- **The counters stay as they were.** `opens` still counts everything. The
+  report compares this campaign with every earlier one; silently redefining
+  “opens” here would look like a collapse that never happened.
+- **What is stored is the answer, not the material.** No user agent, no IP —
+  the `machine` column on `marketing_message_events` and nothing else.
+- New event `MessageOpenedByHuman`: behind a scanning mailbox the first open is
+  practically always the machine's, `MessageOpened` has fired by then and does
+  not fire again. Without the second event the contact would say “prefetched”
+  for ever and never once that the person read it.
 
 ### Fixed
 
-- Die Vorschau im Vorlagen-Editor benutzt jetzt ein benanntes Token statt
-  `bg-white`, damit der Rahmen im dunklen CP nicht weiß aufblitzt.
+- The preview in the template editor now uses a named token instead of
+  `bg-white`, so that the frame does not flash white in the dark CP.
 
 ## 2.7.2 — 2026-08-14
 
-### Docs — `| default:` rettet eine Anrede ohne Vornamen nicht
+### Docs — `| default:` does not rescue a greeting without a first name
 
-2.7.1 behauptete im Kommentar an der Willkommensserie, ein `default:` mit
-Anführungszeichen fange einen fehlenden Vornamen ab. Gemessen am laufenden
-Renderer: `{{ leer | default:'du' }}` ergibt leer, mit und ohne
-Anführungszeichen, während `{{ vorhanden | default:'x' }}` den Wert liefert —
-der Modifier läuft also, er behandelt einen leeren String nur nicht als
-fehlend.
+In its comment on the welcome series, 2.7.1 claimed that a `default:` with
+quotation marks catches a missing first name. Measured against the running
+renderer: `{{ leer | default:'du' }}` comes out empty, with and without
+quotation marks, while `{{ vorhanden | default:'x' }}` delivers the value — so
+the modifier does run, it merely does not treat an empty string as missing.
 
-Was hält: `{{ first_name or "du" }}` oder ein `{{ if first_name }}`-Block. Der
-Hinweis steht jetzt auch im README, weil er jede Kampagne betrifft und nicht nur
-die Vorlage: auf dem Sendeweg ist `first_name` leer, und das neutrale Wort aus
-`archive.neutral_name` gilt ausschließlich für die Archivseite.
+What does hold: `{{ first_name or "du" }}` or an `{{ if first_name }}` block.
+The note is now in the README as well, because it concerns every campaign and
+not only the template: on the send path `first_name` is empty, and the neutral
+word from `archive.neutral_name` applies to the archive page alone.
 
 ## 2.7.1 — 2026-08-14
 
-### Fixed — die mitgelieferte Willkommensserie baute den Defekt, vor dem dieses Addon warnt
+### Fixed — the shipped welcome series built the very defect this addon warns about
 
-Die Katalogvorlage `marketing_welcome_series` hängte zwei Werbemails an den
-domänenneutralen `send_email` aus `statamic-automations`: keine Einwilligung,
-keine Sperrliste, kein Opt-out, kein Frequenz-Deckel, kein Abmeldelink, keine
-Anbieterkennzeichnung. Zwei Verzeichnisse weiter, in `docs/sequences.md`, steht
-seit 1.12.0, dass genau das nicht geht.
+The catalogue template `marketing_welcome_series` hung two marketing mails on
+the domain-neutral `send_email` from `statamic-automations`: no consent, no
+suppression list, no opt-out, no frequency cap, no unsubscribe link, no provider
+identification. Two directories further along, in `docs/sequences.md`, it has
+said since 1.12.0 that exactly this does not work.
 
-Eine Vorlage ist der Weg, den jemand als Erstes geht. Wer sie nahm, baute den
-Fehler mit gutem Gewissen, weil er die Vorlage des Herstellers benutzt hat —
-zweimal ist er so entstanden.
+A template is the route somebody takes first. Whoever took it built the error
+with a clear conscience, because they had used the manufacturer's template —
+twice it came about that way.
 
-Jetzt `marketing.send_email` im **Kampagnenmodus**, Kampagne leer: der Katalog
-kann keine Kampagne benennen, die es im Zielsystem noch nicht gibt, also wählt
-sie die Site. Die Automation kommt ohnehin ausgeschaltet an, und ein Knoten ohne
-Kampagne sagt es beim Drücken von „Test", statt still ungeprüft zu senden.
-Vorlagenmodus wäre der kürzere Weg und ist gemessen der schlechtere: dort
-bekommt der Renderer eine Kampagne mit leerem `content`, und der `text/plain`-
-Teil entsteht aus genau diesem Feld.
+Now `marketing.send_email` in **campaign mode**, with the campaign left empty:
+the catalogue cannot name a campaign that does not yet exist on the target
+system, so the site picks it. The automation arrives switched off anyway, and a
+node without a campaign says so when “Test” is pressed, instead of sending
+unchecked and in silence. Template mode would be the shorter route and is,
+measured, the worse one: there the renderer gets a campaign with an empty
+`content`, and the `text/plain` part is built from exactly that field.
 
-Dazu Wiedereintritt `ignore` (es gibt nur ein Willkommen) und Beschriftungen an
-den beiden Mail-Knoten. Die englischen Platzhaltertexte sind mit den Knoten weg;
-eine Kampagne bringt ihren eigenen Text mit.
+Along with it, re-entry `ignore` (there is only one welcome) and labels on the
+two mail nodes. The English placeholder texts are gone with the nodes; a
+campaign brings its own text.
 
-Der Abmelde-Alarm und die „Kampagne verschickt"-Nachricht bleiben auf dem
-neutralen Knoten und an einer Admin-Adresse. Das ist, wofür er da ist — und seit
-`statamic-automations` 2.4.0 verweigert er den anderen Fall von sich aus.
+The unsubscribe alert and the “campaign sent” message stay on the neutral node
+and go to an admin address. That is what it is there for — and since
+`statamic-automations` 2.4.0 it refuses the other case on its own.
 
 ## 2.7.0 — 2026-08-14
 
-Aus Adrians Frage, warum es zweierlei „Templates" gibt und was die
-FamilyStack-Mails im Template-Feld einer Kampagne zu suchen haben.
+Out of Adrian's question why there are two kinds of “template” and what the
+FamilyStack mails are doing in a campaign's template field.
 
-### Fixed — eine Kampagne konnte ihren eigenen Text stillschweigend wegwerfen
+### Fixed — a campaign could throw its own text away in silence
 
-Das Feld hieß „Template" und die Liste darunter enthielt zweierlei: die
-**Umschläge**, in denen eine Kampagne verschickt wird, und die **fertigen
-Mails** mit eigenem Betreff und Text aus dem email-templates-Addon.
+The field was called “Template” and the list below it held two kinds of thing:
+the **envelopes** a campaign is sent in, and the **finished mails** with their
+own subject and text from the email-templates addon.
 
-Wer das Zweite wählte, machte es zum *Layout* der Kampagne. Eine fertige Mail
-hat aber kein `{{ content }}`-Loch — also wurde der Kampagnentext nicht
-eingesetzt, sondern fiel weg. Geschrieben, versendet, und in keinem Postfach
-angekommen. Kein Fehler, keine Meldung.
+Choosing the second made it the campaign's *layout*. A finished mail has no
+`{{ content }}` hole, though — so the campaign text was not inserted but
+dropped. Written, sent, and arrived in no mailbox. No error, no message.
 
-Das sind zwei Fragen, also sind es jetzt zwei Bedienelemente: **„Was diese
-Kampagne verschickt"** (eigener Text / eine fertige Mail) und darunter je nach
-Antwort ein **Layout** oder eine **Email-Vorlage**. Gespeichert wird weiterhin
-dasselbe Feld — der Versandweg, die API und jede bestehende Kampagne sind
-unberührt.
+Those are two questions, so there are now two controls: **“what this campaign
+sends”** (its own text / a finished mail) and, depending on the answer, either a
+**layout** or an **email template** below it. The same field is still stored —
+the send path, the API and every existing campaign are untouched.
 
-Dazu sagt der Editor jetzt, **bevor** etwas rausgeht, wenn das gewählte Layout
-den Text nirgends ausgibt.
+On top of that the editor now says, **before** anything goes out, when the
+chosen layout outputs the text nowhere.
 
-### Changed — „Templates" heißt im Marketing jetzt „Layouts"
+### Changed — “templates” in marketing are now called “layouts”
 
-Ein Wort für zwei Dinge war die Hälfte der Verwirrung. Was unter Marketing liegt,
-ist der Umschlag: Kopf, Fuß, Farben, das Loch für den Text. Die fertige Mail mit
-eigenem Betreff heißt weiterhin Email-Vorlage und hat ihren eigenen Menüpunkt.
+One word for two things was half the confusion. What sits under Marketing is the
+envelope: header, footer, colours, the hole for the text. The finished mail with
+its own subject is still called an email template and has its own menu entry.
 
-### Added — der Kampagnentext wird geschrieben, nicht getippt
+### Added — the campaign text is written, not typed
 
-Der Inhalt lag in einer Textarea voller `<p>`-Tags. Das ist kein Schreiben, und
-es ist nicht das, was dieses Control Panel sonst verlangt: eine Email-Vorlage
-wird in Bard bearbeitet, und eine Kampagne ist dieselbe Art Text von derselben
-Person. Jetzt derselbe Editor, mit denselben Knöpfen.
+The content sat in a textarea full of `<p>` tags. That is not writing, and it is
+not what this Control Panel asks for anywhere else: an email template is edited
+in Bard, and a campaign is the same kind of text from the same person. Now the
+same editor, with the same buttons.
 
-**Die Spalte ändert sich nicht.** `save_html` ist an, das Feld gibt einen
-HTML-String heraus und nimmt einen entgegen; `campaigns.content` enthält
-weiterhin genau das, was es vorher enthielt. Eine Kampagne aus der API, aus
-einem Import oder aus der Zeit vor diesem Release öffnet sich im Editor und
-speichert wieder heraus — ohne Migration und ohne einen selbstgebauten
-Konverter. Ein Test hält den Rundlauf fest, samt der Antlers-Platzhalter: eine
-kaputte Anrede geht an den ganzen Verteiler.
+**The column does not change.** `save_html` is on, the field hands out an HTML
+string and takes one in; `campaigns.content` still holds exactly what it held
+before. A campaign from the API, from an import or from before this release
+opens in the editor and saves back out — without a migration and without a
+home-made converter. A test pins the round trip, Antlers placeholders included:
+a broken greeting goes to the whole list.
 
 
 ## 2.6.1 — 2026-08-14
 
-### Fixed — die Vorschau kannte eine andere Platzhalter-Liste als der Versand
+### Fixed — the preview knew a different list of placeholders than the send
 
-2.6.0 lieferte der Vorschau eine von Hand geschriebene Liste von Variablen. Sie
-war am Tag ihrer Entstehung in beide Richtungen falsch: sie bot `list_name` an,
-das kein Versand je geliefert hat, und ihr fehlten `preheader`, `campaign.*` und
-`list.*`, die jeder Versand liefert.
+2.6.0 gave the preview a hand-written list of variables. It was wrong in both
+directions on the day it was written: it offered `list_name`, which no send has
+ever supplied, and it lacked `preheader`, `campaign.*` and `list.*`, which every
+send supplies.
 
-Aufgefallen an Adrians FamilyStack-Layout: dessen versteckte Vorschauzeile
-benutzt `{{ preheader }}` und blieb in der Vorschau leer, obwohl sie in
-Produktion gefüllt ist. Die andere Richtung ist die teurere — ein Platzhalter,
-der in der Vorschau gut aussieht und im Postfach als Lücke ankommt.
+Noticed on Adrian's FamilyStack layout: its hidden preheader line uses
+`{{ preheader }}` and stayed empty in the preview although it is filled in
+production. The other direction is the more expensive one — a placeholder that
+looks fine in the preview and arrives in the mailbox as a gap.
 
-Die Vorschau fragt jetzt `CampaignRenderer::archiveVariables()`, also die
-entpersonalisierte Variablenliste des Renderers selbst. Damit können die beiden
-nicht mehr auseinanderlaufen, und ein Test vergleicht sie Schlüssel für
-Schlüssel.
+The preview now asks `CampaignRenderer::archiveVariables()`, that is the
+renderer's own depersonalised list of variables. The two can no longer drift
+apart, and a test compares them key by key.
 
-### Added — die Liste der Platzhalter steht im Editor, und Tippfehler fallen auf
+### Added — the list of placeholders is in the editor, and typos show up
 
-Unter dem Code steht aufklappbar, welche Platzhalter es gibt. Dazu ein dritter
-Befund: **ein Platzhalter, den niemand füllt**, wird als Warnung genannt.
-Antlers löst eine unbekannte Variable zur leeren Zeichenkette auf — `{{ list_name }}`
-bleibt still leer, in der Vorschau wie im Postfach, und das einzige Symptom ist
-eine Lücke, wo ein Wort stehen sollte.
+Below the code, expandable, is which placeholders exist. Plus a third finding:
+**a placeholder nobody fills** is named as a warning. Antlers resolves an
+unknown variable to the empty string — `{{ list_name }}`
+stays silently empty, in the preview as in the mailbox, and the only symptom is
+a gap where a word should be.
 
-Bewusst zurückhaltend: alles, was kein schlichtes `{{ name }}` oder
-`{{ name.unter }}` ist, bleibt unangetastet. Antlers-Bedingungen, Tags und
-`noparse` wohnen in denselben Klammern, und eine Warnung, die auf korrektem
-Markup feuert, ist der Weg, auf dem Warnungen aufhören, gelesen zu werden.
+Deliberately restrained: anything that is not a plain `{{ name }}` or
+`{{ name.unter }}` is left untouched. Antlers conditions, tags and
+`noparse` live in the same braces, and a warning that fires on correct markup is
+the route by which warnings stop being read.
 
 ## 2.6.0 — 2026-08-14
 
-Beides aus Adrians Fragen beim Durchgang durch den Hub.
+Both from Adrian's questions while walking through the hub.
 
-### Added — die Verteiler einer Person stehen auf ihrer LeadHub-Kontaktseite
+### Added — a person's lists are on their LeadHub contact page
 
-Die beiden Addons waren unter der Oberfläche längst verheiratet: eine Anmeldung
-löst auf einen LeadHub-Kontakt auf, das Publikum einer Kampagne kommt aus
-LeadHub-Segmenten, und LeadHubs `do_not_contact` ist das, was eine Abmeldung
-setzt. Zu sehen war davon nichts. Die Kontaktseite zeigte Tags, Aufgaben und
-eine Chronik und sagte kein Wort über den Newsletter, den die Person seit einem
-Jahr bekommt.
+The two addons had long been married under the surface: a sign-up resolves to a
+LeadHub contact, a campaign's audience comes from LeadHub segments, and
+LeadHub's `do_not_contact` is what an unsubscribe sets. None of it was visible.
+The contact page showed tags, tasks and a history and said not a word about the
+newsletter the person has been receiving for a year.
 
-Beigesteuert von dieser Seite über LeadHubs neue Panel-Registry (leadhub 2.2.0),
-nicht von dort gelesen: marketing hängt von leadhub ab, leadhub von niemandem,
-und das für ein Panel umzudrehen hätte ein optionales Geschwister zur harten
-Abhängigkeit des CRM gemacht. Auf einem älteren leadhub fehlt das Panel und
-sonst nichts — geprüft wird mit `method_exists`, nicht mit einer
-Versionsangabe.
+Contributed from this side through LeadHub's new panel registry (leadhub 2.2.0),
+not read from over there: marketing depends on leadhub, leadhub on nobody, and
+turning that around for one panel would have made an optional sibling a hard
+dependency of the CRM. On an older leadhub the panel is missing and nothing
+else — the check is `method_exists`, not a version
+number.
 
-Gesucht wird über die normalisierte Adresse und nicht über `contact_uuid`: die
-UUID steht erst da, wenn eine Anmeldung bestätigt und synchronisiert ist, und
-eine unbestätigte Anmeldung ist genau das, wofür man diese Seite aufmacht.
+The lookup runs on the normalised address and not on `contact_uuid`: the UUID is
+only there once a sign-up has been confirmed and synchronised, and an
+unconfirmed sign-up is exactly what this page gets opened for.
 
-### Added — der Vorlagen-Editor zeigt, was er baut
+### Added — the template editor shows what it builds
 
-Eine Vorlage ist der Umschlag, nicht der Brief: Kopf, Fuß, Farben und das Loch,
-in das der Inhalt kommt. Bearbeitet wurde sie als HTML-Wand in einem Textfeld,
-und der einzige Weg, das Ergebnis zu sehen, war speichern, eine Kampagne
-schreiben und sich selbst einen Test schicken — drei Schritte entfernt von dem,
-was man gerade ändert.
+A template is the envelope, not the letter: header, footer, colours and the hole
+the content goes into. It was edited as a wall of HTML in a text field, and the
+only way to see the result was to save, write a campaign and send yourself a
+test — three steps away from what you are changing.
 
-Jetzt: Code links mit Syntaxhervorhebung (`CodeEditor`), gerenderte Vorschau
-rechts, umschaltbar zwischen Desktop- und Handybreite. Gerendert wird durch
-denselben Antlers-Parser wie der echte Versand (`Services\TemplatePreview`) —
-eine Vorschau durch eine zweite Engine wäre eine zweite Implementierung, die man
-im Gleichschritt halten muss, und die erste Abweichung stünde in irgendjemandes
-Posteingang.
+Now: code on the left with syntax highlighting (`CodeEditor`), the rendered
+preview on the right, switchable between desktop and phone width. Rendering goes
+through the same Antlers parser as the real send (`Services\TemplatePreview`) —
+a preview through a second engine would be a second implementation to keep in
+step, and the first divergence would be sitting in somebody's
+inbox.
 
-Dazu zwei Befunde, während getippt wird:
+Plus two findings while you type:
 
-- **Diese Vorlage gibt `{{ content }}` nirgends aus.** Fehler. Eine Kampagne
-  damit kommt leer an: geschrieben, versendet, und jeder Empfänger bekommt den
-  Rahmen um nichts. Das ist nichts, was man aus der Antwort einer Abonnentin
-  erfahren sollte.
-- **Diese Vorlage hat keinen Abmeldelink.** Warnung, kein Fehler: dieselbe
-  Vorlage ist für transaktionale Mail legitim, wo es nichts abzumelden gibt.
+- **This template outputs `{{ content }}` nowhere.** An error. A campaign using
+  it arrives empty: written, sent, and every recipient gets the frame around
+  nothing. That is not something you should learn from a subscriber's
+  reply.
+- **This template has no unsubscribe link.** A warning, not an error: the same
+  template is legitimate for transactional mail, where there is nothing to
+  unsubscribe from.
 
-Erkannt wird `{{ name }}` mit beliebigem Abstand, nicht das bloße Wort — sonst
-bekäme jemand für eine korrekte Vorlage gesagt, sie sei kaputt, und das ist der
-Weg, auf dem eine Warnung aufhört, gelesen zu werden.
+What is detected is `{{ name }}` with any amount of whitespace, not the bare
+word — otherwise somebody would be told a correct template is broken, and that
+is the route by which a warning stops being read.
 
-Die Vorschau liegt in einem `<iframe sandbox="">`, das nichts erlaubt. Eine
-Vorlage ist beliebiges HTML, das jemand eingefügt hat; ein `<script>` darin tut
-in einem Mailprogramm nichts und liefe hier im Control Panel mit der Sitzung der
-bearbeitenden Person. Dieselbe Regel wie bei der Kampagnen-Vorschau, und
-`tests/js/preview-sandbox.test.js` hält jetzt beide daran fest.
+The preview sits in an `<iframe sandbox="">` that permits nothing. A template is
+arbitrary HTML somebody pasted in; a `<script>` in it does nothing in a mail
+client and would run here in the Control Panel under the session of the person
+editing. The same rule as for the campaign preview, and
+`tests/js/preview-sandbox.test.js` now holds both to it.
 
 
 ## 2.5.1 — 2026-08-14
