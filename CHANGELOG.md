@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.23.0 — 2026-09-08
+
+### Fixed: an unmigrated install no longer answers HTTP 500
+
+The dashboard, lists, campaigns, sequences and templates screens used to die with `no such
+table` when the addon was installed but its migrations had never run. Each now shows an empty
+state naming the tables it is missing and saying to run `php artisan migrate`, and writes the
+reason to the log. Every screen names only the tables it actually reads.
+
+Under the `flat` storage driver, lists, campaigns and layouts live in YAML and their tables are
+never read — the check leaves them out rather than sending you to a migration that would fix
+nothing.
+
 ## 2.22.0 — 2026-09-07
 
 ### Added: 33 values per brand from the Control Panel
