@@ -20,6 +20,11 @@ return [
             'description' => 'Who the mail comes from, and the postal address printed under it. These are per brand: on a host with several brands each gets its own. Once set, they outrank the matching variable in .env.',
         ],
 
+        'editor' => [
+            'title' => 'Campaign editor',
+            'description' => 'Where the image button in the campaign editor takes pictures from. Without a container the editor cannot show a campaign that holds an image.',
+        ],
+
         'sending' => [
             'title' => 'Sending',
             'description' => 'Pace and delivery window. Changes take effect from the next send onwards, not retroactively on a campaign already going out. Extra mail headers (marketing.delivery.mail_headers) stay in config/marketing.php: it is a map with free-form keys, and there is no field for it here.',
@@ -185,6 +190,11 @@ return [
         'leadhub_complaint_opt_out' => [
             'label' => 'A spam complaint blocks the contact',
             'description' => 'On, a complaint at the provider blocks the LeadHub contact. Switching this off is not advisable: continuing to write to somebody who complained costs the sending domain its deliverability.',
+        ],
+
+        'editor_asset_container' => [
+            'label' => 'Asset container for images',
+            'description' => 'The handle of the asset container the image button opens. Empty takes the first container of the site. A handle that names no container falls back to that first one as well.',
         ],
 
     ],

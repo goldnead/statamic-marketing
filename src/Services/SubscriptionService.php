@@ -10,6 +10,7 @@ use Goldnead\Marketing\Events\MarketingUnsubscribed;
 use Goldnead\Marketing\Events\SubscriptionPending;
 use Goldnead\Marketing\Exceptions\ConfirmationLinkExpired;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
+use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
@@ -417,6 +418,24 @@ class SubscriptionService
     }
 
     /**
+     * End a subscription, and tell the campaign report which mail it happened
+     * through.
+     *
+     * The report counts unsubscribes as `MessageEvent` rows, and a row needs a
+     * message. Until 2.23.1 one was written only when the caller named a
+     * `message_id` — and no caller did: the footer link, the RFC 8058 one-click
+     * POST and the preference center all carry the subscription token and
+     * nothing else. So the report said "Unsubscribed 0" on every campaign of
+     * every installation while the list page counted them fine.
+     *
+     * Where the caller does not know the message, it is looked up: the last
+     * mail that actually left for this subscription is the one the person was
+     * reading when they decided. That is an inference, and the event says so
+     * in `meta.attribution` — a caller that does name a message (an ESP
+     * webhook, say) keeps its word, and a subscription that never received
+     * anything gets no event at all, because it did not unsubscribe *through*
+     * anything.
+     *
      * @param  array{campaign?:string,message_id?:int,reason?:string}  $metadata
      */
     public function unsubscribe(Subscription $subscription, array $metadata = []): Subscription
@@ -431,19 +450,53 @@ class SubscriptionService
         ]);
         $subscription->save();
 
-        if (! empty($metadata['message_id'])) {
-            MessageEvent::create([
-                'message_id' => $metadata['message_id'],
-                'type' => MessageEvent::TYPE_UNSUBSCRIBE,
-                'meta' => $metadata,
-            ]);
-        }
+        $this->recordUnsubscribeEvent($subscription, $metadata);
 
         $this->syncContactOnUnsubscribe($subscription, $metadata);
 
         event(new MarketingUnsubscribed($subscription, $metadata));
 
         return $subscription;
+    }
+
+    /**
+     * @param  array{campaign?:string,message_id?:int,reason?:string}  $metadata
+     */
+    protected function recordUnsubscribeEvent(Subscription $subscription, array $metadata): void
+    {
+        $messageId = ! empty($metadata['message_id'])
+            ? (int) $metadata['message_id']
+            : $this->lastMessageSentTo($subscription)?->id;
+
+        if ($messageId === null) {
+            return;
+        }
+
+        MessageEvent::create([
+            'message_id' => $messageId,
+            'type' => MessageEvent::TYPE_UNSUBSCRIBE,
+            'meta' => array_merge($metadata, [
+                'attribution' => empty($metadata['message_id']) ? 'last_sent' : 'named',
+            ]),
+        ]);
+    }
+
+    /**
+     * The most recent mail that left for this subscription.
+     *
+     * Only rows that were sent: a failed or still-pending message is nothing
+     * the person can have read, and if it were the newest row it must not take
+     * the unsubscribe away from the mail that did arrive.
+     */
+    protected function lastMessageSentTo(Subscription $subscription): ?Message
+    {
+        return Message::query()
+            ->where('subscription_id', $subscription->id)
+            ->where('status', Message::STATUS_SENT)
+            ->whereNotNull('sent_at')
+            ->orderByDesc('sent_at')
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**

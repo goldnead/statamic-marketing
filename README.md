@@ -677,6 +677,7 @@ refused with a message naming the brand that holds it.
 | `subscriptions.confirmation_ttl_hours` | `168` | How long an unused confirmation link stays valid (0 = forever) |
 | `subscriptions.confirm_requires_post` | `true` | Confirming needs a button press, so link scanners cannot consent for the reader |
 | `unsubscribe.global_opt_out` | `false` | Also set LeadHub `do_not_contact` on unsubscribe |
+| `editor.asset_container` | `null` (`MARKETING_ASSET_CONTAINER`) | The asset container behind the campaign editor's image button; `null` takes the site's first container by handle, and a site with none gets no image button. Also on the settings screen, per brand |
 | `tracking.opens` / `tracking.clicks` | `true` | Toggle tracking |
 | `timeline.enabled` | `true` | Write every mail onto the recipient's LeadHub timeline (see [Every mail on the contact](#every-mail-on-the-contact)). Nothing is written for an address with no contact |
 | `timeline.types` | `[]` | Which of the six kinds are written; empty means all of them. An install sending to fifty thousand people may not want a row per open on every contact. Constants on `Integrations\Leadhub\TimelineRecorder` |

@@ -210,6 +210,23 @@ return [
         'postal_line' => env('MARKETING_POSTAL_LINE'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Campaign editor
+    |--------------------------------------------------------------------------
+    |
+    | The asset container the campaign editor's image button takes pictures
+    | from. Null means the first container of the site. Bard only enables its
+    | image extension when the field names a container: without one, a campaign
+    | whose text holds an image cannot be opened in the Control Panel at all.
+    | On a site with no container the button is left out.
+    |
+    */
+
+    'editor' => [
+        'asset_container' => env('MARKETING_ASSET_CONTAINER'),
+    ],
+
     'tracking' => [
         'opens' => true,
         'clicks' => true,

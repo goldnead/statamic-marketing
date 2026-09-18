@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Support;
 
+use Statamic\Facades\AssetContainer;
 use Statamic\Facades\Blueprint;
 
 /**
@@ -33,22 +34,65 @@ class CampaignContentField
      * Buttons match the email-template editor, minus the ones an email cannot
      * carry sensibly. Kept in one place so the two screens cannot drift into
      * offering different formatting for the same medium.
+     *
+     * **The image button needs a container, or it is a lie.** Bard loads its
+     * image extension only when the field names an asset container; without
+     * one the button still sits in the toolbar, and a document that used it
+     * makes the editor refuse the whole text ("image button/extension is not
+     * enabled"). Found on staging with a campaign that had gone out fine — only
+     * the editor was locked. So the container is resolved here, and where the
+     * site has none the button is left out, which is what core's own Bard
+     * config screen does with its defaults.
      */
     public static function blueprint(): \Statamic\Fields\Blueprint
     {
+        $container = self::assetContainer();
+
+        $buttons = [
+            'h2', 'h3', 'bold', 'italic', 'unorderedlist', 'orderedlist',
+            'quote', 'anchor', 'image', 'horizontalrule', 'removeformat',
+        ];
+
+        if ($container === null) {
+            $buttons = array_values(array_filter($buttons, fn (string $button) => $button !== 'image'));
+        }
+
         return Blueprint::makeFromFields([
-            self::HANDLE => [
+            self::HANDLE => array_filter([
                 'type' => 'bard',
                 'display' => __('marketing::campaigns.content'),
                 'instructions' => __('marketing::campaigns.content_instructions'),
-                'buttons' => [
-                    'h2', 'h3', 'bold', 'italic', 'unorderedlist', 'orderedlist',
-                    'quote', 'anchor', 'image', 'horizontalrule', 'removeformat',
-                ],
+                'buttons' => $buttons,
+                'container' => $container,
                 'save_html' => true,
                 'always_show_set_button' => false,
-            ],
+            ], fn ($value) => $value !== null),
         ]);
+    }
+
+    /**
+     * The asset container the editor takes images from.
+     *
+     * `marketing.editor.asset_container` first — it is on the settings screen,
+     * per brand. A handle that names no container (renamed, deleted since the
+     * setting was made) is treated like none: the fallback is the first
+     * container of the site, the same default core proposes when a Bard field
+     * is configured by hand. Null only when the site has no container at all.
+     *
+     * "First" is by handle, not by store order: `AssetContainer::all()` comes
+     * out in whatever order the Stache indexed it, which can change with a
+     * warm-up or a rename, and a button that silently switches containers is a
+     * worse defect than the one this fixes.
+     */
+    public static function assetContainer(): ?string
+    {
+        $configured = config('marketing.editor.asset_container');
+
+        if (is_string($configured) && $configured !== '' && AssetContainer::find($configured)) {
+            return $configured;
+        }
+
+        return AssetContainer::all()->sortBy->handle()->first()?->handle();
     }
 
     /**

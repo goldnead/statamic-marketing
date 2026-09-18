@@ -1,5 +1,40 @@
 # Changelog
 
+## 2.23.1 — 2026-09-18
+
+Two defects a send test on a staging site turned up on the same afternoon. Both had been there
+since the features existed, and neither had ever failed a test.
+
+### Fixed: the campaign report counts unsubscribes
+
+The report's **Unsubscribed** figure, and the tab behind it, stood at zero on every campaign of
+every installation — while the list page counted the same people correctly. The report counts
+unsubscribe events on messages, and an event was only written when the caller named a
+`message_id`. No caller ever did: the footer link, the RFC 8058 one-click POST and the preference
+center all carry the subscription token and nothing else.
+
+An unsubscribe is now attributed to the last mail that actually left for that subscription, the
+one the person was reading when they decided. Failed and pending rows do not count as read; a
+subscription that never received anything gets no event, because it did not unsubscribe *through*
+anything. A caller that does name a message keeps its word, and the ESP webhook now does name
+the one the provider reported. The event's `meta` says which of the two it was
+(`attribution: last_sent` or `named`).
+
+Unsubscribes recorded before this version are not backfilled: the events were never written, and
+inventing them now would be a guess about the past.
+
+### Fixed: a campaign with an image opens in the editor again
+
+A campaign whose text held an `<img>` could not be opened in the Control Panel: Bard showed
+"Invalid content, image button/extension is not enabled" instead of the text. Sending and preview
+were fine, only the editor was locked. The field listed the image button but named no asset
+container, and without one Bard never loads its image extension.
+
+The editor now takes its container from the new `marketing.editor.asset_container`
+(`MARKETING_ASSET_CONTAINER`), also on the settings screen per brand under **Campaign editor**.
+Empty means the site's first container by handle, the same default core proposes for a Bard
+field. A site with no container at all gets no image button rather than one that cannot be kept.
+
 ## 2.23.0 — 2026-09-08
 
 ### Fixed: a setting can be reset to its packaged default again

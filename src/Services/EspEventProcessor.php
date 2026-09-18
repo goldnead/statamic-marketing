@@ -43,8 +43,14 @@ class EspEventProcessor
         match ($event['type']) {
             'bounce' => $this->applyBounce($subscriptions, $message, $event),
             'complaint' => $this->applyComplaint($subscriptions, $message, $event),
+            // The provider names the message it saw the unsubscribe on; pass
+            // it along so the report counts it there rather than on whichever
+            // mail happened to leave last.
             'unsubscribe' => $subscriptions->each(
-                fn (Subscription $subscription) => $this->subscriptions->unsubscribe($subscription, ['reason' => 'esp_unsubscribe'])
+                fn (Subscription $subscription) => $this->subscriptions->unsubscribe($subscription, array_filter([
+                    'reason' => 'esp_unsubscribe',
+                    'message_id' => $message?->id,
+                ]))
             ),
             default => null,
         };
