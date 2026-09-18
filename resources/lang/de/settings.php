@@ -20,6 +20,11 @@ return [
             'description' => 'Wer als Absender erscheint und welche Anschrift unter jeder Mail steht. Diese Werte gelten je Marke: auf einem Host mit mehreren Marken bekommt jede ihre eigenen. Gesetzt wirken sie stärker als die passende Variable in der .env.',
         ],
 
+        'editor' => [
+            'title' => 'Kampagnen-Editor',
+            'description' => 'Woher der Bild-Knopf im Kampagnen-Editor seine Bilder nimmt. Ohne Container kann der Editor eine Kampagne mit Bild nicht anzeigen.',
+        ],
+
         'sending' => [
             'title' => 'Versand',
             'description' => 'Tempo und Zustellzeitraum. Änderungen wirken ab dem nächsten Versand, nicht rückwirkend auf eine laufende Kampagne. Zusätzliche Mail-Kopfzeilen (marketing.delivery.mail_headers) stehen weiterhin in config/marketing.php: es ist eine Zuordnung mit frei wählbaren Schlüsseln, für die es hier kein Feld gibt.',
@@ -185,6 +190,11 @@ return [
         'leadhub_complaint_opt_out' => [
             'label' => 'Spam-Beschwerde sperrt den Kontakt',
             'description' => 'Eingeschaltet sperrt eine Beschwerde beim Anbieter den Kontakt in LeadHub. Ausschalten wird nicht empfohlen: wer sich beschwert hat, weiter anzuschreiben, kostet die Zustellbarkeit der Absender-Domain.',
+        ],
+
+        'editor_asset_container' => [
+            'label' => 'Asset-Container für Bilder',
+            'description' => 'Das Handle des Asset-Containers, den der Bild-Knopf öffnet. Leer nimmt den ersten Container der Site. Ein Handle, das keinen Container nennt, fällt ebenfalls auf diesen ersten zurück.',
         ],
 
     ],

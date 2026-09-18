@@ -116,6 +116,18 @@ class Settings implements ProvidesSettings
                 ],
             ],
             [
+                'title' => __('marketing::settings.groups.editor.title'),
+                'description' => __('marketing::settings.groups.editor.description'),
+                'fields' => [
+                    // Ein Handle, kein Select: die Liste der Container liegt im
+                    // Stache, und ein Feld, dessen Optionen beim Booten
+                    // eingesammelt wuerden, saehe eine Site ohne Stache leer.
+                    // Ein Handle, das keinen Container mehr nennt, faellt beim
+                    // Lesen auf den ersten Container zurueck.
+                    static::field('editor.asset_container', 'string', ['nullable' => true]),
+                ],
+            ],
+            [
                 'title' => __('marketing::settings.groups.sending.title'),
                 'description' => __('marketing::settings.groups.sending.description'),
                 'fields' => [

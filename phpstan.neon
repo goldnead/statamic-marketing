@@ -41,3 +41,14 @@ parameters:
         -
             identifier: class.notFound
             message: '#Goldnead\\(EmailTemplates|StatamicAutomations|WebhookManager|PreferenceCenter)\\#'
+
+        # Larastan (since 3.12) verifies a `view-string` by asking the view
+        # finder whether the template exists. This addon registers its
+        # `marketing::` namespace at boot via loadViewsFrom(), which the
+        # analysis never runs, so every namespaced view name is "string, not
+        # view-string" — a finding about the analysis environment, not about
+        # the view. Same exception as in statamic-automations and
+        # statamic-lead-magnets.
+        -
+            identifier: argument.type
+            message: '#expects view-string(\|null)?, string given#'
