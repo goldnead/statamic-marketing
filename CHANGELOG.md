@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.23.2 — 2026-09-19
+
+Two defects in the `text/plain` part of a campaign, both found by opening the outgoing message
+on a staging site instead of reading the HTML. Neither had ever failed a test, because no test
+had ever asked what the text part contains besides the unsubscribe line.
+
+### Fixed: links in the text part keep their target
+
+`toText()` ran `strip_tags()` over the campaign content, which throws every `href` away. A
+sentence that is a link in the HTML became a dead end in the text: measured on 18.09.2026, a
+campaign's whole text part carried exactly one URL, the unsubscribe one, while the HTML carried
+five. Someone reading the mail as plain text could not follow a single link.
+
+Each link now writes its target next to its text — `im Wissensbereich
+(https://adriangoldner.com/wissen)`. Three cases keep the text alone, because the URL would be
+noise: a link whose text already is the URL, a `mailto:` whose text already is the address, and
+an in-page anchor, which leads nowhere in a text file anyway.
+
+### Fixed: the postal line stands under the text part, too
+
+`ensurePostalLine()` appends the provider identification (§ 5 DDG for German senders) under the
+HTML part. Its docblock claimed the text part was "never affected" because the line came from
+the mailable. It did not: `marketing::mail.text` was never handed one, and on staging not a
+single text part carried an address. `CampaignMail` now resolves the line through
+`PostalLineResolver` and passes it to the view, which prints it under the unsubscribe line.
+
+Nothing is invented: with no `marketing.footer.postal_line` configured, no line is written. An
+addon cannot make up its operator's address, and a made-up one would be worse than none.
+
+Both are covered in `tests/Feature/CampaignTextPartTest.php`.
+
 ## 2.23.1 — 2026-09-18
 
 Two defects a send test on a staging site turned up on the same afternoon. Both had been there

@@ -151,3 +151,52 @@ it('does not html-escape the text part', function (): void {
         ->and($text)->not->toContain('&amp;')
         ->and($text)->not->toContain('&quot;');
 });
+
+/**
+ * Ein Link, dessen Ziel nur im HTML steht, führt im Textteil nirgendwohin.
+ *
+ * Auf staging gemessen am 18.09.2026: der ganze Textteil einer Kampagne trug
+ * genau eine URL, nämlich die zum Abmelden. Der Satz „Mehr dazu steht auf
+ * adriangoldner.com" war im HTML ein Link und im Text eine Sackgasse.
+ */
+it('writes each link target next to its text', function (): void {
+    $this->campaign->content =
+        '<p>Mehr dazu steht <a href="https://adriangoldner.com/wissen">im Wissensbereich</a>.</p>';
+
+    expect(textteil())->toContain('im Wissensbereich (https://adriangoldner.com/wissen)');
+});
+
+it('does not repeat a target that is already the link text', function (): void {
+    $this->campaign->content =
+        '<p><a href="https://adriangoldner.com">https://adriangoldner.com</a>, '
+        .'<a href="mailto:info@adriangoldner.com">info@adriangoldner.com</a>, '
+        .'<a href="#oben">nach oben</a>.</p>';
+
+    $text = textteil();
+
+    expect($text)->toContain('https://adriangoldner.com,')
+        ->and($text)->toContain('info@adriangoldner.com,')
+        ->and($text)->toContain('nach oben.')
+        // Keine Klammer-Dopplung und kein Anker, der im Text nirgends hinführt.
+        ->and($text)->not->toContain('(https://adriangoldner.com)')
+        ->and($text)->not->toContain('(mailto:')
+        ->and($text)->not->toContain('(#oben)');
+});
+
+/**
+ * Die Anbieterkennzeichnung (§ 5 DDG) steht unter dem HTML-Teil. Wer die Mail
+ * als reinen Text liest, sah bis 2.23.1 keine.
+ */
+it('carries the postal line in the text part, too', function (): void {
+    config()->set('marketing.footer.postal_line', 'Adrian Goldner, Keplerstraße 25, 60318 Frankfurt am Main');
+
+    expect(textteil())->toContain('Keplerstraße 25, 60318 Frankfurt am Main');
+});
+
+it('leaves the postal line out when none is configured', function (): void {
+    config()->set('marketing.footer.postal_line', null);
+
+    // Ein Addon kann die Anschrift seines Betreibers nicht erfinden, und eine
+    // erfundene wäre schlimmer als keine.
+    expect(trim(textteil()))->not->toEndWith(',');
+});

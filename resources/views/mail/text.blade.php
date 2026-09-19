@@ -10,3 +10,10 @@
 
 {!! __('marketing::public.unsubscribe_text') !!}: {!! $unsubscribeUrl !!}
 @endif
+@if (! empty($postalLine ?? null))
+
+{{-- Anbieterkennzeichnung, § 5 DDG. Sie steht unter dem HTML-Teil und muss
+     auch unter dem Textteil stehen: wer die Mail als reinen Text liest, sieht
+     sonst keine. --}}
+{!! $postalLine !!}
+@endif

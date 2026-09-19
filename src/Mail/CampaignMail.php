@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Mail;
 
 use Goldnead\BrandContext\Sending\SaidRecently;
+use Goldnead\Marketing\Contracts\PostalLineResolver;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Support\DeliveryHeaders;
 use Goldnead\Marketing\Support\RenderedMail;
@@ -38,6 +39,12 @@ class CampaignMail extends Mailable
             ->text('marketing::mail.text', [
                 'textContent' => $this->rendered->text,
                 'unsubscribeUrl' => ($einKlick && $einKlick !== '#') ? $einKlick : null,
+                // Die Anbieterkennzeichnung gehört unter BEIDE Teile. Der
+                // HTML-Teil bekommt sie im Renderer (`ensurePostalLine()`), der
+                // Textteil hier — bis 2.23.1 bekam er sie nirgends, obwohl der
+                // Renderer das Gegenteil behauptete. Auf staging gemessen am
+                // 18.09.2026: vier Postfächer, kein Textteil mit Anschrift.
+                'postalLine' => app(PostalLineResolver::class)->line(),
             ]);
 
         if ($this->campaign->replyTo) {

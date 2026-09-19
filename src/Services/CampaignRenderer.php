@@ -208,8 +208,10 @@ class CampaignRenderer
      * Die beiden Pruefungen sind deshalb getrennt. Eine Vorlage kann den Link
      * haben und die Anschrift nicht.
      *
-     * Die `text/plain`-Fassung war nie betroffen: dort kommt die Zeile aus der
-     * Mailable. Betroffen war die Darstellung, die fast jeder sieht.
+     * Die `text/plain`-Fassung bekommt die Zeile aus der Mailable, die sie an
+     * `marketing::mail.text` durchreicht. Hier stand bis 2.23.1, sie sei „nie
+     * betroffen" gewesen — das war falsch: die Ansicht bekam sie nirgends her,
+     * und auf staging trug am 18.09.2026 kein einziger Textteil eine Anschrift.
      *
      * Ist keine Zeile konfiguriert, passiert nichts — ein Addon kann die
      * Anschrift seines Betreibers nicht erfinden, und eine erfundene waere
@@ -742,8 +744,45 @@ class CampaignRenderer
      */
     protected function toText(string $contentHtml): string
     {
-        $text = preg_replace('/<(br|\/p|\/h[1-6]|\/div|\/li)>/i', "\n", $contentHtml);
+        $text = $this->keepLinkTargets($contentHtml);
+        $text = preg_replace('/<(br|\/p|\/h[1-6]|\/div|\/li)>/i', "\n", $text);
 
         return trim(html_entity_decode(strip_tags((string) $text)));
+    }
+
+    /**
+     * Writes each link's target next to its text, before `strip_tags()` eats it.
+     *
+     * Without this the text part says „Mehr dazu steht auf adriangoldner.com"
+     * and goes nowhere: the sentence is a link in the HTML, and in the text
+     * there is nothing to follow. Measured on staging on 18.09.2026, where a
+     * campaign's whole text part carried exactly one URL, the unsubscribe one.
+     *
+     * Three links keep their text alone, because the URL would be noise:
+     *  - one whose text already IS the URL („https://…" → not twice),
+     *  - a `mailto:` whose text already is the address,
+     *  - an anchor or an empty target (`#`, ``), which leads nowhere in a text.
+     */
+    protected function keepLinkTargets(string $html): string
+    {
+        return (string) preg_replace_callback(
+            '~<a\b[^>]*\bhref\s*=\s*(["\'])(.*?)\1[^>]*>(.*?)</a>~is',
+            function (array $treffer): string {
+                $ziel = trim(html_entity_decode($treffer[2]));
+                $text = $treffer[3];
+                $sichtbar = trim(html_entity_decode(strip_tags($text)));
+
+                if ($ziel === '' || str_starts_with($ziel, '#')) {
+                    return $text;
+                }
+
+                if ($sichtbar === $ziel || 'mailto:'.$sichtbar === $ziel) {
+                    return $text;
+                }
+
+                return $text.' ('.$ziel.')';
+            },
+            $html,
+        );
     }
 }
