@@ -53,14 +53,14 @@ class UnsubscribeController extends Controller
             // diesen Rueckweg einschaltet, will die alte Seite sehen, nicht 204.
             $abgemeldet = $subscriptions->unsubscribeByToken($token, ['reason' => 'link']);
 
-            abort_unless($abgemeldet, 404);
+            abort_if($abgemeldet === null, 404);
 
             return $this->abgemeldeteSeite($abgemeldet, $token, $lists, $links);
         }
 
         $subscription = $subscriptions->findByToken($token);
 
-        abort_unless($subscription, 404);
+        abort_if($subscription === null, 404);
 
         // Already gone: say so rather than offering a button that ends nothing.
         if (! $subscription->isSubscribed()) {
@@ -97,7 +97,7 @@ class UnsubscribeController extends Controller
             'reason' => $vonDerSeite ? 'link' : 'one_click',
         ]);
 
-        abort_unless($subscription, 404);
+        abort_if($subscription === null, 404);
 
         return $vonDerSeite
             ? $this->abgemeldeteSeite($subscription, $token, $lists, $links)

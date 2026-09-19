@@ -222,11 +222,6 @@ parameters:
 			count: 1
 			path: src/Http/Controllers/UnsubscribeController.php
 
-		-
-			message: '#^Parameter \#1 \$boolean of function abort_unless expects bool, Goldnead\\Marketing\\Models\\Subscription\|null given\.$#'
-			identifier: argument.type
-			count: 2
-			path: src/Http/Controllers/UnsubscribeController.php
 
 		-
 			message: '#^Access to an undefined property Goldnead\\Marketing\\Models\\Message\:\:\$campaign_handle\.$#'
