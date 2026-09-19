@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
+import { withoutLeaveGuard } from '../../support/leaveGuard.js';
 import {
     Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
     Badge, Field, Input, Select, Textarea,
@@ -229,14 +230,26 @@ const generalErrors = computed(() =>
         .map(([, message]) => message)
 );
 
+// Jeder Besuch von diesem Bildschirm geht durch `besuch()`.
+//
+// Statamics Wache fuer ungespeicherte Aenderungen haengt an Inertias `before`
+// und fragt per NATIVEM `confirm()`, ob man die Seite verlassen will. Sie
+// unterscheidet nicht zwischen Weggehen und Speichern — und ein Bard-Feld mit
+// einem Bild meldet sich schon beim Laden als schmutzig, ohne dass jemand etwas
+// angefasst hat. Folge: in einer Kampagne mit Bild tat KEIN Knopf mehr etwas,
+// lautlos. Siehe `support/leaveGuard.js` fuer die Messung.
+function besuch(optionen = {}) {
+    return withoutLeaveGuard({
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; optionen.onError?.(errors); },
+        onSuccess: () => { formErrors.value = {}; optionen.onSuccess?.(); },
+    });
+}
+
 function save() {
     if (! name.value.trim()) return;
 
-    const options = {
-        preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors || {}; },
-        onSuccess: () => { formErrors.value = {}; },
-    };
+    const options = besuch();
 
     if (isCreating.value) {
         router.post(props.storeUrl, payload(), options);
@@ -247,37 +260,25 @@ function save() {
 
 function sendTest() {
     if (! testEmail.value.trim()) return;
-    router.post(props.testUrl, { email: testEmail.value }, {
-        preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors || {}; },
-        onSuccess: () => { formErrors.value = {}; testEmail.value = ''; },
-    });
+    router.post(props.testUrl, { email: testEmail.value }, besuch({
+        onSuccess: () => { testEmail.value = ''; },
+    }));
 }
 
 function schedule() {
     if (! scheduledAt.value) return;
-    router.post(props.scheduleUrl, { scheduled_at: scheduledAt.value }, {
-        preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors || {}; },
-        onSuccess: () => { formErrors.value = {}; scheduledAt.value = ''; },
-    });
+    router.post(props.scheduleUrl, { scheduled_at: scheduledAt.value }, besuch({
+        onSuccess: () => { scheduledAt.value = ''; },
+    }));
 }
 
 function unschedule() {
-    router.post(props.unscheduleUrl, {}, {
-        preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors || {}; },
-        onSuccess: () => { formErrors.value = {}; },
-    });
+    router.post(props.unscheduleUrl, {}, besuch());
 }
 
 function sendNow() {
     showSendConfirm.value = false;
-    router.post(props.sendUrl, {}, {
-        preserveScroll: true,
-        onError: (errors) => { formErrors.value = errors || {}; },
-        onSuccess: () => { formErrors.value = {}; },
-    });
+    router.post(props.sendUrl, {}, besuch());
 }
 
 function destroy() {

@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.23.3 — 2026-09-19
+
+### Fixed: a campaign with an image could not be saved, and said nothing
+
+With an image in the content, **no button on the campaign editor did anything** — Save, Send
+test, Send now, all silent. No error, no toast, no rejected promise. The editor looked like it
+had saved, and the work was gone on reload.
+
+What actually happened, measured against a staging Control Panel on 19.09.2026:
+
+```
+ohne Bild   $dirty.names() -> []                     Save -> PATCH 303
+mit Bild    $dirty.names() -> ['campaign-content']   Save -> keine Anfrage
+```
+
+A Bard field rewrites `<img src="https://site/assets/logo.png">` to
+`<img src="statamic://asset::assets::logo.png">` the moment the page loads. That rewrite counts
+as a change, so the form is dirty before anyone has typed anything. Statamic's unsaved-changes
+guard hooks Inertia's `before` event and asks, through a **native `confirm()`**, whether you
+really want to leave the page. Answering no — or an automated browser dismissing the dialog —
+cancels the visit, and Inertia returns without firing `start` and without an error. That is the
+whole of the silence.
+
+The guard is right about leaving a page and wrong about this visit: saving *is* the resolution
+of the unsaved changes. Statamic's own publish forms clear the state before they save; this
+screen never touched it.
+
+Lifting the dirty flag is not enough, and the measurement says why: at `inertia:before` the
+store already answers `[]` and the dialog still appears, because Statamic installs its listener
+the first time anything goes dirty and never takes it down. Only `disableWarning()` unsubscribes
+it. Every visit from this screen now goes through one wrapper that does both.
+
+**The trade, stated plainly:** `disableWarning()` cannot be undone — a later `add()` does not
+re-arm it. A successful save answers 303, Inertia follows it, and Statamic arms the guard again
+with the rebuilt page. A *failed* save leaves the page without it, so a plain `beforeunload` is
+installed as a replacement. It catches closing the tab; it does not catch Inertia's in-app
+navigation, because that hook belongs to Statamic. Narrower than the original, and the honest
+limit without a change in Statamic itself.
+
+`resources/js/support/leaveGuard.js`, covered in `tests/js/leave-guard.test.js`.
+
 ## 2.23.2 — 2026-09-19
 
 Two defects in the `text/plain` part of a campaign, both found by opening the outgoing message
