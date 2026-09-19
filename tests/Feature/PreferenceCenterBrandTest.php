@@ -251,7 +251,9 @@ it('derives the brand from the token on the unsubscribe route it still owns', fu
     // it is the part that must not fail open: no session, so nothing is
     // current, and a fail-closed scope would otherwise hide the very row the
     // link addresses.
-    $this->get('/!/marketing/unsubscribe/'.$this->bNews->token)->assertOk();
+    // Seit 2.23.3 ueber den Knopf statt ueber den Aufruf; die Ableitung der
+    // Marke ohne Sitzung ist davon unberuehrt und bleibt der Kern dieses Tests.
+    $this->post('/!/marketing/unsubscribe/'.$this->bNews->token, ['via' => 'page'])->assertOk();
 
     expect(statusIn($this->brandB, 'b_news'))->toBe(Subscription::STATUS_UNSUBSCRIBED)
         ->and(statusIn($this->brandA, 'a_news'))->toBe(Subscription::STATUS_SUBSCRIBED)

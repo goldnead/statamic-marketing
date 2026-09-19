@@ -23,6 +23,15 @@ return [
      */
     'unsubscribe_text' => 'Abmelden',
 
+    /*
+     * Die Seite VOR der Abmeldung. Sie gibt es, weil ein Aufruf keine Handlung
+     * ist: Mail-Gateways und Linkvorschauen rufen jeden Link ab, und solange
+     * der Aufruf abgemeldet hat, meldete jeder Scan die Leserin ab.
+     */
+    'unsubscribe_confirm_title' => 'Wirklich abmelden?',
+    'unsubscribe_confirm_body' => 'Du bekommst dann keine E-Mails mehr aus ":list".',
+    'unsubscribe_confirm_button' => 'Ja, abmelden',
+
     'unsubscribed_title' => 'Abgemeldet',
     'unsubscribed_body' => 'Du wurdest von ":list" abgemeldet und erhältst keine weiteren E-Mails aus dieser Liste.',
 

@@ -175,10 +175,24 @@ return [
     | enabled it additionally flags the LeadHub contact as do-not-contact,
     | opting them out of every list and CRM mailing.
     |
+    | requires_post decides whether opening the link is enough. It is not, by
+    | default, and for the same reason confirm_requires_post exists: mail
+    | gateways, virus scanners and link previews fetch every URL in an incoming
+    | message. While a GET unsubscribed, each of those fetches ended somebody's
+    | subscription without their knowledge. `GET` now shows a page with a
+    | button; the button posts.
+    |
+    | The RFC 8058 one-click path is untouched either way — a provider sends
+    | `List-Unsubscribe=One-Click` and still gets 204 with no page, which is
+    | what Google and Yahoo require. Turning this off restores the one-click
+    | GET and, with it, the scanner problem.
+    |
     */
 
     'unsubscribe' => [
         'global_opt_out' => false,
+
+        'requires_post' => env('MARKETING_UNSUBSCRIBE_REQUIRES_POST', true),
     ],
 
     /*

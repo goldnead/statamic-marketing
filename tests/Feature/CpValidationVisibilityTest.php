@@ -74,18 +74,65 @@ function marketingSubmits(string $block): bool
     return (bool) preg_match('/router\.(post|patch|put|delete)\s*\(/', $block);
 }
 
+/**
+ * Behandelt dieser Block eine Ablehnung — selbst oder durch einen Helfer?
+ *
+ * Bis 2.23.3 trug jeder absendende Block sein eigenes `onError`. Seit der
+ * Kampagnen-Editor alle fuenf Besuche durch EINEN Helfer schickt (damit
+ * Statamics Wache fuer ungespeicherte Aenderungen sie nicht abbricht), steht
+ * das `onError` einmal statt fuenfmal — und dieser Waechter hielt die fuenf
+ * Aufrufer fuer blind. Er hatte recht, dass er es nicht sehen konnte.
+ *
+ * Also folgt er jetzt genau EINER Weiterleitung, und nur an einen Helfer in
+ * DERSELBEN Datei. Kein Freibrief: wer an etwas delegiert, das seinerseits kein
+ * `onError` hat, faellt weiter durch.
+ */
+function marketingHandlesRejection(string $body, array $bodies): bool
+{
+    if (str_contains($body, 'onError')) {
+        return true;
+    }
+
+    foreach ($bodies as $name => $helferBody) {
+        if (preg_match('/\b'.preg_quote($name, '/').'\s*\(/', $body) && str_contains($helferBody, 'onError')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 test('every submitting page handles the rejection it can receive', function (): void {
     $missing = [];
 
     foreach (marketingPages() as $page => $source) {
-        foreach (marketingFunctionBodies($source) as $name => $body) {
-            if (marketingSubmits($body) && ! str_contains($body, 'onError')) {
+        $bodies = marketingFunctionBodies($source);
+
+        foreach ($bodies as $name => $body) {
+            if (marketingSubmits($body) && ! marketingHandlesRejection($body, $bodies)) {
                 $missing[] = "{$page}::{$name}()";
             }
         }
     }
 
     expect($missing)->toBe([], 'These submit to the server but ignore a rejected response, so the failure is invisible: '.implode(', ', $missing));
+});
+
+/**
+ * Der Waechter oben darf nicht dadurch stumpf werden, dass er einer
+ * Weiterleitung folgt. Diese Probe stellt ihm einen Aufrufer hin, der an einen
+ * Helfer OHNE `onError` delegiert — er muss ihn melden.
+ */
+test('the rejection guard still catches a delegate that handles nothing', function (): void {
+    $bodies = [
+        'blindHelper' => 'return { preserveScroll: true };',
+        'blindCaller' => 'router.post(url, {}, blindHelper());',
+        'goodHelper' => 'return { onError: (e) => show(e) };',
+        'goodCaller' => 'router.patch(url, {}, goodHelper());',
+    ];
+
+    expect(marketingHandlesRejection($bodies['blindCaller'], $bodies))->toBeFalse()
+        ->and(marketingHandlesRejection($bodies['goodCaller'], $bodies))->toBeTrue();
 });
 
 test('every submitting page renders a summary for errors that belong to no field', function (): void {

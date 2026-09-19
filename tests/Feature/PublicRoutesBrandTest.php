@@ -66,7 +66,11 @@ it('confirms a subscription from a link opened without any session', function ()
 });
 
 it('unsubscribes from a link opened without any session', function (): void {
-    $this->get('/!/marketing/unsubscribe/'.$this->subB->token)->assertOk();
+    // Seit 2.23.3 meldet erst der Knopf ab, nicht schon der Aufruf
+    // (backlog-marketing-abmeldelink-meldet-bei-get-ab). Ohne Sitzung geht das
+    // weiterhin — die Route ist fuer den Ein-Klick-Weg ohnehin von der
+    // Faelschungspruefung ausgenommen.
+    $this->post('/!/marketing/unsubscribe/'.$this->subB->token, ['via' => 'page'])->assertOk();
 
     BrandContext::setCurrent($this->brandB);
     expect($this->subB->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
@@ -127,7 +131,7 @@ it('touches only the brand its own token belongs to — the security boundary', 
     // Brand B's token must never reach into brand A. Both subscriptions exist,
     // both are addressable by their own token, and neither request may see the
     // other's row.
-    $this->get('/!/marketing/unsubscribe/'.$this->subB->token)->assertOk();
+    $this->post('/!/marketing/unsubscribe/'.$this->subB->token, ['via' => 'page'])->assertOk();
 
     BrandContext::setCurrent($this->brandA);
     expect($this->subA->fresh()->status)->toBe(Subscription::STATUS_PENDING);

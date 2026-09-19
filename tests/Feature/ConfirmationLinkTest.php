@@ -167,7 +167,9 @@ it('leaves the unsubscribe token untouched when the confirmation link rotates', 
     // reason the two values were separated instead of rotating the one.
     expect($sub->fresh()->token)->toBe($unsub);
 
-    $this->get(route('marketing.unsubscribe', $unsub))->assertOk();
+    // Seit 2.23.3 ueber den Knopf statt ueber den Aufruf; dass der ALTE Token
+    // weiter traegt, ist der Punkt hier und bleibt geprueft.
+    $this->post(route('marketing.unsubscribe.post', $unsub), ['via' => 'page'])->assertOk();
     expect($sub->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
 });
 

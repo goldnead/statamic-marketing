@@ -22,6 +22,15 @@ return [
      */
     'unsubscribe_text' => 'Unsubscribe',
 
+    /*
+     * The page BEFORE the unsubscribe. It exists because opening a link is not
+     * an action: mail gateways and link previews fetch every URL, and while the
+     * fetch itself unsubscribed, every scan ended somebody's subscription.
+     */
+    'unsubscribe_confirm_title' => 'Unsubscribe?',
+    'unsubscribe_confirm_body' => 'You will stop receiving emails from ":list".',
+    'unsubscribe_confirm_button' => 'Yes, unsubscribe',
+
     'unsubscribed_title' => 'Unsubscribed',
     'unsubscribed_body' => 'You have been removed from ":list". You will not receive further emails from this list.',
 

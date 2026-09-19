@@ -41,6 +41,34 @@ limit without a change in Statamic itself.
 
 `resources/js/support/leaveGuard.js`, covered in `tests/js/leave-guard.test.js`.
 
+### Fixed: opening the unsubscribe link no longer unsubscribes
+
+`GET /!/marketing/unsubscribe/{token}` ended the subscription and showed "Unsubscribed". There
+was no question and no button. A single page view did it — measured on staging on 18.09.2026.
+
+Opening a link is not an action. Outlook SafeLinks, the virus scanner on a mail gateway and a
+messenger drawing a link preview all fetch every URL in an incoming message, and every one of
+those fetches unsubscribed a reader who never asked — recorded with a timestamp that looks
+exactly like a real click.
+
+The addon had already decided this question for the other direction: `confirm_requires_post` is
+on by default because a scanned confirmation link used to grant consent nobody had given. The
+argument is the same here, only inverted, so the fix is the same shape. `GET` now renders a page
+with a button; the button posts. `marketing.unsubscribe.requires_post` (env
+`MARKETING_UNSUBSCRIBE_REQUIRES_POST`) turns it off for installs that want the old one-click
+flow and, with it, the scanner problem.
+
+**The RFC 8058 one-click path is untouched**, which is what Google and Yahoo require: a provider
+POSTs and still gets 204 with no page. The two are told apart by a marker the addon's *own* page
+sends (`via=page`), not by the `List-Unsubscribe=One-Click` body the spec prescribes. That is
+deliberate and the safer way round: a provider that does not follow the spec to the letter would
+otherwise be handed an HTML page where it expects 204, and unsubscribing is the one path that may
+not become fussy. Anything without the page's marker is treated as a robot and answered exactly
+as before.
+
+Six existing tests changed from a GET to the button, including two that draw the brand-isolation
+boundary; every assertion they made is still made.
+
 ## 2.23.2 — 2026-09-19
 
 Two defects in the `text/plain` part of a campaign, both found by opening the outgoing message

@@ -313,7 +313,9 @@ it('leaves a bounced subscription alone in both directions', function (): void {
 it('ends the subscription on the page a tokenized unsubscribe link lands on', function (): void {
     // Marketing's own page, the one it keeps. It does one thing, and it does it
     // without any optional package installed.
-    $response = $this->get(route('marketing.unsubscribe', $this->token))->assertOk();
+    // Seit 2.23.3 meldet erst der Knopf ab, nicht schon der Aufruf
+    // (backlog-marketing-abmeldelink-meldet-bei-get-ab).
+    $response = $this->post(route('marketing.unsubscribe.post', $this->token), ['via' => 'page'])->assertOk();
 
     expect(currentStatus('newsletter'))->toBe(Subscription::STATUS_UNSUBSCRIBED)
         ->and(currentStatus('events'))->toBe(Subscription::STATUS_SUBSCRIBED);

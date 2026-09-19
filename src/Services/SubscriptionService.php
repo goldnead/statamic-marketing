@@ -284,6 +284,18 @@ class SubscriptionService
     }
 
     /**
+     * The row an unsubscribe link points at, with nothing decided about it.
+     *
+     * For the page that renders the button, the same way
+     * {@see findByConfirmationToken()} serves the confirmation page. Looking is
+     * not acting: a link scanner may open the page as often as it likes.
+     */
+    public function findByToken(string $token): ?Subscription
+    {
+        return Subscription::query()->where('token', $token)->first();
+    }
+
+    /**
      * Redeem a double-opt-in link.
      *
      * Reads `confirmation_token`, never `token`. The long-lived token is in

@@ -23,16 +23,89 @@ use Illuminate\Routing\Controller;
  */
 class UnsubscribeController extends Controller
 {
+    /**
+     * Show the link's state. Changes nothing, whoever or whatever opened it.
+     *
+     * A GET is not something the reader necessarily did. Outlook SafeLinks, the
+     * virus scanner on a mail gateway and a messenger's link preview all fetch
+     * every URL in an incoming message, and while this method unsubscribed, each
+     * of those fetches ended somebody's subscription without their knowledge —
+     * recorded with a timestamp that looks exactly like a real click. Measured
+     * on staging on 18.09.2026: one page view, status `unsubscribed`.
+     *
+     * The sibling question was already decided this way for the double opt-in
+     * ({@see ConfirmController}); `confirm_requires_post` is its switch. The
+     * argument holds here the other way round, so this has the same switch:
+     * `marketing.unsubscribe.requires_post`.
+     *
+     * What does NOT change: the RFC 8058 one-click POST that Google and Yahoo
+     * require. Their robots send `List-Unsubscribe=One-Click` and get 204.
+     */
     public function show(
         string $token,
         SubscriptionService $subscriptions,
         MailingListRepository $lists,
         PreferenceLink $links,
     ) {
-        $subscription = $subscriptions->unsubscribeByToken($token, ['reason' => 'link']);
+        if (! config('marketing.unsubscribe.requires_post', true)) {
+            // Nicht ueber store(): dort entscheidet der Seiten-Marker ueber die
+            // Antwort, und den hat ein Aufruf aus dem Mailprogramm nicht. Wer
+            // diesen Rueckweg einschaltet, will die alte Seite sehen, nicht 204.
+            $abgemeldet = $subscriptions->unsubscribeByToken($token, ['reason' => 'link']);
+
+            abort_unless($abgemeldet, 404);
+
+            return $this->abgemeldeteSeite($abgemeldet, $token, $lists, $links);
+        }
+
+        $subscription = $subscriptions->findByToken($token);
 
         abort_unless($subscription, 404);
 
+        // Already gone: say so rather than offering a button that ends nothing.
+        if (! $subscription->isSubscribed()) {
+            return $this->abgemeldeteSeite($subscription, $token, $lists, $links);
+        }
+
+        return response()->view('marketing::unsubscribe-confirm', [
+            'subscription' => $subscription,
+            'list' => $lists->find($subscription->list_handle),
+            'token' => $token,
+        ]);
+    }
+
+    /**
+     * End the subscription. Reached by a robot's one-click POST or by the button.
+     *
+     * The two are told apart by a marker the OWN page sends, not by one the
+     * robots are expected to send. RFC 8058 does prescribe a
+     * `List-Unsubscribe=One-Click` body, and a provider that follows it could
+     * be recognised by that — but a provider that does not would then be handed
+     * an HTML page where it expects 204, and unsubscribing is the one path that
+     * may not become fussy. So anything without this page's own marker is
+     * treated as a robot and answered exactly as before.
+     */
+    public function store(
+        string $token,
+        SubscriptionService $subscriptions,
+        MailingListRepository $lists,
+        PreferenceLink $links,
+    ) {
+        $vonDerSeite = request()->input('via') === 'page';
+
+        $subscription = $subscriptions->unsubscribeByToken($token, [
+            'reason' => $vonDerSeite ? 'link' : 'one_click',
+        ]);
+
+        abort_unless($subscription, 404);
+
+        return $vonDerSeite
+            ? $this->abgemeldeteSeite($subscription, $token, $lists, $links)
+            : response()->noContent();
+    }
+
+    protected function abgemeldeteSeite($subscription, string $token, MailingListRepository $lists, PreferenceLink $links)
+    {
         return response()->view('marketing::unsubscribed', [
             'subscription' => $subscription,
             'list' => $lists->find($subscription->list_handle),
@@ -41,15 +114,5 @@ class UnsubscribeController extends Controller
             // other half of the duplication.
             'preferencesUrl' => $links->centerAvailable() ? $links->manage($token) : null,
         ]);
-    }
-
-    /** RFC 8058 one-click unsubscribe — mail clients POST with no body context. */
-    public function store(string $token, SubscriptionService $subscriptions)
-    {
-        $subscription = $subscriptions->unsubscribeByToken($token, ['reason' => 'one_click']);
-
-        abort_unless($subscription, 404);
-
-        return response()->noContent();
     }
 }

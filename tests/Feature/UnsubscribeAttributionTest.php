@@ -72,7 +72,7 @@ beforeEach(function (): void {
 it('counts an unsubscribe through the mail link on the campaign that was sent', function (): void {
     $message = ($this->delivered)('brief');
 
-    $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
+    $this->post(route('marketing.unsubscribe.post', $this->subscription->token), ['via' => 'page'])->assertOk();
 
     $events = ($this->unsubscribeEvents)();
 
@@ -110,7 +110,7 @@ it('attributes the unsubscribe to the most recent delivery, not the first', func
     ($this->delivered)('brief', ['sent_at' => now()->subDays(7)]);
     $latest = ($this->delivered)('zweiter', ['sent_at' => now()->subHour()]);
 
-    $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
+    $this->post(route('marketing.unsubscribe.post', $this->subscription->token), ['via' => 'page'])->assertOk();
 
     expect(($this->unsubscribeEvents)()->first()?->message_id)->toBe($latest->id)
         ->and(($this->reportedUnsubscribes)('zweiter'))->toBe(1)
@@ -124,7 +124,7 @@ it('ignores a message that never left', function (): void {
     $sent = ($this->delivered)('brief', ['sent_at' => now()->subDay()]);
     ($this->delivered)('brief', ['status' => Message::STATUS_FAILED, 'sent_at' => null, 'error' => 'Mailbox full']);
 
-    $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
+    $this->post(route('marketing.unsubscribe.post', $this->subscription->token), ['via' => 'page'])->assertOk();
 
     expect(($this->unsubscribeEvents)()->first()?->message_id)->toBe($sent->id);
 });
@@ -134,7 +134,7 @@ it('writes no event when nothing was ever sent to the subscription', function ()
     // unsubscribed "through" anything. An event with no message would be a
     // row the report could not place, and the unsubscribe itself must still
     // go through.
-    $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
+    $this->post(route('marketing.unsubscribe.post', $this->subscription->token), ['via' => 'page'])->assertOk();
 
     expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED)
         ->and(($this->unsubscribeEvents)())->toHaveCount(0);
@@ -174,7 +174,7 @@ it('counts a provider-reported unsubscribe on the message the provider names', f
 it('records how the message was found, so a direct and an inferred event can be told apart', function (): void {
     ($this->delivered)('brief');
 
-    $this->get(route('marketing.unsubscribe', $this->subscription->token))->assertOk();
+    $this->post(route('marketing.unsubscribe.post', $this->subscription->token), ['via' => 'page'])->assertOk();
 
     $meta = ($this->unsubscribeEvents)()->first()?->meta;
 
