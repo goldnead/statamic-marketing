@@ -9,6 +9,8 @@ use Illuminate\Support\Collection;
 
 class EloquentEmailTemplateRepository implements EmailTemplateRepository
 {
+    use StampsTheBrandItself;
+
     public function all(): Collection
     {
         return EmailTemplateRecord::query()
@@ -26,13 +28,10 @@ class EloquentEmailTemplateRepository implements EmailTemplateRepository
 
     public function save(EmailTemplate $template): EmailTemplate
     {
-        EmailTemplateRecord::query()->updateOrCreate(
-            ['handle' => $template->handle],
-            [
-                'name' => $template->name,
-                'html' => $template->html,
-            ],
-        );
+        $this->speichereMitMarke(EmailTemplateRecord::class, $template->handle, [
+            'name' => $template->name,
+            'html' => $template->html,
+        ]);
 
         return $template;
     }

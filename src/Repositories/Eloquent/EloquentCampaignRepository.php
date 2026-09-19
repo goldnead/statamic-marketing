@@ -11,6 +11,8 @@ use Illuminate\Support\Collection;
 
 class EloquentCampaignRepository implements CampaignRepository
 {
+    use StampsTheBrandItself;
+
     public function all(): Collection
     {
         return CampaignRecord::query()
@@ -29,8 +31,7 @@ class EloquentCampaignRepository implements CampaignRepository
 
     public function save(Campaign $campaign): Campaign
     {
-        CampaignRecord::query()->updateOrCreate(
-            ['handle' => $campaign->handle],
+        $this->speichereMitMarke(CampaignRecord::class, $campaign->handle,
             [
                 'name' => $campaign->name,
                 'subject' => $campaign->subject,

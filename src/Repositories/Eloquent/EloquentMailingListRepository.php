@@ -9,6 +9,8 @@ use Illuminate\Support\Collection;
 
 class EloquentMailingListRepository implements MailingListRepository
 {
+    use StampsTheBrandItself;
+
     public function all(): Collection
     {
         return MailingListRecord::query()
@@ -26,14 +28,11 @@ class EloquentMailingListRepository implements MailingListRepository
 
     public function save(MailingList $list): MailingList
     {
-        MailingListRecord::query()->updateOrCreate(
-            ['handle' => $list->handle],
-            [
-                'name' => $list->name,
-                'description' => $list->description,
-                'double_opt_in' => $list->doubleOptIn,
-            ],
-        );
+        $this->speichereMitMarke(MailingListRecord::class, $list->handle, [
+            'name' => $list->name,
+            'description' => $list->description,
+            'double_opt_in' => $list->doubleOptIn,
+        ]);
 
         return $list;
     }

@@ -9,6 +9,7 @@ use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\MailingListRecord;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentMailingListRepository;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Driver-agnostic contract tests: run against whichever driver
@@ -115,4 +116,53 @@ it('serves the same contract through the eloquent driver', function (): void {
 
     expect($repo->find('db_list')->name)->toBe('DB List')
         ->and(MailingListRecord::query()->where('handle', 'db_list')->exists())->toBeTrue();
+});
+
+/**
+ * `HasBrand` fuellt `brand_id` in einem `creating`-Hook, und `brand_id` ist
+ * NOT NULL. Ein stummgeschalteter Dispatcher ist damit kein Randfall, sondern
+ * ein gescheiterter INSERT — und Stummschalten ist alltaeglich: Laravels
+ * eigenes `WithoutModelEvents` auf einem Seeder macht genau das.
+ *
+ * Am 19.09.2026 lief ein Host damit in
+ * „NOT NULL constraint failed: marketing_lists.brand_id" und riss jeden
+ * Seeder danach mit. Deshalb setzen die Repositories die Marke selbst.
+ */
+it('writes the brand even when model events are muted', function (): void {
+    config()->set('marketing.storage.driver', 'eloquent');
+
+    Model::withoutEvents(function (): void {
+        app(MailingListRepository::class)->save(new MailingList(handle: 'ohne_events', name: 'Ohne Events'));
+        app(EmailTemplateRepository::class)->save(new EmailTemplate(handle: 'tpl', name: 'Vorlage', html: '<p>x</p>'));
+        app(CampaignRepository::class)->save(new Campaign(handle: 'kampagne', name: 'Kampagne', subject: 'Betreff'));
+    });
+
+    foreach (['marketing_lists' => 'ohne_events', 'marketing_templates' => 'tpl', 'marketing_campaigns' => 'kampagne'] as $tabelle => $handle) {
+        $zeile = DB::table($tabelle)->where('handle', $handle)->first();
+
+        expect($zeile)->not->toBeNull("{$tabelle} hat {$handle} nicht angelegt")
+            ->and($zeile->brand_id)->not->toBeNull("{$tabelle}.brand_id ist leer geblieben");
+    }
+});
+
+/**
+ * Nur beim Anlegen. Ein Update darf eine bestehende Zeile niemals auf die
+ * gerade aktive Marke umhaengen — auf einem Host mit mehreren Marken waere das
+ * die Uebergabe einer Kampagne an eine fremde Marke, also genau das, wogegen
+ * die Markentrennung da ist.
+ */
+it('does not move an existing row to the current brand on update', function (): void {
+    config()->set('marketing.storage.driver', 'eloquent');
+
+    $repo = app(MailingListRepository::class);
+    $repo->save(new MailingList(handle: 'bleibt', name: 'Erst so'));
+
+    DB::table('marketing_lists')->where('handle', 'bleibt')->update(['brand_id' => 424242]);
+
+    $repo->save(new MailingList(handle: 'bleibt', name: 'Dann so'));
+
+    $zeile = DB::table('marketing_lists')->where('handle', 'bleibt')->first();
+
+    expect($zeile->brand_id)->toBe(424242)
+        ->and($zeile->name)->toBe('Dann so');
 });

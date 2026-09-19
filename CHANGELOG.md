@@ -31,6 +31,24 @@ addon cannot make up its operator's address, and a made-up one would be worse th
 
 Both are covered in `tests/Feature/CampaignTextPartTest.php`.
 
+### Fixed: the eloquent repositories write the brand themselves
+
+`HasBrand` from statamic-brand-context fills `brand_id` in a `creating` hook, and `brand_id` is
+NOT NULL. A muted event dispatcher was therefore not an edge case but a failed insert — and
+muting is ordinary: Laravel's own `WithoutModelEvents` on a seeder does exactly that. A host
+seeding its shipped lists through `DatabaseSeeder` hit
+`NOT NULL constraint failed: marketing_lists.brand_id`, and because the seeder aborted, every
+seeder after it never ran.
+
+All three eloquent repositories — lists, templates and campaigns — had it. They now stamp the
+brand themselves through one shared `StampsTheBrandItself`. The hook stays; it still serves
+every model created outside a repository, and this is simply no longer left to it.
+
+Only on create. An update must never move an existing row to whichever brand happens to be
+current: on a multi-brand host that would hand one brand's campaign to another, which is the one
+thing brand scoping exists to prevent. Both halves are covered in
+`tests/Feature/RepositoriesTest.php`.
+
 ## 2.23.1 — 2026-09-18
 
 Two defects a send test on a staging site turned up on the same afternoon. Both had been there
