@@ -19,4 +19,12 @@ return [
     'detail_list' => 'Verteiler',
     'detail_note' => 'Hinweis',
     'prefetched_note' => 'Apple Mail lädt die Bilder jeder zugestellten Mail, egal ob sie jemand liest. Diese Öffnung sagt, dass die Mail angekommen ist — nicht, dass sie gelesen wurde. Was ein Mensch getan hat, sagt der Klick.',
+
+    /*
+     * Steht nur unter der Spalte mit dem rohen Zähler, nicht unter den
+     * Kennzahlen im Kopf: „Geöffnet" dort zählt Nachrichten mit mindestens
+     * einer Öffnung und ist von einem Bildcache nicht betroffen. Diese Spalte
+     * schon.
+     */
+    'proxied_opens_note' => 'Schreibt dein Versender die Bilder auf einen eigenen Zwischenspeicher um — Brevo tut das —, erreicht nur die erste Öffnung je Empfänger diese Zahl. Sie ist eine Untergrenze, keine Gesamtzahl.',
 ];

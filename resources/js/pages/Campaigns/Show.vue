@@ -776,6 +776,32 @@ const subline = computed(() => {
                         {{ __('marketing::timeline.prefetched_note') }}
                     </Text>
 
+                    <!-- Die zweite Einschraenkung derselben Spalte, und nur
+                         dieser Spalte.
+
+                         `opens` ist ein roher Zaehler je Nachricht. Schreibt der
+                         Versender die Bilder auf einen eigenen Zwischenspeicher
+                         um, erreicht nur der erste Abruf den Zaehler: am
+                         18.09.2026 gemessen, Brevos Proxy antwortete beim
+                         zweiten Abruf aus dem Cache (`age: 700`,
+                         `max-age=172800`), obwohl der Pixel mit `no-store`
+                         ausgeliefert wird. Zwei Tage lang zaehlt so je
+                         Empfaenger nur die erste Oeffnung.
+
+                         NICHT unter den Kennzahlen im Kopf: „Geoeffnet" dort ist
+                         `where('opens', '>', 0)->count()`, also Nachrichten mit
+                         mindestens einer Oeffnung — von einem Cache unberuehrt.
+                         Eine Warnung dort waere falsch. -->
+                    <Text
+                        v-if="rows.length && (tab === 'opens' || tab === 'delivery')"
+                        size="sm"
+                        variant="subtle"
+                        class="mt-2 block"
+                        data-marketing-proxied-opens-note
+                    >
+                        {{ __('marketing::timeline.proxied_opens_note') }}
+                    </Text>
+
                     <!-- Pagination -->
                     <div v-if="pagination && pagination.last_page > 1" class="mt-4 flex items-center justify-between">
                         <Button

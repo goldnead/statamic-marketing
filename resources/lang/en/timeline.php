@@ -19,4 +19,11 @@ return [
     'detail_list' => 'List',
     'detail_note' => 'Note',
     'prefetched_note' => 'Apple Mail loads images for every message it delivers, whether or not anybody reads it. This open says the mail arrived — not that it was read. A click is what says a person did something.',
+
+    /*
+     * Shown under the column that carries the raw counter, not under the
+     * figures in the header: "Opened" up there counts messages with at least
+     * one open and is unaffected by an image cache. This column is not.
+     */
+    'proxied_opens_note' => 'Where your sending platform rewrites images onto a cache of its own — Brevo does — only the first open per recipient reaches this number. It is a floor, not a total.',
 ];

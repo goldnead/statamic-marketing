@@ -69,6 +69,24 @@ as before.
 Six existing tests changed from a GET to the button, including two that draw the brand-isolation
 boundary; every assertion they made is still made.
 
+### Said plainly: the per-recipient open counter is a floor where a provider proxies images
+
+Brevo rewrites every image in a campaign onto a cache of its own, the tracking pixel included.
+Measured on 18.09.2026: the second fetch of the proxied pixel came back from that cache
+(`age: 700`, `cache-control: public, max-age=172800`) even though this addon serves the pixel
+with `no-store, no-cache, must-revalidate, max-age=0`. For two days, only the first open per
+recipient reaches the counter.
+
+There is nothing here to fix in code. The pixel already forbids caching and the provider ignores
+it; `delivery.mail_headers` stops link rewriting on the providers that offer a switch, and
+Brevo — as that config already says — offers none, least of all for images.
+
+What was wrong was leaving the reader to guess which figure this touches. It touches **one**: the
+raw `opens` column in the recipients table. The **"Opened" figure in the report header is not
+affected** — `CampaignStats` counts it as `where('opens', '>', 0)->count()`, messages with at
+least one open, which a cache cannot change. So the note sits under that column and nowhere else,
+and a test holds it there: a warning next to a sound figure would only cast doubt on it.
+
 ## 2.23.2 — 2026-09-19
 
 Two defects in the `text/plain` part of a campaign, both found by opening the outgoing message
