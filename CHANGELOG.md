@@ -47,6 +47,18 @@ Where there is genuinely none, the image gets `alt=""` rather than no attribute 
 the correct marking for an image without an alternative text and removes a checker's "image
 without alt attribute" finding. Nothing is invented.
 
+### Fixed: one date format on the report page, not two
+
+The send time in the report header read "18.9.2026, 20:03:50" while the snapshot box below it
+read "18.09.2026, 18:03" — one- against two-digit numbers, with seconds against without. Half of
+the impression that those were two different times was simply two formats. The header now uses
+the same shape as the box.
+
+The other half was a real two hours, and it belongs to the host: the box formatted in the
+application's timezone. That is fixed in `goldnead/statamic-email-templates` v2.7.1, which
+formats in `Statamic::displayTimezone()` instead. The timezone here is unchanged and still the
+browser's.
+
 ## 2.23.3 — 2026-09-19
 
 ### Fixed: a campaign with an image could not be saved, and said nothing

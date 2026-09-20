@@ -358,8 +358,27 @@ function messageStatusLabel(status) {
     return __(`marketing::campaigns.message_statuses.${status}`);
 }
 
+/**
+ * Datum und Uhrzeit, wie sie auch unter dem Schnappschuss stehen.
+ *
+ * Ohne Vorgaben liefert `toLocaleString()` im Deutschen „18.9.2026, 20:03:50" —
+ * ein- statt zweistellige Zahlen und mit Sekunden, waehrend derselbe Zeitpunkt
+ * im Kasten darunter „18.09.2026, 20:03" heisst. Zwei Formate fuer dieselbe
+ * Nachricht auf einer Seite, und das war die Haelfte des Eindrucks, es seien
+ * zwei verschiedene Zeiten.
+ *
+ * Die Zeitzone bleibt die des Browsers. Der Server schickt den Wert mit Kennung,
+ * der Browser rechnet ihn korrekt um, und der Kasten darunter formatiert seit
+ * email-templates 1.x in `Statamic::displayTimezone()` — auf einem Host, dessen
+ * Anzeige-Zeitzone die der Leserin ist, sagen beide dasselbe.
+ */
 function formatDate(value) {
-    return value ? new Date(value).toLocaleString() : '—';
+    return value
+        ? new Date(value).toLocaleString(undefined, {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        })
+        : '—';
 }
 /**
  * The date half of the subline, or nothing at all.
