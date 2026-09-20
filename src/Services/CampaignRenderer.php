@@ -12,6 +12,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\PreferenceLink;
 use Goldnead\Marketing\Support\RenderedMail;
+use Goldnead\Marketing\Support\StatamicReferences;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
 use Statamic\Facades\Antlers;
@@ -135,7 +136,13 @@ class CampaignRenderer
             ? $this->archiveVariables($campaign, $list, $subjectTemplate)
             : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
 
-        $content = $this->parse($campaign->content, $variables);
+        // Vor allem anderen: Statamics interne Verweise in echte Adressen.
+        // Bard speichert ein im CP eingefuegtes Bild als
+        // `statamic://asset::…`, und das geht sonst woertlich in die Mail —
+        // ein kaputtes Bild in jedem Postfach. Siehe StatamicReferences.
+        $content = StatamicReferences::toAbsoluteUrls(
+            $this->parse($campaign->content, $variables)
+        );
 
         $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 

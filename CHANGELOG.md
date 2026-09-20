@@ -1,5 +1,52 @@
 # Changelog
 
+## 2.24.0 — 2026-09-20
+
+### Fixed: an image from the Control Panel arrived broken
+
+Bard stores an image inserted in the editor as `statamic://asset::<container>::<path>`. In an
+application that reference is resolved when the field is augmented; the campaign renderer takes
+the stored HTML directly and augments nothing. So the reference went into the mail verbatim, and
+`src="statamic://asset::assets::logo.png"` is a broken image in every mailbox that receives it.
+
+It surfaced only now because until 2.23.3 a campaign with an image could not be saved at all.
+Fixing that opened the path that leads here.
+
+Statamic's own `ResolvesStatamicUrls` does the same lookup but writes `$data->url()` — a path
+with no host. On a web page that is exactly right; in a mail there is no current page for a
+relative path to resolve against, so it would be as dead as the reference it replaced. Hence
+absolute URLs, with `app.url` as the fallback for anything that has no absolute form.
+
+A reference that no longer resolves takes the whole `<img>` with it rather than leaving
+`src=""`, which draws the same broken icon. A link keeps its text and loses its href — the
+sentence it sits in is still worth reading.
+
+### Added: images are sized for a mail, not for an archive
+
+What gets uploaded is the file from the camera: a send test on 18.09.2026 carried an image of
+1114×2429 px. Weight costs more in a mail than on a page, because it is paid once per recipient
+and nobody reloads an image in a mailbox. Statamic now renders a mail-sized version at twice the
+display width, so it stays sharp on dense screens.
+
+Each content image also gets a `width` attribute — Outlook reads the attribute and ignores the
+CSS beside it, and without one it draws the image at its true pixel width, far past the edge of
+the mail. `max-width:100%; height:auto` sits beside it for everything else.
+
+`marketing.editor.image_width` (env `MARKETING_IMAGE_WIDTH`) sets the display width; the default
+576 fits a 640px layout with 32px padding. Only images are resized — a PDF on the same path keeps
+its URL — and if the image pipeline fails (no GD, a file that is not an image), the plain URL
+stays: an image that is too large beats no image.
+
+### Added: the alt text comes from the asset
+
+`Bard\ImageNode` fills an image's alt from the asset's own `alt` field when augmenting. Our path
+skips augmenting, so it is fetched here instead — an image was going out without its alternative
+text even where one was maintained. An alt already on the tag wins; it is the more specific one.
+
+Where there is genuinely none, the image gets `alt=""` rather than no attribute at all. That is
+the correct marking for an image without an alternative text and removes a checker's "image
+without alt attribute" finding. Nothing is invented.
+
 ## 2.23.3 — 2026-09-19
 
 ### Fixed: a campaign with an image could not be saved, and said nothing

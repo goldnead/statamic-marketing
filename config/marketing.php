@@ -239,6 +239,21 @@ return [
 
     'editor' => [
         'asset_container' => env('MARKETING_ASSET_CONTAINER'),
+
+        /*
+         * Die Breite, in der ein eingefuegtes Bild in der Mail steht.
+         *
+         * Was im CP hochgeladen wird, ist die Datei aus der Kamera — beim
+         * Versandtest am 18.09.2026 lag im Inhalt ein Bild mit 1114x2429 px.
+         * Gewicht ist in einer Mail teurer als auf einer Seite, weil es fuer
+         * jeden einzelnen Empfaenger anfaellt. Statamic erzeugt deshalb eine
+         * Fassung in der DOPPELTEN dieser Breite (scharfe Bildschirme) und das
+         * `width`-Attribut bekommt diesen Wert, weil Outlook das Attribut liest
+         * und die CSS-Regel daneben nicht.
+         *
+         * Der Vorgabewert passt in ein 640px-Layout mit 32px Innenabstand.
+         */
+        'image_width' => (int) env('MARKETING_IMAGE_WIDTH', 576),
     ],
 
     'tracking' => [
