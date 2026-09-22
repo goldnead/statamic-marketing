@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.24.1 — 2026-09-22
+
+### Fixed: installierbar auf aktuellem Statamic 6
+
+Das Paket verlangte `inertiajs/inertia-laravel ^1.0|^2.0`. Statamic 6.33.0 ist die erste
+Version, die `^2.0 || ^3.0` erlaubt, und löst dort auf v3 auf — wer sie einsetzt, konnte dieses
+Addon nicht mehr installieren.
+
+Die Anforderung steht jetzt auf `^2.0 || ^3.0`, wie in `statamic-brand-context`. Am Code war
+nichts zu tun: von Inertia werden nur `Inertia::render` (15 Stellen) und der Typ
+`Inertia\Response` genutzt, keine eigene Middleware, kein `Inertia::lazy`, kein `assertInertia`.
+Die v3-Entfernung `LazyProp` trifft nichts, `SessionKey` ist lediglich nach `Support/` umgezogen,
+und die Page-Payload ist unverändert. 751 Tests unter Inertia 3.3.4, dasselbe Ergebnis wie unter
+v2.
+
+**Wirksam erst zusammen mit `statamic-leadhub` 2.12.1.** Dieses Paket verlangt LeadHub, und
+dessen ältere Tags tragen noch die enge Anforderung; solange einer davon aufgelöst wird, bleibt
+Inertia 2 stehen, unabhängig von dieser Datei.
+
 ## 2.24.0 — 2026-09-20
 
 ### Fixed: an image from the Control Panel arrived broken
