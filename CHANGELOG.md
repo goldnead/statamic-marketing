@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 2.25.0 — 2026-09-22
 
 ### Added: ein Layout lässt sich auch aus Bausteinen bauen
 
