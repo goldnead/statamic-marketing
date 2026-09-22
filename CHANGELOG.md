@@ -1,5 +1,62 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Changed: die Vorschau steht neben dem Formular, nicht darunter
+
+Eine Live-Vorschau gibt es im Kampagnen-Editor seit 2.15.0, und sie aktualisiert beim Tippen.
+Nur zu sehen war sie praktisch nie: sie saß als Panel unter dem Inhaltsfeld, ganz unten in der
+Hauptspalte, und sie war zugeklappt (`showPreview = false`). Wer eine Kampagne öffnete, sah also
+zuerst gar keine Vorschau, und der Weg dorthin war scrollen und klicken. Eine Live-Vorschau, um
+die man bitten muss, ist keine Live-Vorschau, sondern ein Knopf, der eine Seite rendert.
+
+Der Kampagnen-Editor folgt jetzt dem Muster, das der Layout-Editor schon hatte: Formular links,
+Mail rechts, beim Öffnen sichtbar, mit Gerätewahl Desktop/Handy. Das Formular behält seine
+bisherigen zwei Spalten und nimmt drei Fünftel, die Vorschau zwei — auf einem 1920px-Fenster
+sind das rund 640px für die Mail, die Breite, auf die Mail-HTML gebaut wird. Unter `2xl` stapelt
+es sich wieder, weil zwei halbe Spalten in einem 1280px-Fenster keine von beiden benutzbar
+lassen; die Vorschau bleibt dabei offen und steht direkt hinter dem Inhaltsfeld.
+
+Wer sie zuklappt, bekommt sie nicht bei der nächsten Kampagne wieder vorgesetzt: die
+Entscheidung liegt im `localStorage` (`marketing.campaign.preview.open`). Jeder Zugriff darauf
+ist abgesichert — in einem privaten Fenster wirft schon der Lesezugriff, und eine ungeschützte
+Abfrage hätte nicht die Einstellung gekostet, sondern die ganze Seite.
+
+Am `sandbox=""` des Rahmens und an der Content-Security-Policy der Vorschau-Route ändert das
+nichts. `tests/js/preview-sandbox.test.js` hält beide Editoren weiter darauf fest.
+
+### Changed: die Editor-Seiten nutzen die volle Fensterbreite
+
+Kampagnen-, Layout- und Sequenz-Editor steckten in Statamics `max-w-page` (85rem = 1360px). Zwei
+Spalten darin sind je rund 660px — für einen HTML-Code-Editor neben einer Mail-Vorschau zu
+schmal, während rechts und links Rand leer bleibt. Die drei Seiten tragen jetzt
+`data-marketing-full-bleed` und heben den Deckel auf: gemessen im laufenden CP 1360px vorher,
+1622px nachher, bei einem 1920px-Fenster. Die Listen-Seiten behalten ihn, das sind keine
+Editoren.
+
+Die Regel steht **unlayered** in `resources/css/cp.css`, und das ist der Punkt: im CP steht
+`addon-utilities` vor `utilities`, und die spätere Schicht gewinnt unabhängig von der
+Spezifität. Dieselbe Regel in `@layer addon-utilities` verliert still gegen Statamics
+`max-w-page` — der Selektor trifft, die Regel steht im Inspector, und die Breite bleibt bei
+1360px. In `statamic-automations` war genau das dreizehn Monate lang so gebaut und hat nie
+gewirkt. Der `addon-utilities`-Block bleibt für die eigenen Klassen dieses Addons richtig; nur
+die Überschreibung gehört heraus.
+
+### Added: Hell/Dunkel in der Vorschau
+
+Neben der Gerätewahl steht in beiden Editoren ein zweiter Schalter. Gemeint ist nicht das Thema
+des Control Panels, sondern das des Empfängergeräts: Apple Mail, Gmail und Outlook legen eine
+Mail auf einem dunkel gestellten Gerät auf dunkles Papier und lassen
+`prefers-color-scheme: dark` im Mail-HTML greifen. Bisher ließ sich das nur herausfinden, indem
+man sich eine Testmail schickte und die Einstellung des eigenen Telefons umstellte.
+
+Der Rahmen bekommt dafür `color-scheme: dark`, was die Medienabfrage **im gerahmten Dokument**
+umschaltet, dazu ein dunkles Blatt darunter (`--marketing-email-canvas-dark`).
+
+Die Entscheidung, dass die Vorschau-Fläche dem CP-Thema **nicht** folgt, bleibt bestehen und
+wird durch diesen Schalter nicht aufgeweicht — er ist eine ausdrückliche Wahl des Benutzers, kein
+Automatismus. Der Kommentar an `--marketing-email-canvas` sagt jetzt beides.
+
 ## 2.24.1 — 2026-09-22
 
 ### Fixed: installierbar auf aktuellem Statamic 6

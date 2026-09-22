@@ -26,8 +26,12 @@ return [
     'preview' => 'Preview',
     'preview_stale' => 'The preview could not be refreshed. It is showing the last layout that rendered.',
     'preview_empty' => 'Nothing to preview yet.',
+    'preview_device' => 'Preview device',
     'preview_desktop' => 'Desktop',
     'preview_mobile' => 'Phone',
+    'preview_scheme' => 'Preview device theme',
+    'preview_light' => 'Light',
+    'preview_dark' => 'Dark',
     'layout_instructions' => 'The envelope, not the letter: header, footer, colours, and the hole the campaign content is placed into. Placeholders are Antlers, the same ones a campaign can use.',
     'flashes' => [
         'created' => 'Template created.',

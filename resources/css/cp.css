@@ -24,9 +24,22 @@
      * Tinting it with the CP's surface token would misrepresent the mail — and
      * an unnamed literal there reads as a forgotten dark-mode variant, which is
      * exactly what the linter is right to flag. Same token, same reasoning, as
-     * `--sa-email-canvas` in goldnead/statamic-automations. */
+     * `--sa-email-canvas` in goldnead/statamic-automations.
+     *
+     * 22.09.2026 — the dark canvas does not soften that rule, it is the other
+     * half of it. What a recipient sees is still not the editor's CP theme;
+     * it is the recipient's own device, and on a dark device Apple Mail, Gmail
+     * and Outlook show the mail on a dark page and let
+     * `prefers-color-scheme: dark` inside the mail HTML take effect. That is a
+     * thing worth being able to look at before sending, so the preview gained
+     * a switch for it — an EXPLICIT choice the editor makes, next to the
+     * device switch, reached by nothing automatic. Hanging this token off the
+     * CP's own dark mode would be exactly the mistake the paragraph above
+     * exists to prevent: it would say "your Control Panel is dark" when the
+     * question asked is "what does a dark phone do with this mail". */
     :root {
         --marketing-email-canvas: var(--color-white, #ffffff);
+        --marketing-email-canvas-dark: var(--color-gray-900, #111827);
     }
 }
 
@@ -35,4 +48,59 @@
     .marketing-email-canvas {
         background: var(--marketing-email-canvas);
     }
+
+    /* The same paper, on a device the recipient has set to dark.
+     *
+     * `color-scheme: dark` rather than a background alone: it is what makes
+     * `prefers-color-scheme: dark` answer true INSIDE the framed document, so
+     * a layout that ships dark-mode rules shows them. The declaration has to
+     * sit on the <iframe> element itself for that; on the wrapper it only
+     * paints. Both carry the class, which is why it is written here once.
+     *
+     * Later than `.marketing-email-canvas` in the same layer and at the same
+     * specificity, so an element carrying both lands on this one. */
+    .marketing-email-canvas--dark {
+        background: var(--marketing-email-canvas-dark);
+        color-scheme: dark;
+    }
+}
+
+/* -----------------------------------------------------------------------
+ * Full-bleed editor pages.
+ *
+ * UNLAYERED, and that is the whole point of this block.
+ *
+ * Measured in the running Control Panel on 22.09.2026 (Statamic 6, CDP against
+ * the playground). The document's cascade-layer order, first mention counting:
+ *
+ *   properties > base > addon-theme > addon-utilities > components >
+ *   utilities > ui > ui-states > theme
+ *
+ * `addon-utilities` — where an addon's own CSS naturally goes — stands BEFORE
+ * `utilities`, where Statamic's `max-w-page` lives. A later layer wins over an
+ * earlier one REGARDLESS OF SPECIFICITY, so the identical rule written inside
+ * `@layer addon-utilities` loses silently: the selector matches, the rule is
+ * loaded and visible in the inspector, and the wrapper stays at 1360px. Counter
+ * -measured the same day: in `@layer utilities` or unlayered it wins (1622px at
+ * a 1920px viewport). Unlayered beats every layer, so that is what this is.
+ *
+ * Do not move this inside the block above. The `addon-utilities` block is still
+ * the right home for the addon's OWN classes (`.marketing-email-canvas`) — they
+ * compete with nothing. Only the override belongs out here.
+ *
+ * WHY THE CAP IS LIFTED AT ALL: the CP wraps every page in
+ * `max-w-page mx-auto` (85rem = 1360px) and lifts it only through a user
+ * preference it writes to `#main-content[data-max-width-enabled]`, an element
+ * no page component can reach. The editor pages of this addon put a code editor
+ * or a form beside a live email preview; two columns inside 1360px are ~660px
+ * each, and an email is 600px wide. The listing pages keep the cap — they are
+ * reading matter, not editors.
+ *
+ * Background: GoldnerOS memory `feedback-addon-layer-verliert-gegen-statamic-utilities`.
+ * Same mechanism as `data-sa-full-bleed` in goldnead/statamic-automations,
+ * under this addon's own attribute name so the two never reach into each other.
+ * ------------------------------------------------------------------- */
+[data-marketing-full-bleed] {
+    width: 100%;
+    max-width: none;
 }

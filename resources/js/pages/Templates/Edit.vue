@@ -77,6 +77,15 @@ const previewStale = ref(false);
 const findings = ref([]);
 const previewWidth = ref('desktop');
 
+// Light or dark, and the switch is the editor's own — never the Control
+// Panel's theme. What is being asked here is not "is my CP dark" but "what
+// does a phone set to dark do with this mail": Apple Mail, Gmail and Outlook
+// put it on a dark page and let `prefers-color-scheme: dark` in the layout
+// take effect. Until now the only way to find out was to send yourself a test
+// and change your phone's settings. See resources/css/cp.css for why this is
+// an explicit choice and not a mirror of the CP theme.
+const previewScheme = ref('light');
+
 let previewTimer = null;
 let previewRequest = 0;
 
@@ -183,7 +192,11 @@ function destroy() {
 <template>
     <Head :title="[isCreating ? __('marketing::templates.create') : template.name, __('marketing::templates.title'), __('Marketing')]" />
 
-    <div class="max-w-page mx-auto" data-max-width-wrapper>
+    <!-- `data-marketing-full-bleed` lifts the 1360px page cap for this screen.
+         An editor with a code pane beside a live email preview is the case the
+         cap was never written for; the rule and the measurement behind it are
+         in resources/css/cp.css. -->
+    <div class="max-w-page mx-auto" data-max-width-wrapper data-marketing-full-bleed>
         <Header :title="isCreating ? __('marketing::templates.create') : name" icon="template-theme-design-layout">
             <Dropdown v-if="deleteUrl">
                 <DropdownMenu>
@@ -274,20 +287,38 @@ function destroy() {
 
             <Panel :heading="__('marketing::templates.preview')" class="lg:sticky lg:top-4">
                 <Card>
-                    <div class="mb-3 flex items-center justify-between gap-3">
-                        <!-- Most of these mails are read on a phone, and a
-                             layout that only ever gets looked at at 900px wide
-                             is a layout whose first real test is a subscriber's
-                             thumb. -->
-                        <ToggleGroup
-                            :model-value="previewWidth"
-                            size="sm"
-                            :aria-label="__('marketing::templates.preview')"
-                            @update:model-value="(value) => { if (value) previewWidth = value; }"
-                        >
-                            <ToggleItem value="desktop" :label="__('marketing::templates.preview_desktop')" />
-                            <ToggleItem value="mobile" :label="__('marketing::templates.preview_mobile')" />
-                        </ToggleGroup>
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <!-- Most of these mails are read on a phone, and a
+                                 layout that only ever gets looked at at 900px wide
+                                 is a layout whose first real test is a subscriber's
+                                 thumb. -->
+                            <ToggleGroup
+                                :model-value="previewWidth"
+                                size="sm"
+                                :aria-label="__('marketing::templates.preview_device')"
+                                data-marketing-template-preview-device
+                                @update:model-value="(value) => { if (value) previewWidth = value; }"
+                            >
+                                <ToggleItem value="desktop" :label="__('marketing::templates.preview_desktop')" />
+                                <ToggleItem value="mobile" :label="__('marketing::templates.preview_mobile')" />
+                            </ToggleGroup>
+
+                            <!-- And the same question about the device's theme.
+                                 A layout with dark-mode rules is otherwise only
+                                 testable by sending yourself a mail and changing
+                                 your phone's settings. -->
+                            <ToggleGroup
+                                :model-value="previewScheme"
+                                size="sm"
+                                :aria-label="__('marketing::templates.preview_scheme')"
+                                data-marketing-template-preview-scheme
+                                @update:model-value="(value) => { if (value) previewScheme = value; }"
+                            >
+                                <ToggleItem value="light" :label="__('marketing::templates.preview_light')" />
+                                <ToggleItem value="dark" :label="__('marketing::templates.preview_dark')" />
+                            </ToggleGroup>
+                        </div>
 
                         <span v-if="previewStale" class="text-xs text-amber-600 dark:text-amber-400">
                             {{ __('marketing::templates.preview_stale') }}
@@ -301,12 +332,24 @@ function destroy() {
                     <div
                         v-if="previewHtml"
                         class="marketing-email-canvas mx-auto overflow-hidden rounded-lg border border-gray-200 transition-[max-width] dark:border-gray-800"
-                        :class="previewWidth === 'mobile' ? 'max-w-[390px]' : 'max-w-full'"
+                        :class="[
+                            previewWidth === 'mobile' ? 'max-w-[390px]' : 'max-w-full',
+                            previewScheme === 'dark' ? 'marketing-email-canvas--dark' : '',
+                        ]"
                     >
+                        <!-- `:key` on the scheme, so the frame is rebuilt when
+                             it changes. `color-scheme` on the element is what
+                             makes `prefers-color-scheme` answer dark inside the
+                             framed document, and a document that has already
+                             parsed its media queries in the other scheme does
+                             not always re-evaluate them in place. Cheap: srcdoc
+                             is already in memory, nothing is fetched. -->
                         <iframe
+                            :key="previewScheme"
                             :srcdoc="previewHtml"
                             :sandbox="previewSandbox"
                             class="marketing-email-canvas h-[640px] w-full border-0"
+                            :class="previewScheme === 'dark' ? 'marketing-email-canvas--dark' : ''"
                             :title="__('marketing::templates.preview')"
                             data-marketing-template-preview
                         ></iframe>

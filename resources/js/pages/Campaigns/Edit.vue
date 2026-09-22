@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { Head, Link, router } from '@statamic/cms/inertia';
 import { withoutLeaveGuard } from '../../support/leaveGuard.js';
+import { uiPreference } from '../../support/uiPreference.js';
 import {
     Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
     Badge, Field, Input, Select, Textarea,
@@ -95,7 +96,20 @@ const antlersHint = ['first_name', 'name', 'email', 'unsubscribe_url']
 
 const testEmail = ref('');
 const scheduledAt = ref('');
-const showPreview = ref(false);
+
+// Open, unless this editor has closed it before.
+//
+// It used to default to closed, in a panel below the form — so the ordinary
+// way to open a campaign was to see no preview at all, and the way to get one
+// was to scroll past the content field and click. A live preview that has to
+// be asked for is not a live preview; it is a button that renders a page. The
+// layout editor next door had this right already, and the campaign editor now
+// follows it: preview beside the form, there when the screen opens.
+//
+// Remembered rather than simply forced open, because "I am editing on a
+// laptop and want the whole width for the form" is a legitimate answer, and
+// re-giving it on every campaign would be its own annoyance.
+const showPreview = uiPreference('campaign.preview.open', true);
 const showSendConfirm = ref(false);
 const showDeleteConfirm = ref(false);
 
@@ -303,6 +317,22 @@ const previewHtml = ref('');
 const previewError = ref(null);
 const previewStale = ref(false);
 
+// Geraet und Geraete-Thema, beide wie im Layout-Editor: dieselbe Frage, also
+// dieselben zwei Schalter. Breite, weil die meisten dieser Mails auf einem
+// Telefon gelesen werden. Hell/Dunkel, weil Apple Mail, Gmail und Outlook auf
+// einem dunkel gestellten Geraet die Mail auf dunkles Papier legen und
+// `prefers-color-scheme: dark` im Mail-HTML greifen lassen — und weil man das
+// sonst erst im fremden Posteingang sieht. Ausdrueckliche Wahl, nie das
+// CP-Thema; die Begruendung steht in resources/css/cp.css.
+const previewWidth = ref('desktop');
+const previewScheme = ref('light');
+
+// Whether the screen is actually split in two. On `create` there is no campaign
+// to render yet and the controller sends no preview URL at all, so the whole
+// column is absent — without this the form would keep three fifths of the width
+// and hold two fifths of nothing open beside it.
+const previewIsSplit = computed(() => !! props.previewUrl && showPreview.value);
+
 let previewTimer = null;
 let previewRequest = 0;
 
@@ -362,6 +392,10 @@ function schedulePreview() {
 
 watch([contentValues, subject, preheader, template], schedulePreview, { deep: true });
 watch(showPreview, (open) => { if (open) refreshPreview(); });
+// The preview now stands open when the screen loads, so there has to be
+// something in it before the first keystroke. Without this the panel was
+// visible and blank until somebody typed — which reads as broken, not as empty.
+onMounted(refreshPreview);
 onBeforeUnmount(() => clearTimeout(previewTimer));
 
 </script>
@@ -369,7 +403,11 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
 <template>
     <Head :title="[isCreating ? __('Create campaign') : campaign.name, __('Campaigns'), __('Marketing')]" />
 
-    <div class="max-w-page mx-auto" data-max-width-wrapper>
+    <!-- `data-marketing-full-bleed` lifts the 1360px page cap for this screen.
+         Form, sidebar and a live email preview beside each other is the case
+         the cap was never written for; the rule and the measurement behind it
+         are in resources/css/cp.css. -->
+    <div class="max-w-page mx-auto" data-max-width-wrapper data-marketing-full-bleed>
         <Header :title="isCreating ? __('Create campaign') : name" icon="mail">
             <Badge
                 v-if="campaign"
@@ -417,9 +455,22 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
         </Alert>
 
         <template v-if="isEditable">
-            <div class="grid gap-6 lg:grid-cols-3">
+            <!-- Form left, mail right.
+                 The preview used to be a panel at the BOTTOM of this column,
+                 below the content field, and closed. Writing a subject and
+                 seeing what it does to the mail were then two different places
+                 on the page. Now they are side by side: the form (its own
+                 column pair, unchanged) takes three fifths, the preview two —
+                 two fifths of a full-bleed 1920px window is about 640px, which
+                 is the width an email is built at.
+                 Stacked below `2xl`, because splitting a 1280px window gives
+                 the form roughly 600px for two columns and the preview the
+                 same, and neither can be worked in. Stacked, the preview is
+                 still open and still right after the content field. -->
+            <div class="grid gap-6 2xl:items-start" :class="previewIsSplit ? '2xl:grid-cols-5' : ''">
+                <div class="grid min-w-0 gap-6 lg:grid-cols-3" :class="previewIsSplit ? '2xl:col-span-3' : ''">
                 <!-- Main column -->
-                <div class="lg:col-span-2 space-y-4">
+                <div class="lg:col-span-2 min-w-0 space-y-4">
                     <Panel :heading="__('Campaign')">
                         <Card>
                             <div class="space-y-4">
@@ -508,65 +559,10 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                         </Card>
                     </Panel>
 
-                    <!-- Preview -->
-                    <Panel v-if="previewUrl" :heading="__('Preview')">
-                        <Card>
-                            <div class="flex items-center gap-2">
-                                <Button
-                                    :text="showPreview ? __('Hide preview') : __('Show preview')"
-                                    variant="default"
-                                    @click="showPreview = !showPreview"
-                                />
-                                <a
-                                    :href="previewUrl"
-                                    target="_blank"
-                                    rel="noopener"
-                                    class="text-xs text-gray-500 hover:underline"
-                                >
-                                    {{ __('Open in new tab') }} ↗
-                                </a>
-                            </div>
-                            <p v-if="previewError" class="mt-2 text-xs text-red-600 dark:text-red-400">
-                                {{ previewError }}
-                            </p>
-                            <p v-else-if="previewStale" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                {{ __('The preview could not be refreshed. What you see is the last render.') }}
-                            </p>
-                            <p v-else class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                {{ __('The preview updates as you type.') }}
-                            </p>
-                            <!--
-                                The frame shows HTML a Control Panel user wrote,
-                                from a Control Panel route. `sandbox` with no
-                                tokens puts it in a unique opaque origin with
-                                scripts off; adding `allow-scripts` or
-                                `allow-same-origin` back would hand an editor
-                                who can write a template the session of every
-                                super user who previews it. The response carries
-                                the matching Content-Security-Policy. Held by
-                                tests/js/preview-sandbox.test.js.
-                            -->
-                            <!--
-                                `srcdoc` statt `src`, weil die Vorschau jetzt
-                                aus einer POST-Antwort kommt. Am `sandbox=""`
-                                aendert das nichts: ein srcdoc-Rahmen ohne
-                                Tokens ist derselbe undurchsichtige Ursprung
-                                ohne Skripte. Gehalten von
-                                tests/js/preview-sandbox.test.js.
-                            -->
-                            <iframe
-                                v-if="showPreview"
-                                :srcdoc="previewHtml"
-                                :title="__('Email preview')"
-                                sandbox=""
-                                class="mt-3 w-full h-[600px] rounded border border-content-border bg-content-bg"
-                            ></iframe>
-                        </Card>
-                    </Panel>
                 </div>
 
                 <!-- Sidebar -->
-                <aside class="space-y-4">
+                <aside class="min-w-0 space-y-4">
                     <Panel :heading="__('Recipients')">
                         <Card>
                             <div class="space-y-4">
@@ -766,6 +762,124 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                         </Card>
                     </Panel>
                 </aside>
+                </div>
+
+                <!-- Preview column -->
+                <div
+                    v-if="previewUrl"
+                    class="min-w-0"
+                    :class="previewIsSplit ? '2xl:col-span-2 2xl:sticky 2xl:top-4' : ''"
+                >
+                    <Panel :heading="__('Preview')">
+                        <Card>
+                            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <Button
+                                        :text="showPreview ? __('Hide preview') : __('Show preview')"
+                                        variant="default"
+                                        size="sm"
+                                        data-marketing-campaign-preview-toggle
+                                        @click="showPreview = !showPreview"
+                                    />
+
+                                    <!-- Device and device theme, the same two
+                                         questions the layout editor asks, in the
+                                         same order. Hidden while the preview is
+                                         closed: they would steer a frame nobody
+                                         can see. -->
+                                    <template v-if="showPreview">
+                                        <ToggleGroup
+                                            :model-value="previewWidth"
+                                            size="sm"
+                                            :aria-label="__('marketing::campaigns.preview_device')"
+                                            data-marketing-campaign-preview-device
+                                            @update:model-value="(value) => { if (value) previewWidth = value; }"
+                                        >
+                                            <ToggleItem value="desktop" :label="__('marketing::campaigns.preview_desktop')" />
+                                            <ToggleItem value="mobile" :label="__('marketing::campaigns.preview_mobile')" />
+                                        </ToggleGroup>
+
+                                        <ToggleGroup
+                                            :model-value="previewScheme"
+                                            size="sm"
+                                            :aria-label="__('marketing::campaigns.preview_scheme')"
+                                            data-marketing-campaign-preview-scheme
+                                            @update:model-value="(value) => { if (value) previewScheme = value; }"
+                                        >
+                                            <ToggleItem value="light" :label="__('marketing::campaigns.preview_light')" />
+                                            <ToggleItem value="dark" :label="__('marketing::campaigns.preview_dark')" />
+                                        </ToggleGroup>
+                                    </template>
+                                </div>
+
+                                <a
+                                    :href="previewUrl"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="text-xs text-gray-500 hover:underline"
+                                >
+                                    {{ __('Open in new tab') }} ↗
+                                </a>
+                            </div>
+
+                            <p v-if="previewError" class="mb-3 text-xs text-red-600 dark:text-red-400">
+                                {{ previewError }}
+                            </p>
+                            <p v-else-if="previewStale" class="mb-3 text-xs text-amber-600 dark:text-amber-400">
+                                {{ __('The preview could not be refreshed. What you see is the last render.') }}
+                            </p>
+
+                            <!--
+                                The frame shows HTML a Control Panel user wrote,
+                                from a Control Panel route. `sandbox` with no
+                                tokens puts it in a unique opaque origin with
+                                scripts off; adding `allow-scripts` or
+                                `allow-same-origin` back would hand an editor
+                                who can write a template the session of every
+                                super user who previews it. The response carries
+                                the matching Content-Security-Policy. Held by
+                                tests/js/preview-sandbox.test.js.
+                            -->
+                            <!--
+                                `srcdoc` statt `src`, weil die Vorschau jetzt
+                                aus einer POST-Antwort kommt. Am `sandbox=""`
+                                aendert das nichts: ein srcdoc-Rahmen ohne
+                                Tokens ist derselbe undurchsichtige Ursprung
+                                ohne Skripte. Gehalten von
+                                tests/js/preview-sandbox.test.js.
+                            -->
+                            <div
+                                v-if="showPreview"
+                                class="marketing-email-canvas mx-auto overflow-hidden rounded-lg border border-content-border transition-[max-width]"
+                                :class="[
+                                    previewWidth === 'mobile' ? 'max-w-[390px]' : 'max-w-full',
+                                    previewScheme === 'dark' ? 'marketing-email-canvas--dark' : '',
+                                ]"
+                            >
+                                <!-- `:key` on the scheme, so the frame is rebuilt
+                                     when it changes: `color-scheme` on the element
+                                     is what makes `prefers-color-scheme` answer
+                                     dark inside the framed document, and a
+                                     document that already parsed its media
+                                     queries in the other scheme does not reliably
+                                     re-evaluate them in place. Cheap — srcdoc is
+                                     in memory, nothing is fetched. -->
+                                <iframe
+                                    :key="previewScheme"
+                                    :srcdoc="previewHtml"
+                                    :title="__('Email preview')"
+                                    sandbox=""
+                                    class="marketing-email-canvas h-[calc(100vh-17rem)] min-h-[600px] w-full border-0"
+                                    :class="previewScheme === 'dark' ? 'marketing-email-canvas--dark' : ''"
+                                ></iframe>
+                            </div>
+
+                            <p v-if="showPreview" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                {{ __('The preview updates as you type.') }}
+                            </p>
+                        </Card>
+                    </Panel>
+                </div>
             </div>
         </template>
 

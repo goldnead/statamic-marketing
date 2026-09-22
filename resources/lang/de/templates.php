@@ -26,8 +26,12 @@ return [
     'preview' => 'Vorschau',
     'preview_stale' => 'Die Vorschau konnte nicht aktualisiert werden. Zu sehen ist die zuletzt gelungene Fassung.',
     'preview_empty' => 'Noch nichts zum Anschauen.',
+    'preview_device' => 'Gerät der Vorschau',
     'preview_desktop' => 'Desktop',
     'preview_mobile' => 'Handy',
+    'preview_scheme' => 'Geräte-Thema der Vorschau',
+    'preview_light' => 'Hell',
+    'preview_dark' => 'Dunkel',
     'layout_instructions' => 'Der Umschlag, nicht der Brief: Kopf, Fuß, Farben und das Loch, in das der Inhalt der Kampagne kommt. Die Platzhalter sind Antlers, dieselben, die auch eine Kampagne benutzen kann.',
     'flashes' => [
         'created' => 'Vorlage erstellt.',

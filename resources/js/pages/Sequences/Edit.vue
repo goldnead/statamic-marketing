@@ -221,7 +221,12 @@ function stateColor(state) {
 <template>
     <Head :title="[isCreating ? __('marketing::sequences.create') : sequence.title, __('marketing::sequences.title'), __('Marketing')]" />
 
-    <div class="max-w-page mx-auto" data-max-width-wrapper>
+    <!-- `data-marketing-full-bleed` lifts the 1360px page cap for this screen.
+         The step table carries a template, a subject override and a delay on
+         one row, and the cap squeezed them into a column with empty gutters
+         either side. The rule and the measurement behind it are in
+         resources/css/cp.css; the listing pages keep the cap. -->
+    <div class="max-w-page mx-auto" data-max-width-wrapper data-marketing-full-bleed>
         <Header :title="isCreating ? __('marketing::sequences.create') : title" icon="mail">
             <Badge
                 v-if="sequence"
