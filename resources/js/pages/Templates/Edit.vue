@@ -5,10 +5,11 @@ import {
     Header, Panel, Card, Button, Dropdown, DropdownMenu, DropdownItem,
     Field, Input, CodeEditor, Alert,
     ToggleGroup, ToggleItem, ConfirmationModal,
+    PublishContainer, PublishFieldsProvider, PublishFields,
 } from '@statamic/cms/ui';
 
 const props = defineProps([
-    'template',      // { handle, name, html } | null on create
+    'template',      // { handle, name, type, html, blocks } | null on create
     'storeUrl',      // POST endpoint (create only)
     'updateUrl',     // PATCH endpoint (edit only)
     'deleteUrl',     // DELETE endpoint (edit only)
@@ -18,6 +19,12 @@ const props = defineProps([
     // them by. Comes from the renderer itself, so the list cannot drift from
     // what an actual campaign provides.
     'availableVariables',
+    // Whether the kind of layout is still open. True only while creating —
+    // afterwards it is fixed, and the screen says so rather than hiding it.
+    'canChooseType',
+    // The publish form for the building blocks: { blueprint, values, meta }.
+    // Null for an HTML layout, which has no blocks and never gets any.
+    'blocksField',
 ]);
 
 const isCreating = computed(() => ! props.updateUrl);
@@ -25,6 +32,39 @@ const isCreating = computed(() => ! props.updateUrl);
 const name = ref(props.template?.name || '');
 const handle = ref(props.template?.handle || '');
 const html = ref(props.template?.html ?? props.starterHtml ?? '');
+
+// ---------- The two kinds of layout ----------
+//
+// Blocks are a second *input*, not a second output. Whatever is built here
+// leaves as one HTML string in the same column a hand-written layout fills,
+// so the renderer, the send, the snapshot and the archive never learn that
+// blocks exist. The choice is offered once, on create, and is then fixed:
+// there is no way back from HTML to blocks that is not guessing, and a
+// converter that guesses would be wrong exactly once, on somebody's layout.
+
+// A new layout opens as a building set, not as a wall of HTML. That is the
+// whole complaint this answers: hand-written mail HTML is a thing Adrian can
+// do, and precisely the wrong first step for everybody who buys the addon.
+// Anything that already exists keeps the kind it was written in, and anything
+// that arrives without one is read as `html` — the shape every layout had
+// before this column existed.
+const type = ref(props.template?.type ?? (props.canChooseType ? 'blocks' : 'html'));
+const isBlockLayout = computed(() => type.value === 'blocks');
+
+const blockValues = ref({ ...(props.blocksField?.values ?? {}) });
+
+// `meta` is two-way here and not a plain prop. The replicator mutates its own
+// metadata whenever a row is added or duplicated — that is where the new row's
+// field metadata is registered — and the publish container hands the change
+// back through `update:meta`. Binding it one-way would drop every row added
+// after load on the next render.
+const blockMeta = ref({ ...(props.blocksField?.meta ?? {}) });
+
+// One tab, one section, one field — read out of the blueprint rather than
+// named here, the same way the campaign editor does it.
+const blockFields = computed(
+    () => props.blocksField?.blueprint?.tabs?.[0]?.sections?.[0]?.fields ?? [],
+);
 
 const showDeleteConfirm = ref(false);
 
@@ -43,9 +83,17 @@ const unsubscribeTag = '{{ unsubscribe_url }}';
 // now land on the field they belong to.
 const formErrors = ref({});
 
+// The container keeps its own field state and wants the server's rejections in
+// the shape it understands. Passed for the same reason the campaign editor
+// passes it: the moment a rule lands on a single block field, its message has
+// somewhere to sit instead of nowhere.
+const blockErrors = computed(() =>
+    formErrors.value.blocks ? { blocks: [formErrors.value.blocks] } : {}
+);
+
 // Keys rendered next to their own field. Anything else has no field to sit at
 // and goes into the summary above the form, or it would be invisible again.
-const fieldKeys = ['name', 'handle', 'html'];
+const fieldKeys = ['name', 'handle', 'html', 'blocks', 'type'];
 
 // Which of those keys actually has a field on screen right now. The handle
 // input is only rendered while creating (`v-if="isCreating"`), so on an update
@@ -53,7 +101,16 @@ const fieldKeys = ['name', 'handle', 'html'];
 // filter it out of the summary as "already shown at its field". It would then
 // be shown nowhere at all, which is the exact failure 1.5.3 set out to end.
 const keysWithAVisibleField = computed(() =>
-    fieldKeys.filter((key) => key !== 'handle' || isCreating.value)
+    fieldKeys.filter((key) => {
+        if (key === 'handle' || key === 'type') return isCreating.value;
+        // Only one of the two editors is on screen at a time, so only one of
+        // the two keys has anywhere to sit. The other would be filtered out of
+        // the summary as "already shown at its field" and then shown nowhere.
+        if (key === 'html') return ! isBlockLayout.value;
+        if (key === 'blocks') return isBlockLayout.value;
+
+        return true;
+    })
 );
 
 const generalErrors = computed(() =>
@@ -112,7 +169,14 @@ async function refreshPreview() {
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-CSRF-TOKEN': window.Statamic?.$config?.get('csrfToken') ?? '',
             },
-            body: JSON.stringify({ html: html.value }),
+            // The blocks go over as blocks, never as HTML built on this side.
+            // The server runs the same translator the save runs, so what the
+            // preview shows is what the column will hold — a second translator
+            // in the browser would be a second truth, and the first divergence
+            // between them would surface in somebody's inbox.
+            body: JSON.stringify(isBlockLayout.value
+                ? { type: 'blocks', blocks: blockValues.value.blocks ?? [] }
+                : { type: 'html', html: html.value }),
         });
 
         if (! response.ok) throw new Error(String(response.status));
@@ -140,7 +204,11 @@ function schedulePreview() {
     previewTimer = setTimeout(refreshPreview, 500);
 }
 
+// `deep` on the blocks: what changes is a field inside a row, and a shallow
+// watch on the wrapper object never fires for that.
 watch(html, schedulePreview);
+watch(blockValues, schedulePreview, { deep: true });
+watch(type, refreshPreview);
 onMounted(refreshPreview);
 onBeforeUnmount(() => clearTimeout(previewTimer));
 
@@ -163,10 +231,15 @@ const previewSandbox = '';
 function save() {
     if (! name.value.trim()) return;
 
+    // `type` travels only on create. On an update the stored kind is the
+    // authority — sending it again would be a request to change something that
+    // cannot be changed, and the server rejects exactly that.
     const payload = {
         name: name.value,
-        ...(isCreating.value ? { handle: handle.value || null } : {}),
-        html: html.value || null,
+        ...(isCreating.value ? { handle: handle.value || null, type: type.value } : {}),
+        ...(isBlockLayout.value
+            ? { blocks: blockValues.value.blocks ?? [] }
+            : { html: html.value || null }),
     };
 
     const options = {
@@ -228,6 +301,36 @@ function destroy() {
                             {{ __('Lowercase letters, numbers and underscores (snake_case). Leave empty to generate from the name.') }}
                         </p>
                     </Field>
+
+                    <!-- The choice, and it is offered exactly once. Saying at
+                         the same moment that it is final is the whole point:
+                         somebody who picks "blocks" and later wants HTML has
+                         to start a new layout, and finding that out after an
+                         afternoon of work would be our fault, not theirs. -->
+                    <Field
+                        v-if="canChooseType"
+                        :label="__('marketing::templates.type_choose')"
+                        :error="formErrors.type"
+                    >
+                        <ToggleGroup
+                            :model-value="type"
+                            :aria-label="__('marketing::templates.type')"
+                            data-marketing-template-type
+                            @update:model-value="(value) => { if (value) type = value; }"
+                        >
+                            <ToggleItem value="blocks" :label="__('marketing::templates.type_blocks')" />
+                            <ToggleItem value="html" :label="__('marketing::templates.type_html')" />
+                        </ToggleGroup>
+
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400" data-marketing-template-type-description>
+                            {{ isBlockLayout
+                                ? __('marketing::templates.type_blocks_description')
+                                : __('marketing::templates.type_html_description') }}
+                        </p>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" data-marketing-template-type-fixed>
+                            {{ __('marketing::templates.type_is_fixed_hint') }}
+                        </p>
+                    </Field>
                 </div>
             </Card>
         </Panel>
@@ -250,7 +353,51 @@ function destroy() {
         <!-- Code left, result right. Stacked below `lg`, because two columns on
              a narrow screen give neither of them enough width to be read. -->
         <div class="grid gap-4 lg:grid-cols-2 lg:items-start">
-            <Panel :heading="__('marketing::templates.html')">
+            <!-- The building set. Statamic's own replicator, not an editor of
+                 our own: reordering, collapsing, disabling, duplicating and
+                 keyboard handling all come with it and all look like the rest
+                 of the Control Panel. What the addon contributes is the list
+                 of blocks and the translator behind them. -->
+            <Panel v-if="isBlockLayout" :heading="__('marketing::templates.blocks')">
+                <Card>
+                    <!-- The marker sits on a plain wrapper, not on the
+                         container: a Statamic component is free not to forward
+                         stray attributes to its root, and a marker that only
+                         exists in the test's stub is a marker that proves
+                         nothing about the built page. -->
+                    <div v-if="blocksField" data-marketing-template-blocks>
+                        <PublishContainer
+                            name="template-blocks"
+                            :blueprint="blocksField.blueprint"
+                            :meta="blockMeta"
+                            :model-value="blockValues"
+                            :errors="blockErrors"
+                            @update:model-value="blockValues = $event"
+                            @update:meta="blockMeta = $event"
+                        >
+                            <PublishFieldsProvider :fields="blockFields">
+                                <PublishFields />
+                            </PublishFieldsProvider>
+                        </PublishContainer>
+                    </div>
+
+                    <p
+                        v-if="formErrors.blocks"
+                        class="mt-1 text-sm text-red-600 dark:text-red-400"
+                        data-marketing-template-blocks-error
+                    >{{ formErrors.blocks }}</p>
+
+                    <!-- Said out loud, because it is the one thing about this
+                         layout that can bite: the HTML column is a result
+                         here, not a source, and a hand edit to it is gone at
+                         the next save. -->
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" data-marketing-template-derived-hint>
+                        {{ __('marketing::templates.derived_html_hint') }}
+                    </p>
+                </Card>
+            </Panel>
+
+            <Panel v-else :heading="__('marketing::templates.html')">
                 <Card>
                     <Field :error="formErrors.html">
                         <CodeEditor

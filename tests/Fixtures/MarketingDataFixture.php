@@ -235,6 +235,23 @@ class MarketingDataFixture
     }
 
     /**
+     * Ein einzelnes Layout, mit dem HTML, das der Aufrufer festhalten will.
+     *
+     * Durch dieselbe Insert-Schicht wie alles andere, damit eine Zeile dieser
+     * Tabelle nur eine Bauform hat: die Marke, die Zeitstempel und die
+     * NOT-NULL-Spalten, die im Laufe der Releases dazugekommen sind, wissen
+     * nicht zwei Stellen, sondern eine.
+     */
+    public function insertTemplate(string $handle, string $html): int
+    {
+        return $this->insert('marketing_templates', [
+            'handle' => $handle,
+            'name' => $handle,
+            'html' => $html,
+        ]);
+    }
+
+    /**
      * Reduce a row to the columns the table has today, add timestamps, fill any
      * NOT NULL column the fixture does not know about, and insert.
      */

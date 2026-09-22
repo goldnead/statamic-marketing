@@ -2,6 +2,68 @@
 
 ## Unveröffentlicht
 
+### Added: ein Layout lässt sich auch aus Bausteinen bauen
+
+Ein Layout war bisher rohes Mail-HTML in einem Code-Editor. Das kann Adrian, und deshalb ist es
+nie aufgefallen — für ein Addon, das an andere verkauft wird, ist es die falsche Einstiegshürde.
+Wer ein Layout anlegte, bekam das Standard-HTML vorgesetzt und musste Tabellen-Layout,
+Inline-Styles und die Eigenheiten von Outlook selbst beherrschen.
+
+Beim Anlegen steht jetzt eine Wahl: **Baukasten** oder **HTML schreiben**. Der Baukasten ist
+Statamics eigener Replicator mit sieben Bausteinen — Kopf, Text, Bild, Knopf, Trenner, Abstand,
+Fuß — und dem Inhalts-Baustein, der die Stelle markiert, an der der Text der Kampagne einläuft.
+Absichtlich wenige: der Satz deckt jede Mail ab, die dieses Addon verschickt, und jeder einzelne
+Baustein kommt in jedem Postfach an. Kein eigener Editor, weil Sortieren, Klappen, Abschalten
+und Duplizieren beim Replicator schon fertig sind und aussehen wie der Rest des CP.
+
+**Der Zuschnitt ist der eigentliche Punkt: Blöcke sind eine zweite Eingabe, kein zweiter
+Ausgang.** Beim Speichern übersetzt `Services\BlockLayoutCompiler` sie zu Mail-HTML, und das
+landet in derselben `html`-Spalte, die ein handgeschriebenes Layout auch füllt. `CampaignRenderer`,
+der Versand, `SendSnapshot`, `ArchiveDocument` und die Kampagnen-Vorschau lesen weiter genau
+einen HTML-String und wurden nicht angefasst. Kein Test an diesen Stellen musste geändert werden
+— das ist der Beleg, nicht die Behauptung.
+
+Dass „Mail-HTML" nicht „HTML" heißt, steckt im Übersetzer: Tabellen statt Boxen, weil Outlook
+über Word rendert und weder Flexbox noch Grid kennt; Inline-Styles, weil Gmail den `<head>`
+wegwirft, sobald es die Mail in einen Thread einklappt; die Schrift an jedem `<td>`, weil
+Vererbung in Outlook nicht verlässlich ist; der Knopf als einzellige Tabelle mit `bgcolor`, weil
+ein gestyltes `<a>` dort ein farbloser Link bleibt. Das eine `<style>` im Kopf trägt nur Dinge,
+ohne die die Mail vollständig funktioniert — die Handy-Breite und `prefers-color-scheme` —, und
+genau das macht der Hell/Dunkel-Schalter der Vorschau an einem Block-Layout sofort sichtbar.
+
+Farben und Schrift stehen an **einer** Stelle (`BlockLayoutCompiler::THEME`), nicht an den
+Blöcken. Damit hat die Theme-Anpassung je Marke später einen Ort zum Andocken, statt sich durch
+zwanzig Blockdefinitionen zu ziehen.
+
+Zwei Dinge, die das Addon dabei ausdrücklich sagt statt sie zu verschweigen:
+
+- **Der Typ ist nach dem Anlegen fest.** Ein HTML-Layout wird nicht zum Baukasten und umgekehrt.
+  Es gäbe keinen ehrlichen Weg zurück: HTML ließe sich nur in Blöcke *raten*, und ein Wechsel auf
+  HTML würfe die Blöcke ersatzlos weg. Wer wechseln will, legt ein neues Layout an — und liest
+  das schon beim Anlegen, nicht erst nach einem Nachmittag Arbeit.
+- **`html` ist für ein Block-Layout ein abgeleiteter Wert.** Wer die Spalte von Hand ändert, über
+  die API oder in der Datenbank, verliert es beim nächsten Speichern. Das steht als Kommentar an
+  der Migration und an den Spalten, als Hinweis unter dem Editor, und als Test.
+
+Was ein Baustein nicht hergibt, sagt der Editor, statt es wegzuwerfen. Ein Knopf, dessen Ziel
+keine benutzbare Adresse ist, fiele sonst lautlos aus der Mail — Beschriftung eingetippt, Ziel
+eingetippt, und im Postfach fehlt er. Die häufigste Eingabe, `www.example.com`, bekommt ihr
+`https://` jetzt einfach dazu; was danach noch übrig bleibt, erscheint als Warnung neben der
+Vorschau, zusammen mit dem Namen des Bausteins. Dasselbe für ein Bild, dessen Datei inzwischen
+gelöscht wurde. Und weil `Assets::process()` bei einer gelöschten Datei mitten aus der Kette
+heraus wirft, ist das eine Ablehnung am Feld und in der Vorschau ein Fehlertext — vorher wäre es
+eine 500er-Seite gewesen, beim Speichern und bei jedem Tastendruck.
+
+Das `{{ content }}`-Loch bleibt auch im Baukasten Pflicht. Im HTML-Weg ist es ein Befund in der
+Vorschau; im Baukasten gibt es eine Zeile dafür, also ist es eine harte Ablehnung am Feld: genau
+ein Inhalts-Baustein, keiner zu wenig (die Mail käme leer an) und keiner zu viel (die Kampagne
+käme doppelt an). Eine abgeschaltete Zeile zählt nicht mit.
+
+Bestehende Layouts bleiben unverändert und öffnen weiter im Code-Editor. Es wird nichts
+konvertiert; die Migration setzt nur `type = 'html'` und lässt `blocks` leer. Neue Spalten:
+`marketing_templates.type` und `marketing_templates.blocks` (longText, damit sie sich auf SQLite
+und MySQL gleich verhält).
+
 ### Changed: die Vorschau steht neben dem Formular, nicht darunter
 
 Eine Live-Vorschau gibt es im Kampagnen-Editor seit 2.15.0, und sie aktualisiert beim Tippen.

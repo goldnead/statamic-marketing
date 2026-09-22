@@ -74,11 +74,18 @@ const componentBag = () => new Proxy({}, {
 
 /** `inertia` mixes components (Head, Link) with plain helpers (router). */
 const inertiaHelpers = {
+    // The verbs the pages actually reach for. `patch` and `delete` were
+    // missing until the layout editor's save was tested: a page that called
+    // one got `undefined is not a function` from the stub rather than from
+    // anything real, which reads like a bug in the page.
     router: {
         reload: () => {},
         visit: () => {},
         get: () => {},
         post: () => {},
+        put: () => {},
+        patch: () => {},
+        delete: () => {},
     },
     useForm: (data) => reactive({ ...data, processing: false, errors: {} }),
     usePoll: () => {},

@@ -202,6 +202,34 @@ it('rebuilds the consent unique once the duplicates are gone', function (): void
     expect($this->duplicateConsentIsAccepted($probe['list'], $probe['email']))->toBeFalse();
 });
 
+it('calls every layout that already exists an HTML layout, and changes none of them', function (): void {
+    // Die Entscheidung vom 22.09.: Bloecke kommen als zweiter Typ daneben,
+    // **kein Bestandslayout wird angefasst.** Eine Konvertierung von Hand
+    // geschriebenem Mail-HTML in Bloecke gaebe es nur als Raten, und sie
+    // muesste genau einmal schiefgehen, um ein Layout zu zerstoeren, das
+    // funktioniert hat. Also wird nicht konvertiert — und dieser Test ist die
+    // Stelle, an der das nachgewiesen wird und nicht nur behauptet.
+    $this->migratePath($this->releasedMigrations('v1.6.3'));
+
+    // Absichtlich haesslich: Zeilenumbrueche, ein Kommentar, doppelte
+    // Leerzeichen. Wer hier normalisiert, faellt auf.
+    $html = "<!DOCTYPE html>\n<html>\n<!-- von Hand -->\n<body>   {{ content }}\n\n</body>\n</html>";
+
+    // Über die Fixture, weil sie die Marke mitbringt: seit 1.6.1 ist
+    // `brand_id` auf dieser Tabelle NOT NULL, und eine eigene Insert-Zeile
+    // hier wäre eine zweite Wahrheit darüber, wie eine Zeile dieser Tabelle
+    // aussieht.
+    (new MarketingDataFixture($this->isolated()))->insertTemplate('bestandslayout', $html);
+
+    $this->migratePath($this->currentMigrations());
+
+    $row = $this->isolated()->table('marketing_templates')->where('handle', 'bestandslayout')->first();
+
+    expect($row->html)->toBe($html)
+        ->and($row->type)->toBe('html')
+        ->and($row->blocks)->toBeNull();
+});
+
 it('confirms the guarantee on a healthy install', function (): void {
     $this->migratePath($this->currentMigrations());
 
