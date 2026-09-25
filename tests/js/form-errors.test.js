@@ -260,7 +260,8 @@ describe('Campaigns/Edit', () => {
         wrapper.vm.scheduledAt = '2020-01-01T10:00';
         await wrapper.vm.$nextTick();
 
-        press(wrapper, 'Schedule');
+        // The label is a namespaced key since 2.25.1; the mock returns keys.
+        press(wrapper, 'marketing::campaigns.schedule');
         await reject(wrapper, lastCall(), { scheduled_at: 'The scheduled at must be a date after now.' });
 
         expect(errorAtField(wrapper, 'Schedule for later')).toBe('The scheduled at must be a date after now.');
