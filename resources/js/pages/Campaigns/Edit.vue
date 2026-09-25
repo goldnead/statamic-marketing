@@ -566,7 +566,7 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                     <Panel :heading="__('Recipients')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('List')" :error="formErrors.list">
+                                <Field :label="__('marketing::campaigns.field_list')" :error="formErrors.list">
                                     <Select v-model="list" :options="listOptions" />
                                 </Field>
 
@@ -661,7 +661,7 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                         </Card>
                     </Panel>
 
-                    <Panel :heading="__('Sender')">
+                    <Panel :heading="__('marketing::campaigns.sender')">
                         <Card>
                             <div class="space-y-4">
                                 <!--
@@ -747,7 +747,7 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                     >
                                         <Input v-model="scheduledAt" type="datetime-local" />
                                     </Field>
-                                    <Button :text="__('Schedule')" variant="default" :disabled="!scheduledAt" @click="schedule" />
+                                    <Button :text="__('marketing::campaigns.schedule')" variant="default" :disabled="!scheduledAt" @click="schedule" />
                                 </div>
 
                                 <div class="pt-4 border-t border-content-border">

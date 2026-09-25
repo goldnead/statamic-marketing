@@ -130,4 +130,7 @@ return [
         'archive_released' => 'Campaign released to the web archive.',
         'archive_withdrawn' => 'Campaign removed from the web archive.',
     ],
+    'field_list' => 'List',
+    'schedule' => 'Schedule',
+    'sender' => 'Sender',
 ];

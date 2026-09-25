@@ -130,4 +130,7 @@ return [
         'archive_released' => 'Kampagne im Webarchiv veröffentlicht.',
         'archive_withdrawn' => 'Kampagne aus dem Webarchiv entfernt.',
     ],
+    'field_list' => 'Verteiler',
+    'schedule' => 'Planen',
+    'sender' => 'Absender',
 ];
