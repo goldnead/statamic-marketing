@@ -5,8 +5,10 @@ import {
     Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Alert, Switch, Field, Text,
     Select, Tabs, TabList, TabTrigger, TabContent,
     Table, TableColumns, TableColumn, TableRows, TableRow, TableCell,
+    CommandPaletteItem, ConfirmationModal,
 } from '@statamic/cms/ui';
 import BarChart from '../../components/BarChart.vue';
+import { campaignStatusColor } from '../../support/campaignStatus.js';
 
 const props = defineProps([
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
@@ -32,7 +34,83 @@ const props = defineProps([
     'archive',       // { enabled, released, live, sendable_only, url, update_url }
     'canManage',     // bool
     'mailPreviewUrl', // string|null — Versand-Schnappschuss; null, solange nichts raus ist
+    'statusLabel',   // string — the status in the reader's language
+    // A series child before its send: { subject, from_name, from_email, list, segment,
+    //   recipients, event, scheduled_at, template, preview_url, approve_url, withdraw_url,
+    //   can_send } — null for everything else. See CampaignController::approvalPayload().
+    'approval',
 ]);
+
+// -- Approval ----------------------------------------------------------------
+//
+// A series child waits until an editor has looked at it. This page is where
+// that happens: what goes out, to whom, when — then one button.
+
+const isAwaiting = computed(() => props.campaign.status === 'awaiting_approval');
+const canApprove = computed(() => !! props.approval?.can_send && isAwaiting.value);
+const canWithdraw = computed(() => !! props.approval?.can_send && props.campaign.status === 'scheduled');
+const showApproveConfirm = ref(false);
+const busy = ref(false);
+
+// The send time has passed (or never existed): approval sends now.
+const sendsNow = computed(() => ! props.approval?.scheduled_at
+    || new Date(props.approval.scheduled_at) <= new Date());
+
+const approvalRows = computed(() => {
+    const a = props.approval;
+    if (! a) return [];
+
+    const sender = [a.from_name, a.from_email ? `<${a.from_email}>` : null].filter(Boolean).join(' ');
+    const audience = a.list
+        ? __('marketing::series.audience_value', { segment: a.segment || '—', list: a.list })
+        : (a.segment || '—');
+    const term = a.event
+        ? [a.event.title, a.event.venue, a.event.city].filter(Boolean).join(' · ')
+        : '—';
+    const termWhen = a.event?.date
+        ? __('marketing::series.term_value', { date: a.event.date, time: a.event.time || '' })
+        : null;
+
+    return [
+        { key: 'subject', label: __('marketing::series.subject'), value: a.subject || '—' },
+        { key: 'sender', label: __('marketing::series.sender'), value: sender || '—' },
+        {
+            key: 'audience',
+            label: __('marketing::series.audience'),
+            value: audience,
+            note: a.recipients == null ? null : (a.recipients === 1
+                ? __('marketing::series.recipients_count_one')
+                : __('marketing::series.recipients_count', { count: a.recipients })),
+        },
+        { key: 'term', label: __('marketing::series.term'), value: term, note: termWhen },
+        {
+            key: 'send_at',
+            label: __('marketing::series.send_at'),
+            value: sendsNow.value && isAwaiting.value ? __('marketing::series.send_now') : formatDate(a.scheduled_at),
+        },
+    ];
+});
+
+function approve() {
+    showApproveConfirm.value = false;
+    busy.value = true;
+    router.post(props.approval.approve_url, {}, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+        onFinish: () => { busy.value = false; },
+    });
+}
+
+function withdraw() {
+    busy.value = true;
+    router.post(props.approval.withdraw_url, {}, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+        onFinish: () => { busy.value = false; },
+    });
+}
 
 // Mirrors the server's `archive.released`. Kept as local state so the switch
 // moves the moment it is clicked, and reconciled from the prop when the Inertia
@@ -331,15 +409,6 @@ const timelineStations = computed(() => (props.timeline || []).map((station) => 
     label: __(`marketing::campaigns.report.timeline.${station.key}`),
 })));
 
-function campaignStatusColor(status) {
-    return {
-        draft: 'default',
-        scheduled: 'purple',
-        sending: 'yellow',
-        sent: 'green',
-    }[status] || 'default';
-}
-
 function messageStatusColor(status) {
     return {
         pending: 'default',
@@ -405,8 +474,32 @@ const subline = computed(() => {
 
     <div class="max-w-page mx-auto">
         <Header :title="campaign.name" icon="mail">
-            <Badge :color="campaignStatusColor(campaign.status)" :text="campaign.status" />
+            <Badge :color="campaignStatusColor(campaign.status)" :text="statusLabel || campaign.status" pill />
             <Button v-if="editable" :href="editUrl" :text="__('Edit')" variant="default" />
+            <Button
+                v-if="canWithdraw"
+                :text="__('marketing::series.withdraw')"
+                variant="default"
+                :loading="busy"
+                data-marketing-withdraw
+                @click="withdraw"
+            />
+            <CommandPaletteItem
+                v-if="canApprove"
+                category="Actions"
+                :text="__('marketing::series.approve')"
+                icon="checkmark"
+                prioritize
+                :action="() => { showApproveConfirm = true; }"
+            >
+                <Button
+                    :text="__('marketing::series.approve')"
+                    variant="primary"
+                    :loading="busy"
+                    data-marketing-approve
+                    @click="showApproveConfirm = true"
+                />
+            </CommandPaletteItem>
         </Header>
 
         <!-- The separator belongs to the part that follows it, not to the
@@ -414,7 +507,9 @@ const subline = computed(() => {
              with the subject left "Entwurf ·" standing on the page with
              nothing after it — the same dangling-separator wrongness the
              timeline entries were fixed for. -->
-        <p v-if="campaign.subject || subline" class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
+        <!-- Not above an approval: its summary says subject and send time
+             already, the subject there with its placeholders filled in. -->
+        <p v-if="!approval && (campaign.subject || subline)" class="text-sm text-gray-500 dark:text-gray-400 -mt-4 mb-4">
             <span v-if="campaign.subject">{{ campaign.subject }}</span>
             <span v-if="campaign.subject && subline"> · </span>
             <span v-if="subline">{{ subline }}</span>
@@ -423,6 +518,54 @@ const subline = computed(() => {
         <Alert v-if="generalErrors.length" variant="error" class="mb-4" data-marketing-form-errors>
             <p v-for="(message, index) in generalErrors" :key="index">{{ message }}</p>
         </Alert>
+
+        <!-- Approval of a series child: the summary of what goes out, beside
+             the mail itself. The button is in the header, like every page
+             action; this panel is what you read before pressing it. -->
+        <!-- Column gap only: each Panel brings its own bottom margin. -->
+        <div v-if="approval" class="grid gap-x-6 lg:grid-cols-5 lg:items-start" data-marketing-approval>
+            <Panel
+                :heading="__('marketing::series.approval_heading')"
+                :subheading="isAwaiting ? __('marketing::series.approval_subheading') : __('marketing::series.scheduled_subheading')"
+                class="lg:col-span-2"
+            >
+                <Card>
+                    <dl class="divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                        <div
+                            v-for="row in approvalRows"
+                            :key="row.key"
+                            class="grid grid-cols-3 gap-3 py-2.5 first:pt-0 last:pb-0"
+                            :data-marketing-approval-row="row.key"
+                        >
+                            <dt class="text-gray-500 dark:text-gray-400">{{ row.label }}</dt>
+                            <dd class="col-span-2 min-w-0 break-words text-gray-900 dark:text-gray-100">
+                                {{ row.value }}
+                                <span v-if="row.note" class="block text-xs text-gray-500 dark:text-gray-400">{{ row.note }}</span>
+                            </dd>
+                        </div>
+                    </dl>
+                    <p v-if="approval.template" class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ __('marketing::series.part_of', { name: approval.template.name }) }}
+                        <a :href="approval.template.edit_url" class="hover:underline">{{ __('marketing::series.open_template') }} →</a>
+                    </p>
+                </Card>
+            </Panel>
+
+            <Panel v-if="approval.preview_url" :heading="__('marketing::series.preview')" class="lg:col-span-3">
+                <Card>
+                    <!-- Same sandbox as the editor's preview: HTML a CP user
+                         wrote, from a CP route, in an opaque origin with
+                         scripts off. The route sends the matching CSP. -->
+                    <iframe
+                        :src="approval.preview_url"
+                        sandbox=""
+                        :title="__('marketing::series.preview')"
+                        class="marketing-email-canvas h-[36rem] w-full rounded border border-content-border"
+                        data-marketing-approval-preview
+                    ></iframe>
+                </Card>
+            </Panel>
+        </div>
 
         <!-- Web archive. Not on the edit form: that form closes when the
              campaign is sent, which is when this question actually gets
@@ -447,7 +590,9 @@ const subline = computed(() => {
             </Card>
         </Panel>
 
-        <Tabs :model-value="activeTab" @update:model-value="selectTab">
+        <!-- A waiting campaign has not been anywhere yet: no report to show,
+             and five tabs of zeros under the approval would only bury it. -->
+        <Tabs v-if="!isAwaiting" :model-value="activeTab" @update:model-value="selectTab">
             <TabList>
                 <TabTrigger v-for="item in tabs" :key="item.name" :name="item.name" :text="item.label" />
             </TabList>
@@ -842,5 +987,15 @@ const subline = computed(() => {
                 </div>
             </TabContent>
         </Tabs>
+
+        <ConfirmationModal
+            v-if="approval"
+            :open="showApproveConfirm"
+            :title="__('marketing::series.approve_confirm_title')"
+            :body-text="sendsNow ? __('marketing::series.approve_confirm_body_now') : __('marketing::series.approve_confirm_body')"
+            :button-text="__('marketing::series.approve')"
+            @cancel="showApproveConfirm = false"
+            @confirm="approve"
+        />
     </div>
 </template>

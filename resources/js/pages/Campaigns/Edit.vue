@@ -8,7 +8,9 @@ import {
     Badge, Field, Input, Select, Textarea,
     ConfirmationModal, Text, CommandPaletteItem, ToggleGroup, ToggleItem,
     Alert, PublishContainer, PublishFieldsProvider, PublishFields,
+    Switch, Combobox, Listing,
 } from '@statamic/cms/ui';
+import { campaignStatusColor } from '../../support/campaignStatus.js';
 
 const props = defineProps([
     'campaign',        // { handle, name, subject, variant_subject, preheader, from_name, from_email, reply_to,
@@ -40,6 +42,10 @@ const props = defineProps([
     'editable',        // bool (edit only)
     'canSend',         // bool
     'timezone',        // string — the zone a scheduled time is read in (edit only)
+    // The "series for terms" section (edit only). See CampaignController::seriesPayload().
+    // { available, is_child, template?, enabled, can_toggle, settings, events,
+    //   skipped_no_postal_code, columns, children }
+    'series',
 ]);
 
 const isCreating = computed(() => ! props.updateUrl);
@@ -175,17 +181,73 @@ const selectedSegmentCount = computed(() => {
     return match ? match.members_count : null;
 });
 
-function statusColor(status) {
-    return {
-        draft: 'default',
-        scheduled: 'purple',
-        sending: 'yellow',
-        sent: 'green',
-    }[status] || 'default';
+function statusLabel(status) {
+    const key = `marketing::campaigns.statuses.${status}`;
+    const label = __(key);
+    return label === key ? status : label;
 }
 
 function formatDate(value) {
-    return value ? new Date(value).toLocaleString() : '—';
+    return value
+        ? new Date(value).toLocaleString(undefined, {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        })
+        : '—';
+}
+
+// ---------- Series for terms ----------
+//
+// A template is an ordinary campaign with status `series`: same subject, same
+// text, same list. The switch turns a draft into one (and a template with no
+// children back); the four settings say which terms, how far around them,
+// and when. Everything is saved with the rest of the form by the one Save
+// button, and saving a template brings its children in line right away.
+
+// The section only exists for a campaign that may have it: saved, not a child
+// of another series. A child gets a notice pointing to its template instead.
+const seriesSection = computed(() => !! props.series && ! props.series.is_child && ! isCreating.value);
+const seriesAvailable = computed(() => !! props.series?.available);
+const isSeriesChild = computed(() => !! props.series?.is_child);
+
+const seriesEnabled = ref(!! props.series?.enabled);
+const seriesRadius = ref(props.series?.settings?.radius_km ?? 50);
+const seriesDaysBefore = ref(props.series?.settings?.days_before ?? 7);
+const seriesSendTime = ref(props.series?.settings?.send_time ?? '10:00');
+const seriesEventIds = ref([...(props.series?.settings?.event_ids ?? [])]);
+const seriesCountry = ref(props.series?.settings?.country ?? 'DE');
+
+const seriesChildren = computed(() => props.series?.children ?? []);
+const seriesCanToggle = computed(() => !! props.series?.can_toggle);
+
+// Why the switch does not move, when it does not.
+const seriesToggleLock = computed(() => {
+    if (seriesCanToggle.value) return null;
+    if (props.series?.enabled && seriesChildren.value.length) return __('marketing::series.toggle_locked_children');
+    return __('marketing::series.toggle_locked_status');
+});
+
+const seriesSkipped = computed(() => props.series?.skipped_no_postal_code ?? 0);
+const seriesSkippedText = computed(() => seriesSkipped.value === 1
+    ? __('marketing::series.skipped_one')
+    : __('marketing::series.skipped_many', { count: seriesSkipped.value }));
+
+// Kept in script, like `antlersHint`, so the template compiler never sees the braces.
+const seriesPlaceholders = ['city', 'venue', 'date', 'time', 'tickets_url']
+    .map((key) => `{{ event:${key} }}`);
+
+function seriesPayloadFields() {
+    if (! seriesSection.value || ! seriesAvailable.value) return {};
+
+    return {
+        series_enabled: seriesEnabled.value,
+        series: seriesEnabled.value ? {
+            radius_km: Number(seriesRadius.value) || null,
+            days_before: seriesDaysBefore.value === '' ? null : Number(seriesDaysBefore.value),
+            send_time: seriesSendTime.value || null,
+            event_ids: seriesEventIds.value,
+            country: (seriesCountry.value || '').toUpperCase() || null,
+        } : null,
+    };
 }
 
 function payload() {
@@ -204,6 +266,7 @@ function payload() {
         reply_to: replyTo.value || null,
         content: contentValues.value.content ?? null,
         mail_class: mailClass.value || null,
+        ...seriesPayloadFields(),
     };
 }
 
@@ -227,6 +290,8 @@ const fieldKeys = [
     'list', 'segment', 'template', 'mail_class',
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
+    'series_enabled', 'series.radius_km', 'series.days_before', 'series.send_time',
+    'series.event_ids', 'series.country',
 ];
 
 // Which of those keys actually has a field on screen right now. The handle
@@ -363,6 +428,8 @@ async function refreshPreview() {
                 content: contentValues.value.content ?? null,
                 list_handle: list.value,
                 template_handle: template.value,
+                // A template renders `{{ event:… }}` against the sample term.
+                series: seriesEnabled.value,
             }),
         });
 
@@ -390,7 +457,7 @@ function schedulePreview() {
     previewTimer = setTimeout(refreshPreview, 500);
 }
 
-watch([contentValues, subject, preheader, template], schedulePreview, { deep: true });
+watch([contentValues, subject, preheader, template, seriesEnabled], schedulePreview, { deep: true });
 watch(showPreview, (open) => { if (open) refreshPreview(); });
 // The preview now stands open when the screen loads, so there has to be
 // something in it before the first keystroke. Without this the panel was
@@ -411,8 +478,9 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
         <Header :title="isCreating ? __('Create campaign') : name" icon="mail">
             <Badge
                 v-if="campaign"
-                :color="statusColor(campaign.status)"
-                :text="campaign.status"
+                :color="campaignStatusColor(campaign.status)"
+                :text="statusLabel(campaign.status)"
+                pill
             />
             <Dropdown v-if="deleteUrl">
                 <DropdownMenu>
@@ -442,10 +510,26 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                  the sentence runs straight into the link. Alert already sets
                  `text-sm` and the variant's colour, and styles a <p> inside
                  itself, so the paragraph carries no classes of its own. -->
-            <div>
+            <div v-if="campaign?.status === 'awaiting_approval'" data-marketing-awaiting-notice>
+                <p>{{ __('marketing::series.awaiting_notice') }}</p>
+                <Link :href="showUrl" class="font-medium hover:underline">
+                    {{ __('marketing::series.awaiting_link') }} →
+                </Link>
+            </div>
+            <div v-else>
                 <p>{{ __('This campaign has been sent or is currently sending and can no longer be edited.') }}</p>
                 <Link :href="showUrl" class="font-medium hover:underline">
                     {{ __('View the report') }} →
+                </Link>
+            </div>
+        </Alert>
+
+        <!-- A child of a series: where it came from. -->
+        <Alert v-if="isSeriesChild && series.template && isEditable" variant="default" class="mb-4" data-marketing-series-child>
+            <div>
+                <p>{{ __('marketing::series.part_of', { name: series.template.name }) }}</p>
+                <Link :href="series.template.edit_url" class="font-medium hover:underline">
+                    {{ __('marketing::series.open_template') }} →
                 </Link>
             </div>
         </Alert>
@@ -559,6 +643,147 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                         </Card>
                     </Panel>
 
+                    <!-- Series for terms. Below the text, because it is a
+                         question about where this text goes next, asked once
+                         the text exists. -->
+                    <Panel
+                        v-if="seriesSection"
+                        :heading="__('marketing::series.heading')"
+                        :subheading="seriesAvailable ? __('marketing::series.subheading') : null"
+                        data-marketing-series
+                    >
+                        <Card>
+                            <!-- Without the term addon there is nothing to make a
+                                 series of. One line saying so, not a dead switch. -->
+                            <Text v-if="!seriesAvailable" size="sm" variant="subtle" data-marketing-series-unavailable>
+                                {{ __('marketing::series.not_installed_hint') }}
+                            </Text>
+
+                            <div v-else class="space-y-6">
+                                <Field
+                                    :label="__('marketing::series.toggle')"
+                                    :instructions="seriesToggleLock"
+                                    :error="formErrors.series_enabled"
+                                >
+                                    <Switch
+                                        v-model="seriesEnabled"
+                                        :disabled="!seriesCanToggle"
+                                        data-marketing-series-toggle
+                                    />
+                                </Field>
+
+                                <template v-if="seriesEnabled">
+                                    <div class="grid gap-4 sm:grid-cols-2">
+                                        <Field
+                                            :label="__('marketing::series.radius_km')"
+                                            :instructions="__('marketing::series.radius_km_help')"
+                                            :error="formErrors['series.radius_km']"
+                                        >
+                                            <Input v-model="seriesRadius" type="number" min="1" max="1000" data-marketing-series-radius />
+                                        </Field>
+
+                                        <Field
+                                            :label="__('marketing::series.days_before')"
+                                            :instructions="__('marketing::series.days_before_help')"
+                                            :error="formErrors['series.days_before']"
+                                        >
+                                            <Input v-model="seriesDaysBefore" type="number" min="0" max="365" data-marketing-series-days />
+                                        </Field>
+
+                                        <Field
+                                            :label="__('marketing::series.send_time')"
+                                            :instructions="__('marketing::series.send_time_help')"
+                                            :error="formErrors['series.send_time']"
+                                        >
+                                            <Input v-model="seriesSendTime" type="time" data-marketing-series-time />
+                                        </Field>
+
+                                        <Field
+                                            :label="__('marketing::series.country')"
+                                            :instructions="__('marketing::series.country_help')"
+                                            :error="formErrors['series.country']"
+                                        >
+                                            <Input v-model="seriesCountry" maxlength="2" class="uppercase" data-marketing-series-country />
+                                        </Field>
+                                    </div>
+
+                                    <Field
+                                        :label="__('marketing::series.events')"
+                                        :instructions="__('marketing::series.events_help')"
+                                        :error="formErrors['series.event_ids']"
+                                    >
+                                        <Combobox
+                                            v-model="seriesEventIds"
+                                            :options="series.events || []"
+                                            :placeholder="__('marketing::series.events_placeholder')"
+                                            multiple
+                                            searchable
+                                            clearable
+                                            data-marketing-series-events
+                                        />
+                                    </Field>
+
+                                    <div class="text-xs text-gray-500 dark:text-gray-400" data-marketing-series-placeholders>
+                                        {{ __('marketing::series.placeholders') }}
+                                        <span class="inline-flex flex-wrap gap-1.5 align-middle">
+                                            <code v-for="placeholder in seriesPlaceholders" :key="placeholder" v-text="placeholder"></code>
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+                        </Card>
+                    </Panel>
+
+                    <!-- What the template has produced. Only once it is one. -->
+                    <Panel
+                        v-if="seriesSection && seriesAvailable && series.enabled"
+                        :heading="__('marketing::series.children_heading')"
+                        data-marketing-series-children
+                    >
+                        <Alert v-if="seriesSkipped > 0" variant="warning" class="mb-3" data-marketing-series-skipped>
+                            {{ seriesSkippedText }}
+                        </Alert>
+
+                        <Listing
+                            v-if="seriesChildren.length"
+                            :items="seriesChildren"
+                            :columns="series.columns"
+                            :allow-search="false"
+                            :allow-bulk-actions="false"
+                            :allow-customizing-columns="false"
+                            :allow-presets="false"
+                            :sortable="false"
+                        >
+                            <template #cell-city="{ row }">
+                                <Link :href="row.show_url" class="font-medium hover:underline">{{ row.city || '—' }}</Link>
+                                <div v-if="row.venue" class="text-xs text-gray-500 dark:text-gray-400">{{ row.venue }}</div>
+                            </template>
+                            <template #cell-term="{ row }">
+                                <span class="text-sm">{{ [row.date, row.time].filter(Boolean).join(', ') || '—' }}</span>
+                            </template>
+                            <template #cell-scheduled_at="{ row }">
+                                <span v-if="row.scheduled_at" class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(row.scheduled_at) }}</span>
+                                <span v-else class="text-xs text-gray-500 dark:text-gray-400">{{ __('marketing::campaigns.send_on_approval') }}</span>
+                            </template>
+                            <template #cell-status="{ row }">
+                                <Badge :color="campaignStatusColor(row.status)" :text="row.status_label" pill />
+                            </template>
+                            <template #cell-recipients="{ row }">
+                                <span v-if="row.recipients != null" class="tabular-nums">{{ row.recipients }}</span>
+                                <span v-else class="text-2xs text-gray-400">—</span>
+                            </template>
+                            <template #prepended-row-actions="{ row }">
+                                <DropdownItem :text="__('marketing::campaigns.review')" icon="checkmark" :href="row.show_url" />
+                            </template>
+                        </Listing>
+
+                        <Card v-else>
+                            <Text size="sm" variant="subtle" data-marketing-series-children-empty>
+                                {{ __('marketing::series.children_empty') }}
+                            </Text>
+                        </Card>
+                    </Panel>
+
                 </div>
 
                 <!-- Sidebar -->
@@ -566,12 +791,25 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                     <Panel :heading="__('Recipients')">
                         <Card>
                             <div class="space-y-4">
-                                <Field :label="__('marketing::campaigns.field_list')" :error="formErrors.list">
-                                    <Select v-model="list" :options="listOptions" />
+                                <Field
+                                    :label="__('marketing::campaigns.field_list')"
+                                    :instructions="isSeriesChild ? __('marketing::series.audience_locked') : null"
+                                    :error="formErrors.list"
+                                >
+                                    <Select v-model="list" :options="listOptions" :disabled="isSeriesChild" />
                                 </Field>
 
-                                <Field v-if="hasSegments" :label="__('Segment')" :error="formErrors.segment">
-                                    <Select v-model="segment" :options="segmentOptions" />
+                                <!-- A template draws its audience per term (the
+                                     radius); a segment picked here would never
+                                     be used, so it is not offered. -->
+                                <p
+                                    v-if="seriesEnabled && seriesSection"
+                                    class="text-xs text-gray-500 dark:text-gray-400"
+                                    data-marketing-series-audience
+                                >{{ __('marketing::series.audience_by_term') }}</p>
+
+                                <Field v-else-if="hasSegments" :label="__('Segment')" :error="formErrors.segment">
+                                    <Select v-model="segment" :options="segmentOptions" :disabled="isSeriesChild" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         <template v-if="segment && selectedSegmentCount !== null">
                                             {{ __('Narrows to subscribers who are also in this segment.') }}
@@ -726,7 +964,8 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                     </Panel>
 
                     <!-- Schedule / send -->
-                    <Panel v-if="updateUrl && canSend" :heading="__('Delivery')">
+                    <!-- Not on a template: it never sends itself, its children do. -->
+                    <Panel v-if="updateUrl && canSend && campaign.status !== 'series'" :heading="__('Delivery')">
                         <Card>
                             <div class="space-y-4">
                                 <div v-if="campaign.status === 'scheduled'" class="space-y-2">

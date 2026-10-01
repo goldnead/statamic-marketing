@@ -43,8 +43,34 @@ wartende Kinder ab.
 `{{ event:city }}`, `{{ event:date }}` & Co. stehen im Betreff, Preheader und Inhalt
 (`meta['event']` als Momentaufnahme, beim Sync nachgezogen); die Vorlage zeigt in der Vorschau
 Beispielwerte. `statamic-events` bleibt optional (`suggest`, Brücke hinter `class_exists`), der
-LeadHub-Constraint steigt dafür auf `^2.14` (Geo-Segmente). Das CP dazu — Statusbadges,
-Serien-Abschnitt im Editor, Freigabe-Bildschirm — folgt im zweiten Bauabschnitt.
+LeadHub-Constraint steigt dafür auf `^2.14` (Geo-Segmente).
+
+### Added: Kampagnenserie im CP (Vorlage, Liste, Freigabe)
+
+**Liste:** Reiter „Alle", „Wartet auf Freigabe" und „Serien" mit Zähler über der Kampagnenliste
+(`?status=` in der Adresse, ersetzen die leeren gespeicherten Ansichten). Status stehen jetzt in der
+Sprache des CP („Entwurf", „Serie", „Wartet auf Freigabe" …) statt als Rohwert; neue Spalte
+„Versand" mit „sofort nach Freigabe" für wartende Kampagnen ohne Zeit. Unter dem Namen sagt eine
+Vorlage, wie viele Kampagnen sie erzeugt hat, ein Kind seinen Termin.
+
+**Editor:** Abschnitt „Als Serie für Termine" mit Schalter (Entwurf ↔ Vorlage, zurück nur ohne
+Kinder), Umkreis, Tage vorher, Uhrzeit, Events (leer = alle), Land und der Platzhalter-Hilfe
+`{{ event:city }}` & Co. Darunter die erzeugten Kampagnen mit Stadt, Termin, Versand, Status und
+Kontakten im Umkreis, plus der Hinweis „N Termine ohne Postleitzahl werden übersprungen" (live
+gezählt, `SeriesSync::missingPostalCodes()`). Speichern meldet das Sync-Ergebnis. Ohne
+`statamic-events` steht dort nur ein Satz. Vorlagen zeigen keinen Versand-Block und kein
+Segment-Feld; Kinder zeigen den Weg zur Vorlage und Liste/Segment gesperrt. Die Live-Vorschau
+rendert `{{ event:… }}` mit dem Beispieltermin bzw. der Momentaufnahme des Kindes.
+
+**Freigabe:** Die Seite einer wartenden Kampagne fasst zusammen, was rausgeht (Betreff mit
+eingesetzten Platzhaltern, Absender, Segment mit Kontaktzahl, Liste, Termin, Versandzeit oder
+„sofort nach Freigabe") neben der Vorschau der Mail. „Freigeben" ist die Hauptaktion im Kopf (mit
+Rückfrage, auch in der Befehlspalette), eine freigegebene Kampagne bietet „Zurückziehen". Fehler
+der Freigabe erscheinen wie die übrigen Versandfehler über der Seite.
+
+Neue Validierung beim Speichern: `series_enabled`, `series.radius_km` (1–1000),
+`series.days_before` (0–365), `series.send_time` (`H:i`), `series.event_ids`, `series.country`
+(zwei Buchstaben). Fehlt `series_enabled` im Request, bleibt die Serie wie sie ist.
 
 ## 2.25.1 — 2026-09-25
 

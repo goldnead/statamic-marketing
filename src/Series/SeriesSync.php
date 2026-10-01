@@ -579,6 +579,68 @@ class SeriesSync
     }
 
     /**
+     * The template's settings as the sync reads them — what the CP form
+     * shows, so the screen and the sync cannot disagree about a default.
+     *
+     * @return array{radius_km: int, days_before: int, send_time: string, event_ids: list<string>, country: string}
+     */
+    public function settingsFor(Campaign $template): array
+    {
+        return $this->settings($template);
+    }
+
+    /**
+     * The campaigns this template has produced, soonest term first.
+     *
+     * @return Collection<int, Campaign>
+     */
+    public function childrenOf(Campaign $template): Collection
+    {
+        return $this->campaigns->all()
+            ->filter(fn (Campaign $campaign): bool => $campaign->series === $template->handle)
+            ->sortBy(fn (Campaign $campaign): string => (string) ($campaign->meta['event']['starts_at'] ?? ''))
+            ->values();
+    }
+
+    /**
+     * How many upcoming terms this template would want but cannot reach,
+     * because the venue has no postal code to draw the circle around.
+     *
+     * Asked on its own rather than read off the last sync result: the
+     * editor opens the screen days after the save, and a notice that only
+     * appears in the flash right after saving is one nobody sees twice.
+     */
+    public function missingPostalCodes(Campaign $template): int
+    {
+        if (! static::available() || ! $template->isSeries()) {
+            return 0;
+        }
+
+        return EventsFacade::occurrences(['upcoming' => true, 'include_cancelled' => false])
+            ->filter(fn (Occurrence $occurrence): bool => (bool) $occurrence->event?->isPubliclyReadable()
+                && $this->wantsEvent($template, $occurrence)
+                && blank($occurrence->venue_postal_code))
+            ->count();
+    }
+
+    /**
+     * The events a template may be narrowed to, for the CP picker.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    public function eventOptions(): array
+    {
+        if (! static::available()) {
+            return [];
+        }
+
+        return EventsFacade::events()
+            ->map(fn ($event): array => ['value' => (string) $event->uuid, 'label' => (string) $event->title])
+            ->values()
+            ->all();
+    }
+
+    /**
      * Remove the children whose template or term is gone — what a template
      * delete in the CP asks for right away instead of waiting for the night.
      *

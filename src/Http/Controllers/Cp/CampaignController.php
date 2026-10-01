@@ -54,8 +54,20 @@ class CampaignController extends Controller
             return $setup;
         }
 
-        $rows = $this->campaigns->all()->map(function (Campaign $campaign) use ($stats) {
-            $campaignStats = $campaign->isDraft() ? null : $stats->forCampaign($campaign);
+        $all = $this->campaigns->all();
+
+        // How many campaigns each series template has produced, counted once
+        // over the list already in hand rather than once per row.
+        $childCounts = $all->filter(fn (Campaign $campaign): bool => $campaign->series !== null)
+            ->countBy(fn (Campaign $campaign): string => (string) $campaign->series);
+
+        $rows = $all->map(function (Campaign $campaign) use ($stats, $childCounts) {
+            // A template and a waiting child have no delivery to count yet.
+            $campaignStats = in_array($campaign->status, [
+                Campaign::STATUS_DRAFT, Campaign::STATUS_SERIES, Campaign::STATUS_AWAITING_APPROVAL,
+            ], true) ? null : $stats->forCampaign($campaign);
+
+            $event = (array) ($campaign->meta['event'] ?? []);
 
             return [
                 'id' => $campaign->handle,
@@ -64,6 +76,15 @@ class CampaignController extends Controller
                 'subject' => $campaign->subject,
                 'list' => $campaign->listHandle,
                 'status' => $campaign->status,
+                'status_label' => $this->statusLabel($campaign->status),
+                // Series: the template's child count, a child's term.
+                'series' => $campaign->series,
+                'children_count' => $campaign->isSeries() ? (int) ($childCounts[$campaign->handle] ?? 0) : null,
+                'event' => $event === [] ? null : [
+                    'city' => (string) ($event['city'] ?? ''),
+                    'date' => (string) ($event['date'] ?? ''),
+                    'time' => (string) ($event['time'] ?? ''),
+                ],
                 'scheduled_at' => $campaign->scheduledAt?->toIso8601String(),
                 'sent_at' => $campaign->sentAt?->toIso8601String(),
                 'recipients' => $campaignStats['recipients'] ?? null,
@@ -80,6 +101,7 @@ class CampaignController extends Controller
             Column::make('subject')->label(__('marketing::campaigns.subject')),
             Column::make('list')->label(__('marketing::campaigns.list')),
             Column::make('status')->label(__('marketing::campaigns.status')),
+            Column::make('scheduled_at')->label(__('marketing::campaigns.send_at')),
             Column::make('recipients')->label(__('marketing::campaigns.recipients')),
             Column::make('open_rate')->label(__('marketing::campaigns.open_rate')),
         ])->map(fn ($c) => $c->toArray())->all();
@@ -89,7 +111,31 @@ class CampaignController extends Controller
             'columns' => $columns,
             'createUrl' => cp_route('marketing.campaigns.create'),
             'canManage' => $this->userCan($request, 'manage marketing campaigns'),
+            // The tabs above the listing: everything, what waits for a
+            // release, and the templates that produce those.
+            'tabs' => [
+                ['name' => 'all', 'label' => __('marketing::campaigns.tabs.all'), 'count' => $all->count()],
+                [
+                    'name' => Campaign::STATUS_AWAITING_APPROVAL,
+                    'label' => __('marketing::campaigns.tabs.awaiting_approval'),
+                    'count' => $all->filter(fn (Campaign $c): bool => $c->status === Campaign::STATUS_AWAITING_APPROVAL)->count(),
+                ],
+                [
+                    'name' => Campaign::STATUS_SERIES,
+                    'label' => __('marketing::campaigns.tabs.series'),
+                    'count' => $all->filter(fn (Campaign $c): bool => $c->isSeries())->count(),
+                ],
+            ],
         ]);
+    }
+
+    /** The campaign status as the reader's language says it. */
+    protected function statusLabel(string $status): string
+    {
+        $key = 'marketing::campaigns.statuses.'.$status;
+        $label = __($key);
+
+        return is_string($label) && $label !== $key ? $label : $status;
     }
 
     public function create(Request $request)
@@ -223,7 +269,88 @@ class CampaignController extends Controller
             ],
             'canManage' => $canManage,
             'mailPreviewUrl' => $this->mailPreviewUrl($campaign),
+            'statusLabel' => $this->statusLabel($campaign->status),
+            'approval' => $this->approvalPayload($request, $campaign),
         ]);
+    }
+
+    /**
+     * What an editor needs to release one series child, in one place: the
+     * subject as it will read, the sender, who receives it, the term and the
+     * moment it goes. Null for everything that is not a series child before
+     * its send.
+     *
+     * The recipient figure is the segment's live member count — the circle
+     * around the venue — asked the same way the send asks it, so the number
+     * on the button's page is the number the send starts from (before the
+     * list's own consent and suppression take their share).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function approvalPayload(Request $request, Campaign $campaign): ?array
+    {
+        if ($campaign->series === null || ! in_array($campaign->status, [
+            Campaign::STATUS_AWAITING_APPROVAL, Campaign::STATUS_SCHEDULED,
+        ], true)) {
+            return null;
+        }
+
+        $list = $campaign->listHandle ? $this->lists->find($campaign->listHandle) : null;
+        $subject = $campaign->subject;
+
+        if ($list) {
+            try {
+                $subject = app(CampaignRenderer::class)->render($campaign, $list)->subject;
+            } catch (\Throwable) {
+                // The raw subject, braces and all, is still the right answer
+                // to "what is this about" — better than an empty line.
+            }
+        }
+
+        $segment = $campaign->segmentHandle
+            ? collect($this->segmentOptions())->firstWhere('value', $campaign->segmentHandle)
+            : null;
+
+        $template = $this->campaigns->find($campaign->series);
+        $event = (array) ($campaign->meta['event'] ?? []);
+
+        return [
+            'subject' => $subject,
+            'from_name' => $campaign->fromName ?: config('marketing.from.name') ?: config('mail.from.name'),
+            'from_email' => $campaign->fromEmail ?: config('marketing.from.email') ?: config('mail.from.address'),
+            'list' => $list?->name,
+            'segment' => $segment['label'] ?? $campaign->segmentHandle,
+            'recipients' => $this->segmentMemberCount($campaign->segmentHandle),
+            'event' => $event === [] ? null : $event,
+            'scheduled_at' => $campaign->scheduledAt?->toIso8601String(),
+            'template' => $template ? [
+                'name' => $template->name,
+                'edit_url' => cp_route('marketing.campaigns.edit', $template->handle),
+            ] : null,
+            'preview_url' => $list ? cp_route('marketing.campaigns.preview', $campaign->handle) : null,
+            'approve_url' => cp_route('marketing.campaigns.approve', $campaign->handle),
+            'withdraw_url' => cp_route('marketing.campaigns.withdraw', $campaign->handle),
+            'can_send' => $this->userCan($request, 'send marketing campaigns'),
+        ];
+    }
+
+    /**
+     * The live size of a LeadHub segment, or null when it cannot be asked —
+     * no handle, or a LeadHub without `segmentMemberIds`.
+     */
+    protected function segmentMemberCount(?string $handle): ?int
+    {
+        $root = LeadHub::getFacadeRoot();
+
+        if ($handle === null || ! $root || ! method_exists($root, 'segmentMemberIds')) {
+            return null;
+        }
+
+        try {
+            return count(LeadHub::segmentMemberIds($handle));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -546,7 +673,73 @@ class CampaignController extends Controller
             // datetime-local, which carries no zone of its own; saying which
             // one applies is cheaper than a mail that goes out an hour early.
             'timezone' => (string) config('app.timezone', 'UTC'),
+            'series' => $this->seriesPayload($campaign),
         ]);
+    }
+
+    /**
+     * The "series for terms" section of the editor.
+     *
+     * `available` false hides the section behind a one-line hint: without
+     * statamic-events there are no terms to make a series of. A child gets
+     * only the way back to its template — it is part of a series, it does
+     * not have one.
+     *
+     * @return array<string, mixed>
+     */
+    protected function seriesPayload(Campaign $campaign): array
+    {
+        $sync = app(SeriesSync::class);
+        $available = SeriesSync::available();
+
+        if ($campaign->series !== null) {
+            $template = $this->campaigns->find($campaign->series);
+
+            return [
+                'available' => $available,
+                'is_child' => true,
+                'template' => $template ? [
+                    'name' => $template->name,
+                    'edit_url' => cp_route('marketing.campaigns.edit', $template->handle),
+                ] : null,
+            ];
+        }
+
+        $children = $campaign->isSeries() ? $sync->childrenOf($campaign) : collect();
+
+        return [
+            'available' => $available,
+            'is_child' => false,
+            'enabled' => $campaign->isSeries(),
+            // A draft may become a template; a template may go back while it
+            // has produced nothing. Scheduled or sent campaigns are neither.
+            'can_toggle' => $available && ($campaign->isDraft() || ($campaign->isSeries() && $children->isEmpty())),
+            'settings' => $sync->settingsFor($campaign),
+            'events' => $available ? $sync->eventOptions() : [],
+            'skipped_no_postal_code' => $sync->missingPostalCodes($campaign),
+            'columns' => collect([
+                Column::make('city')->label(__('marketing::series.city')),
+                Column::make('term')->label(__('marketing::series.term')),
+                Column::make('scheduled_at')->label(__('marketing::campaigns.send_at')),
+                Column::make('status')->label(__('marketing::campaigns.status')),
+                Column::make('recipients')->label(__('marketing::campaigns.recipients')),
+            ])->map(fn (Column $column): array => $column->toArray())->all(),
+            'children' => $children->map(fn (Campaign $child): array => [
+                'id' => $child->handle,
+                'handle' => $child->handle,
+                'name' => $child->name,
+                'city' => (string) ($child->meta['event']['city'] ?? ''),
+                'date' => (string) ($child->meta['event']['date'] ?? ''),
+                'time' => (string) ($child->meta['event']['time'] ?? ''),
+                'term' => (string) ($child->meta['event']['starts_at'] ?? ''),
+                'venue' => (string) ($child->meta['event']['venue'] ?? ''),
+                'scheduled_at' => $child->scheduledAt?->toIso8601String(),
+                'status' => $child->status,
+                'status_label' => $this->statusLabel($child->status),
+                'recipients' => $this->segmentMemberCount($child->segmentHandle),
+                'show_url' => cp_route('marketing.campaigns.show', $child->handle),
+            ])->values()->all(),
+        ];
     }
 
     public function update(Request $request, string $handle)
@@ -561,6 +754,7 @@ class CampaignController extends Controller
         }
 
         $data = $this->validateCampaign($request);
+        $series = $this->validateSeries($request, $campaign);
 
         $campaign->name = $data['name'];
         $campaign->subject = $data['subject'] ?? '';
@@ -582,16 +776,108 @@ class CampaignController extends Controller
         $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
         $campaign->abShare = (int) ($data['ab_share'] ?? 0);
 
+        if ($series !== null) {
+            $this->applySeries($campaign, $series);
+        }
+
         $this->campaigns->save($campaign);
 
         // Saving a series template is the editor's way of changing what the
         // series does; the children answer immediately rather than on the
         // night run.
         if ($campaign->isSeries()) {
-            app(SeriesSync::class)->syncTemplate($campaign);
+            $result = app(SeriesSync::class)->syncTemplate($campaign);
+
+            return back()->with('success', __('marketing::campaigns.flashes.updated').' '.__('marketing::series.summary', [
+                'created' => $result['created'],
+                'updated' => $result['updated'],
+                'removed' => $result['removed'],
+                'skipped' => $result['skipped_no_postal_code'],
+            ]));
         }
 
         return back()->with('success', __('marketing::campaigns.flashes.updated'));
+    }
+
+    /**
+     * The series half of an update, validated — or null when the form did
+     * not send it (an API client, an older screen, a child). Absent means
+     * "leave the series alone", never "switch it off".
+     *
+     * @return array{enabled: bool, settings: array<string, mixed>}|null
+     */
+    protected function validateSeries(Request $request, Campaign $campaign): ?array
+    {
+        if (! $request->has('series_enabled') || $campaign->series !== null) {
+            return null;
+        }
+
+        $data = $request->validate([
+            'series_enabled' => ['required', 'boolean'],
+            'series' => ['nullable', 'array'],
+            'series.radius_km' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'series.days_before' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'series.send_time' => ['nullable', 'date_format:H:i'],
+            'series.event_ids' => ['nullable', 'array'],
+            'series.event_ids.*' => ['string'],
+            'series.country' => ['nullable', 'string', 'size:2', 'alpha'],
+        ]);
+
+        $enabled = (bool) $data['series_enabled'];
+
+        if ($enabled && ! $campaign->isSeries()) {
+            if (! SeriesSync::available()) {
+                throw ValidationException::withMessages(['series_enabled' => __('marketing::series.not_installed')]);
+            }
+
+            if (! $campaign->isDraft()) {
+                throw ValidationException::withMessages(['series_enabled' => __('marketing::series.errors.only_drafts')]);
+            }
+        }
+
+        if (! $enabled && $campaign->isSeries() && app(SeriesSync::class)->childrenOf($campaign)->isNotEmpty()) {
+            throw ValidationException::withMessages(['series_enabled' => __('marketing::series.errors.has_children')]);
+        }
+
+        return ['enabled' => $enabled, 'settings' => (array) ($data['series'] ?? [])];
+    }
+
+    /**
+     * Turn a draft into a template, a childless template back into a draft,
+     * and store the settings. `preview_event` survives a save: the form does
+     * not edit it, and dropping it would change the preview behind the
+     * editor's back.
+     *
+     * @param  array{enabled: bool, settings: array<string, mixed>}  $series
+     */
+    protected function applySeries(Campaign $campaign, array $series): void
+    {
+        $meta = $campaign->meta;
+
+        if (! $series['enabled']) {
+            if ($campaign->isSeries()) {
+                $campaign->status = Campaign::STATUS_DRAFT;
+                unset($meta['series']);
+                $campaign->meta = $meta;
+            }
+
+            return;
+        }
+
+        $settings = $series['settings'];
+        $stored = (array) ($meta['series'] ?? []);
+
+        $meta['series'] = array_filter([
+            'radius_km' => isset($settings['radius_km']) ? (int) $settings['radius_km'] : SeriesSync::DEFAULT_SETTINGS['radius_km'],
+            'days_before' => isset($settings['days_before']) ? (int) $settings['days_before'] : SeriesSync::DEFAULT_SETTINGS['days_before'],
+            'send_time' => (string) ($settings['send_time'] ?? SeriesSync::DEFAULT_SETTINGS['send_time']),
+            'event_ids' => array_values(array_map('strval', (array) ($settings['event_ids'] ?? []))),
+            'country' => strtoupper((string) ($settings['country'] ?? SeriesSync::DEFAULT_SETTINGS['country'])),
+            'preview_event' => $stored['preview_event'] ?? null,
+        ], fn ($value): bool => $value !== null);
+
+        $campaign->meta = $meta;
+        $campaign->status = Campaign::STATUS_SERIES;
     }
 
     public function destroy(Request $request, string $handle)
@@ -790,6 +1076,20 @@ class CampaignController extends Controller
             templateHandle: $request->input('template_handle') ?: null,
             preheader: $request->input('preheader') ?: null,
         );
+
+        // `{{ event:… }}` needs a term to render against. A series child
+        // brings its own snapshot, a template (saved, or being switched on
+        // right now) the sample term — read from the saved row, so the
+        // preview of a child shows its city and not the sample's.
+        $saved = $this->campaigns->find($campaign->handle);
+
+        if ($saved && $saved->series !== null) {
+            $campaign->series = $saved->series;
+            $campaign->meta = $saved->meta;
+        } elseif ($request->boolean('series') || $saved?->isSeries()) {
+            $campaign->status = Campaign::STATUS_SERIES;
+            $campaign->meta = $saved ? $saved->meta : [];
+        }
 
         try {
             $rendered = $renderer->render($campaign, $list);
