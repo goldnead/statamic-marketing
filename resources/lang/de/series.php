@@ -2,7 +2,7 @@
 
 return [
     'not_installed' => 'Termine-Addon nicht installiert.',
-    'summary' => ':created Kampagne(n) angelegt, :updated aktualisiert, :removed entfernt, :skipped ohne Postleitzahl und :presale ohne Vorverkaufsdatum übersprungen.',
+    'summary' => ':created Kampagne(n) angelegt, :updated aktualisiert, :removed entfernt, :skipped ohne Postleitzahl, :presale ohne Vorverkaufsdatum und :late mit einer Versandzeit nach dem Konzert übersprungen.',
 
     // Editor: „Als Serie für Termine"
     'heading' => 'Als Serie für Termine',
@@ -67,6 +67,8 @@ return [
     'preview_for' => 'Vorschau für',
     'open_segment' => 'Segment in LeadHub öffnen',
     'presale_since' => 'Vorverkauf ab :date',
+    'content_hint_event' => 'Für diesen Termin:',
+    'content_hint_blocks' => 'Auf einer eigenen Zeile setzen diese den Terminkasten bzw. die weiteren Konzerte an genau diese Stelle, im Stil des Layouts (Text davor und danach geht):',
     'anchor' => 'Versand richtet sich nach',
     'anchor_concert' => 'Konzert',
     'anchor_presale' => 'Vorverkaufsstart',

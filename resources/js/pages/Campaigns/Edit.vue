@@ -100,6 +100,14 @@ const antlersHint = ['first_name', 'name', 'email', 'unsubscribe_url']
     .map((variable) => `{{ ${variable} }}`)
     .join(', ');
 
+// On a series template or child the text can also say where the concert is
+// and place the two blocks itself; the help under the editor says so there,
+// where the text is written, not only in the series section further down.
+const seriesContentHints = [
+    ...['city', 'venue', 'weekday', 'date_short', 'time_label', 'tickets_url'].map((key) => `{{ event:${key} }}`),
+];
+const blockPlaceholders = ['{{ terminkasten }}', '{{ weitere_termine }}'];
+
 const testEmail = ref('');
 const scheduledAt = ref('');
 
@@ -692,6 +700,24 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                 {{ __('Antlers variables are available:') }}
                                 <code v-text="antlersHint"></code>
                             </p>
+                            <div
+                                v-if="(seriesSection && seriesEnabled) || isSeriesChild"
+                                class="mt-1.5 space-y-1 text-xs text-gray-500 dark:text-gray-400"
+                                data-marketing-content-series-hints
+                            >
+                                <p>
+                                    {{ __('marketing::series.content_hint_event') }}
+                                    <span class="inline-flex flex-wrap gap-1.5 align-middle">
+                                        <code v-for="hint in seriesContentHints" :key="hint" v-text="hint"></code>
+                                    </span>
+                                </p>
+                                <p>
+                                    {{ __('marketing::series.content_hint_blocks') }}
+                                    <span class="inline-flex flex-wrap gap-1.5 align-middle">
+                                        <code v-for="hint in blockPlaceholders" :key="hint" v-text="hint"></code>
+                                    </span>
+                                </p>
+                            </div>
                         </Card>
                     </Panel>
 

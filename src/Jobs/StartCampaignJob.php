@@ -46,6 +46,22 @@ class StartCampaignJob implements ShouldQueue
             return;
         }
 
+        // The last gate for a series mail: its concert must still be ahead.
+        // The sync never plans one for after the doors open, but a date moved
+        // forward after the approval, or a queue that ran late, can still get
+        // here — and a concert invitation after the concert reaches nobody
+        // who can use it. Generic for both anchors.
+        $startsAt = $campaign->series !== null ? ($campaign->meta['event']['starts_at'] ?? null) : null;
+
+        if (is_string($startsAt) && $startsAt !== '' && CarbonImmutable::parse($startsAt)->lessThanOrEqualTo(CarbonImmutable::now())) {
+            Log::error(
+                "Marketing did not send series campaign [{$campaign->handle}]: its concert already started "
+                ."({$startsAt}). Nobody was sent anything."
+            );
+
+            return;
+        }
+
         event(new CampaignSending($campaign));
 
         $this->recordSnapshot($campaign);

@@ -29,6 +29,7 @@ use Goldnead\Marketing\Integrations\Insights\Unsubscribed;
 use Goldnead\Marketing\Integrations\Leadhub\ContactSubscriptionsPanel;
 use Goldnead\Marketing\Integrations\Leadhub\TimelineRecorder;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
+use Goldnead\Marketing\Jobs\SyncSeriesJob;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentCampaignRepository;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentEmailTemplateRepository;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentMailingListRepository;
@@ -325,12 +326,21 @@ class ServiceProvider extends AddonServiceProvider
         // this one term: a child's "Weitere Konzerte" lists the later terms
         // near it, so a term added, moved, cancelled or given a presale date
         // changes the mails of its neighbours too, not only its own.
+        //
+        // Not run here: queued as one bundled job per brand, after the commit
+        // (see SyncSeriesJob) — a CP save or an import must not wait for a
+        // full sync, let alone thirty of them.
         $listener = function (object $event): void {
-            // The sync runs inside the events addon's own create/cancel
-            // action; whatever goes wrong here (LeadHub down, a handle race)
-            // must never break that action. The night run catches up.
+            // Dispatched inside the events addon's own create/cancel action;
+            // whatever goes wrong (a queue that is down, or — on the sync
+            // driver — the sync itself) must never break that action. The
+            // night run catches up.
             try {
-                app(SeriesSync::class)->syncAll();
+                $occurrence = property_exists($event, 'occurrence') ? $event->occurrence : null;
+                $brandId = $occurrence?->getAttribute('brand_id')
+                    ?? (app()->bound('brand-context') ? app('brand-context')->currentId() : null);
+
+                SyncSeriesJob::dispatch($brandId === null ? null : (int) $brandId)->afterCommit();
             } catch (Throwable $e) {
                 report($e);
             }

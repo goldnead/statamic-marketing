@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Fixed: Kampagnenserie, Runde 5
+
+- **Nie nach dem Konzert.** Ein Serien-Kind, dessen geplante Versandzeit am oder nach dem Beginn
+  seines Termins läge (VVK + N Tage, oder eine Uhrzeit später als das Konzert), wird nicht angelegt
+  (`skipped_too_late`) bzw. entfernt und ins Log geschrieben. Zusätzlich verweigert
+  `StartCampaignJob` jedes Serien-Kind, dessen Konzert schon begonnen hat: Log-Fehler, niemand
+  bekommt etwas.
+- **Sync entkoppelt.** Termin-Ereignisse laufen nicht mehr synchron im CP-Request, sondern stoßen
+  `SyncSeriesJob` an: nach dem Commit, `ShouldBeUnique` je Marke für zehn Sekunden (ein Import mit
+  dreißig Terminen = ein Lauf), Marke im Job. Mit dem `sync`-Treiber läuft er sofort wie bisher; der
+  tägliche Befehl bleibt.
+- **Kein Überschreiben eines laufenden Versands.** Der Abgleich schreibt ein Kind nur zurück, solange
+  es noch wartet oder geplant ist: unter Eloquent als `UPDATE … WHERE status IN (…)`
+  (`EloquentCampaignRepository::saveIfStatusIn()`), mit Dateien durch erneutes Lesen direkt vor dem
+  Schreiben.
+- Ein Kind, das mit seinem Vorverkaufsdatum verschwindet, zählt als `removed` und steht im Log.
+- Ohne Tabelle `leadhub_postal_codes` (LeadHub mit Dateien) bricht der Lauf nicht mehr ab; Orte ohne
+  Koordinaten fehlen dann nur bei den weiteren Konzerten.
+- Ticket- und Termin-Links nur noch `http(s)`; sonst entfällt Knopf bzw. Link.
+- Dunkelmodus färbt nur die Überschriften der Bausteine um, nicht jede `h3` im Text.
+- `managed_by.url` am Segment ist relativ, damit CLI- und CP-Lauf denselben Wert schreiben; das
+  Segment wird nur angefasst, wenn sich Regel, Name oder Vermerk wirklich ändern.
+
+### Changed: Bausteine wie in der ANDERS-Mail
+
+- **Schriftgrößen** des Terminkastens nach der ANDERS-Mail als Vorgabe, je Baustein einstellbar wie
+  die Farben: Datum 24 px, Ort 18 px, Adresse 16 px/165 % in der Textfarbe (neues Feld), Knopf
+  14 px regulär. Der Text-Baustein hat eine einstellbare Überschriftgröße (Vorgabe bleibt 22 px,
+  damit vorhandene Layouts beim nächsten Speichern nicht umspringen; die ANDERS-Überschrift ist 36).
+- **Text vor und nach dem Kasten.** `{{ terminkasten }}` und `{{ weitere_termine }}` auf einer
+  eigenen Zeile im Kampagnentext setzen Kasten bzw. Liste genau dorthin, im Stil des gleichnamigen
+  Bausteins im Layout (sonst im Theme). Steht ein Platzhalter im Text, tritt der feste Baustein des
+  Layouts zurück, die Mail zeigt ihn nie doppelt. Die Hilfe unter dem Editor nennt sie bei
+  Serien-Vorlagen und -Kindern, zusammen mit den Termin-Feldern.
+- **Preheader in der Mail.** Block-Layouts zeigen ihn wie ANDERS als Kopfzeile über der Mail, mit
+  „Im Browser lesen", wenn es eine Webfassung gibt (`web_url`), und versteckt als erste Zeile für
+  die Postfach-Vorschau; jedes andere Layout (eingebaut oder von Hand) bekommt die versteckte Zeile
+  nach `<body>`, sofern es `{{ preheader }}` nicht selbst ausgibt. Platzhalter im Preheader werden
+  eingesetzt.
+- **Weitere Konzerte** schreiben das Datum wie der Kasten („Samstag, den 05.12.26 um 20 Uhr"), in
+  einem Stück ohne Umbruch, Stadt und Ort darunter.
+
 ### Added: VVK-Serie, weitere Termine, Terminkasten-Bausteine
 
 - **VVK-Serie.** Neue Serien-Einstellung `anchor`: `concert` (wie bisher, `days_before`) oder

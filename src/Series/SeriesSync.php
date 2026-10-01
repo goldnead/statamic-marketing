@@ -62,9 +62,10 @@ class SeriesSync
 
     public const ANCHOR_PRESALE = 'presale';
 
-    /** @var array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int} */
+    /** @var array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int} */
     public const EMPTY_RESULT = [
         'created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0,
+        'skipped_too_late' => 0,
     ];
 
     /** The German weekday names `{{ event:weekday }}` renders, Monday first. */
@@ -80,6 +81,9 @@ class SeriesSync
 
     /** Does the installed LeadHub know `managed_by`? Asked once per instance. */
     protected ?bool $managedBySupported = null;
+
+    /** Is there a postal code register to place a venue with? Once per instance. */
+    protected ?bool $postalCodesAvailable = null;
 
     /**
      * Memoised {@see self::available()}. See SequenceSync for why the check is
@@ -123,7 +127,7 @@ class SeriesSync
      * A cancelled term takes its unsent children and their segments with it; a
      * scheduled one is brought in line for every template that wants its event.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}
      */
     public function syncOccurrence(Occurrence $occurrence): array
     {
@@ -153,7 +157,7 @@ class SeriesSync
      * Every template against every term, plus the cleanup: children whose
      * template or term is gone.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}
      */
     public function syncAll(): array
     {
@@ -178,7 +182,7 @@ class SeriesSync
      * One template against every upcoming term. Public because saving a
      * template in the CP wants exactly this and nothing else.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}
      */
     public function syncTemplate(Campaign $template): array
     {
@@ -236,9 +240,22 @@ class SeriesSync
         // child whose presale date was taken away goes, because its send time
         // no longer has a basis.
         if ($settings['anchor'] === self::ANCHOR_PRESALE && $this->presaleStart($occurrence) === null) {
-            $this->removeChild($this->childHandle($template, $occurrence));
+            return $this->removeChildSaying($template, $occurrence, 'its presale date was removed')
+                ? 'removed'
+                : 'skipped_no_presale';
+        }
 
-            return 'skipped_no_presale';
+        // Never after the concert: "Der Vorverkauf hat gestartet" or "wir
+        // kommen zu dir" arriving once the doors have opened is worse than no
+        // mail. Both anchors can get there (a presale + 30 days, a send time
+        // later in the evening than the show), and a child that was already
+        // planned goes when its date moves under it.
+        $planned = $this->plannedSendAt($occurrence, $settings);
+
+        if ($planned !== null && $planned->greaterThanOrEqualTo($occurrence->starts_at)) {
+            return $this->removeChildSaying($template, $occurrence, 'its send time is no longer before the concert')
+                ? 'removed'
+                : 'skipped_too_late';
         }
 
         $child = $this->campaigns->find($this->childHandle($template, $occurrence));
@@ -338,6 +355,34 @@ class SeriesSync
             $child->scheduledAt = $sendAt;
         }
 
+        return $this->saveWhileOurs($child);
+    }
+
+    /**
+     * Write a child back only while it is still the sync's to write.
+     *
+     * The child was read a moment ago; between that read and this write the
+     * scheduler may have claimed it (`sending`). Writing the whole object back
+     * would set it to `scheduled` again under a running send. So the write is
+     * conditional on the status: atomically on the eloquent driver (an update
+     * that matches the status or nothing), on flat files by reading the file
+     * once more right before writing — there is no store lock to hold, and the
+     * window shrinks from "the whole sync" to one read and one write.
+     */
+    protected function saveWhileOurs(Campaign $child): bool
+    {
+        $ours = [Campaign::STATUS_AWAITING_APPROVAL, Campaign::STATUS_SCHEDULED];
+
+        if (method_exists($this->campaigns, 'saveIfStatusIn')) {
+            return $this->campaigns->saveIfStatusIn($child, $ours);
+        }
+
+        $fresh = $this->campaigns->find($child->handle);
+
+        if ($fresh === null || ! in_array($fresh->status, $ours, true)) {
+            return false;
+        }
+
         $this->campaigns->save($child);
 
         return true;
@@ -349,6 +394,23 @@ class SeriesSync
      * then sends immediately (`approve()` takes max(scheduledAt, now)).
      */
     protected function sendAt(Occurrence $occurrence, array $settings): ?CarbonImmutable
+    {
+        $send = $this->plannedSendAt($occurrence, $settings);
+
+        if ($send === null || $send->lessThanOrEqualTo(CarbonImmutable::now())) {
+            return null;
+        }
+
+        return $send->utc();
+    }
+
+    /**
+     * The instant the settings ask for, past or not — what {@see sendAt()}
+     * turns into "no time yet" once it has passed, and what is compared
+     * against the concert itself: a mail planned for after the doors open
+     * is never created. Null for a presale series without a presale date.
+     */
+    protected function plannedSendAt(Occurrence $occurrence, array $settings): ?CarbonImmutable
     {
         if ($settings['anchor'] === self::ANCHOR_PRESALE) {
             $presale = $this->presaleStart($occurrence);
@@ -374,11 +436,15 @@ class SeriesSync
                 ->setTimeFromTimeString((string) $settings['send_time']);
         }
 
-        if ($send->lessThanOrEqualTo(CarbonImmutable::now())) {
-            return null;
-        }
+        return $send;
+    }
 
-        return $send->utc();
+    /** An http(s) URL, or the empty string. */
+    protected function webUrl(mixed $value): string
+    {
+        $value = trim((string) $value);
+
+        return preg_match('~^https?://[^\s]+$~i', $value) ? $value : '';
     }
 
     /**
@@ -475,7 +541,12 @@ class SeriesSync
             return [(float) $lat, (float) $lng];
         }
 
-        if (blank($occurrence->venue_postal_code)) {
+        // A LeadHub on flat files may have no postal code register at all;
+        // the lookup would throw and take the whole night run with it. Then
+        // the venue simply cannot be placed and stays out of the list.
+        $this->postalCodesAvailable ??= Schema::hasTable('leadhub_postal_codes');
+
+        if (blank($occurrence->venue_postal_code) || ! $this->postalCodesAvailable) {
             return null;
         }
 
@@ -515,11 +586,15 @@ class SeriesSync
             'date_short' => $local->format('d.m.y'),
             'time' => $local->format('H:i'),
             'time_label' => $local->format('i') === '00' ? $local->format('G').' Uhr' : $local->format('G:i').' Uhr',
-            'tickets_url' => (string) $occurrence->tickets_url,
+            // http(s) only, here at the one place the links enter the mail:
+            // the button and the "Tickets" link print them as they are, and
+            // a `javascript:` or `data:` target typed into the date form must
+            // become no button rather than a dangerous one.
+            'tickets_url' => $this->webUrl($occurrence->tickets_url),
             // The link of the term. statamic-events has no public detail URL,
             // so this is the online URL where there is one and empty where
             // there is none — a made-up route would be worse than a blank.
-            'url' => (string) $occurrence->online_url,
+            'url' => $this->webUrl($occurrence->online_url),
             'presale_starts_at' => $presale?->toIso8601String() ?? '',
             'presale_date' => $presale?->format('d.m.Y') ?? '',
         ];
@@ -600,10 +675,10 @@ class SeriesSync
      */
     protected function managedBy(Campaign $template): array
     {
-        // Answered by the installed LeadHub, not by the one PHPStan reads:
-        // against 2.15 this is always true, against 2.14 always false.
-        // @phpstan-ignore function.alreadyNarrowedType
-        $this->managedBySupported ??= method_exists(Segment::class, 'managedBy')
+        // Answered by the installed LeadHub at runtime — against 2.15 always
+        // yes, against 2.14 always no — hence the method list rather than a
+        // check the analyser would settle for one version.
+        $this->managedBySupported ??= in_array('managedBy', get_class_methods(Segment::class), true)
             && (config('leadhub.storage.driver') !== 'eloquent'
                 || Schema::hasColumn('leadhub_segments', 'managed_by'));
 
@@ -614,8 +689,11 @@ class SeriesSync
         return ['managed_by' => [
             'source' => 'statamic-marketing',
             'label' => 'Serie „'.$template->name.'“',
+            // Relative: the night run on the CLI and a sync in a CP request
+            // know the host differently, and an absolute URL that differs
+            // between them rewrote every segment on every run.
             'url' => Route::has('statamic.cp.marketing.campaigns.show')
-                ? cp_route('marketing.campaigns.show', $template->handle)
+                ? route('statamic.cp.marketing.campaigns.show', ['handle' => $template->handle], false)
                 : null,
         ]];
     }
@@ -627,7 +705,7 @@ class SeriesSync
      *
      * @param  Collection<int, Campaign>  $templates
      * @param  Collection<int, Campaign>  $all
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $result
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}  $result
      */
     protected function cleanUpOrphans(Collection $templates, Collection $all, array &$result): void
     {
@@ -787,6 +865,24 @@ class SeriesSync
     }
 
     /**
+     * {@see removeChild()}, said in the log: a waiting or even approved
+     * campaign that disappears because its date changed under it is the one
+     * removal somebody will look for.
+     */
+    protected function removeChildSaying(Campaign $template, Occurrence $occurrence, string $reason): bool
+    {
+        $handle = $this->childHandle($template, $occurrence);
+
+        if (! $this->removeChild($handle)) {
+            return false;
+        }
+
+        Log::info("[marketing] Series campaign [{$handle}] was removed: {$reason}.");
+
+        return true;
+    }
+
+    /**
      * Delete one unsent child and its segment when nothing else uses it.
      */
     protected function removeChild(string $handle): bool
@@ -936,8 +1032,8 @@ class SeriesSync
     }
 
     /**
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $result
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $partial
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}  $result
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int, skipped_too_late: int}  $partial
      */
     protected function merge(array &$result, array $partial): void
     {

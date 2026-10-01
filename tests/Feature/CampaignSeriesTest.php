@@ -155,7 +155,7 @@ it('ist idempotent: ein zweiter Lauf ändert nichts und zählt nichts', function
 
     $result = app(SeriesSync::class)->syncAll();
 
-    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0]);
+    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0, 'skipped_too_late' => 0]);
 });
 
 it('zieht Versandzeit und Momentaufnahme bei Verschiebung nach', function (): void {
@@ -485,7 +485,7 @@ it('legt je Vorlage ein eigenes Segment an, auch bei verschiedenem Radius', func
     $a = $this->segments->findByHandle(seriesSegmentHandle('konzertmail', $occurrence));
     $b = $this->segments->findByHandle(seriesSegmentHandle('konzertmail-weit', $occurrence));
 
-    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0])
+    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0, 'skipped_too_late' => 0])
         ->and($a)->not->toBeNull()
         ->and($b)->not->toBeNull()
         ->and($a->getAttribute('rules')['conditions'][0]['value'])->toBe(50)

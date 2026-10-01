@@ -106,6 +106,7 @@ class LayoutBlocks
                 'icon' => 'text',
                 'fields' => [
                     self::field('heading', ['type' => 'text', 'display' => __('marketing::templates.block_field_heading')]),
+                    self::field('heading_size', self::sizeField(__('marketing::templates.block_field_heading_size'), 22)),
                     self::field('text', [
                         'type' => 'textarea',
                         'display' => __('marketing::templates.block_field_text'),
@@ -193,7 +194,13 @@ class LayoutBlocks
                     ]),
                     self::field('background', self::colorField(__('marketing::templates.block_field_background'))),
                     self::field('accent', self::colorField(__('marketing::templates.block_field_accent'))),
+                    self::field('text_color', self::colorField(__('marketing::templates.block_field_text_color'))),
                     self::field('button_color', self::colorField(__('marketing::templates.block_field_button_color'))),
+                    // The ANDERS scale as the defaults, adjustable like the colours.
+                    self::field('date_size', self::sizeField(__('marketing::templates.block_field_date_size'), 24)),
+                    self::field('venue_size', self::sizeField(__('marketing::templates.block_field_venue_size'), 18)),
+                    self::field('text_size', self::sizeField(__('marketing::templates.block_field_text_size'), 16)),
+                    self::field('button_size', self::sizeField(__('marketing::templates.block_field_button_size'), 14)),
                 ],
             ],
 
@@ -214,6 +221,7 @@ class LayoutBlocks
                         'width' => 50,
                     ]),
                     self::field('accent', self::colorField(__('marketing::templates.block_field_accent'))),
+                    self::field('text_color', self::colorField(__('marketing::templates.block_field_text_color'))),
                 ],
             ],
 
@@ -291,6 +299,22 @@ class LayoutBlocks
             'instructions' => __('marketing::templates.block_field_color_instructions'),
             'allow_any' => true,
             'width' => 50,
+        ];
+    }
+
+    /**
+     * A font size in pixels, shown as its default when left empty.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function sizeField(string $display, int $default): array
+    {
+        return [
+            'type' => 'integer',
+            'display' => $display,
+            'placeholder' => (string) $default,
+            'append' => 'px',
+            'width' => 25,
         ];
     }
 

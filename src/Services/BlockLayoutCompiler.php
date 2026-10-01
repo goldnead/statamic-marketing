@@ -170,49 +170,121 @@ class BlockLayoutCompiler
      */
     protected function eventBox(array $block): string
     {
-        $t = self::THEME;
-        $background = $this->color($block['background'] ?? null) ?? $t['soft'];
-        $accent = $this->color($block['accent'] ?? null) ?? $t['accent'];
-        $buttonColor = $this->color($block['button_color'] ?? null) ?? $t['button_background'];
-        $label = trim((string) ($block['button_label'] ?? '')) ?: (string) __('marketing::templates.event_box_button_default');
+        $style = $this->eventBoxStyle($block);
 
-        $when = $this->text_((string) __('marketing::templates.event_box_when', [
-            'weekday' => '%%WEEKDAY%%', 'date' => '%%DATE%%', 'time' => '%%TIME%%',
-        ]));
-        $when = str_replace(
-            ['%%WEEKDAY%%', '%%DATE%%', '%%TIME%%'],
-            ['{{ event:weekday }}', '{{ event:date_short }}', '{{ event:time_label }}'],
-            $when,
-        );
+        // `unless terminkasten_in_content`: when the campaign text places the
+        // box itself (`{{ terminkasten }}` on a line of its own), the layout's
+        // fixed one steps aside and only lends it its style.
+        return '{{ unless terminkasten_in_content }}{{ if event:date }}'
+            .sprintf('<tr><td class="m-cell m-box" bgcolor="%1$s" style="background-color:%1$s;padding:32px 32px;">', $style['background'])
+            .$this->eventBoxColumns($style)
+            .'</td></tr>'
+            .'{{ /if }}{{ /unless }}';
+    }
+
+    /**
+     * The same box for a place inside the campaign text: a table of its own,
+     * because the text sits in the layout's content cell (block layout or
+     * hand-written alike) and a row there would break the document.
+     *
+     * @param  array<string, mixed>  $block  the layout's event box block, or [] for the theme
+     */
+    public function eventBoxInline(array $block = []): string
+    {
+        $style = $this->eventBoxStyle($block);
+
+        return '{{ if event:date }}'
+            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;">'
+            .sprintf('<tr><td class="m-box" bgcolor="%1$s" style="background-color:%1$s;padding:28px 24px;border-radius:%2$s;">', $style['background'], self::THEME['radius'])
+            .$this->eventBoxColumns($style)
+            .'</td></tr></table>'
+            .'{{ /if }}';
+    }
+
+    /**
+     * Colours and type of the box. The defaults are the ANDERS mail's own
+     * scale (konzert-oberndorf.html): date 24px, venue 18px, address 16px at
+     * 165% in the text colour, the button 14px in regular weight. Each is a
+     * field on the block; empty means the default, like the colours.
+     *
+     * @param  array<string, mixed>  $block
+     * @return array{background: string, accent: string, text: string, button: string, label: string, date_size: int, venue_size: int, text_size: int, button_size: int}
+     */
+    protected function eventBoxStyle(array $block): array
+    {
+        $t = self::THEME;
+
+        return [
+            'background' => $this->color($block['background'] ?? null) ?? $t['soft'],
+            'accent' => $this->color($block['accent'] ?? null) ?? $t['accent'],
+            'text' => $this->color($block['text_color'] ?? null) ?? $t['text'],
+            'button' => $this->color($block['button_color'] ?? null) ?? $t['button_background'],
+            'label' => trim((string) ($block['button_label'] ?? '')) ?: (string) __('marketing::templates.event_box_button_default'),
+            'date_size' => $this->pixels($block['date_size'] ?? null, 24, 12, 48),
+            'venue_size' => $this->pixels($block['venue_size'] ?? null, 18, 10, 36),
+            'text_size' => $this->pixels($block['text_size'] ?? null, 16, 10, 24),
+            'button_size' => $this->pixels($block['button_size'] ?? null, 14, 10, 24),
+        ];
+    }
+
+    /**
+     * Left the date, venue and address; right the button — two cells that
+     * stack under 620px (`m-stack`).
+     *
+     * @param  array{background: string, accent: string, text: string, button: string, label: string, date_size: int, venue_size: int, text_size: int, button_size: int}  $s
+     */
+    protected function eventBoxColumns(array $s): string
+    {
+        $t = self::THEME;
 
         $button = sprintf(
             '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" style="border-collapse:separate;">'
-                .'<tr><td class="m-btn" align="center" bgcolor="%s" style="background-color:%s;border-radius:%s;">'
-                .'<a href="{{ event:tickets_url | sanitize }}" style="display:block;padding:14px 20px;font-family:%s;font-size:15px;line-height:20px;font-weight:600;color:%s;text-decoration:none;text-align:center;border-radius:%s;">%s</a>'
+                .'<tr><td class="m-btn" align="center" bgcolor="%1$s" style="background-color:%1$s;border-radius:%2$s;">'
+                .'<a href="{{ event:tickets_url | sanitize }}" style="display:block;padding:14px 20px;font-family:%3$s;font-size:%4$dpx;line-height:20px;font-weight:400;color:%5$s;text-decoration:none;text-align:center;border-radius:%2$s;">%6$s</a>'
                 .'</td></tr></table>',
-            $buttonColor,
-            $buttonColor,
+            $s['button'],
             $t['radius'],
             $t['font'],
+            $s['button_size'],
             $t['button_text'],
-            $t['radius'],
-            $this->text_($label),
+            $this->text_($s['label']),
         );
 
-        return '{{ if event:date }}'
-            .sprintf('<tr><td class="m-cell m-box" bgcolor="%s" style="background-color:%s;padding:28px 32px;">', $background, $background)
-            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-            .sprintf('<td class="m-stack" valign="middle" style="font-family:%s;color:%s;">', $t['font'], $t['text'])
-            .sprintf('<h2 class="m-accent" style="margin:0 0 10px 0;font-family:%s;font-size:22px;line-height:28px;font-weight:700;color:%s;">%s</h2>', $t['font'], $accent, $when)
-            .sprintf('<h3 class="m-accent" style="margin:0 0 8px 0;font-family:%s;font-size:17px;line-height:22px;font-weight:700;color:%s;">{{ event:venue | sanitize }}</h3>', $t['font'], $accent)
-            .sprintf('<p style="margin:0;font-family:%s;font-size:15px;line-height:24px;color:%s;">', $t['font'], $t['text'])
+        return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            .sprintf('<td class="m-stack" valign="middle" style="font-family:%s;color:%s;">', $t['font'], $s['text'])
+            .sprintf('<h2 class="m-accent" style="margin:0 0 10px 0;font-family:%s;font-size:%dpx;line-height:125%%;font-weight:700;color:%s;">%s</h2>', $t['font'], $s['date_size'], $s['accent'], $this->when())
+            .sprintf('<h3 class="m-accent" style="margin:0 0 8px 0;font-family:%s;font-size:%dpx;line-height:125%%;font-weight:700;color:%s;">{{ event:venue | sanitize }}</h3>', $t['font'], $s['venue_size'], $s['accent'])
+            .sprintf('<p style="margin:0;font-family:%s;font-size:%dpx;line-height:165%%;color:%s;">', $t['font'], $s['text_size'], $s['text'])
             .'{{ if event:street }}{{ event:street | sanitize }}<br>{{ /if }}{{ event:postal_code | sanitize }} {{ event:city | sanitize }}</p>'
             .'</td>'
             .'{{ if event:tickets_url }}'
             .'<td class="m-stack m-stack-gap" valign="middle" width="210" style="width:210px;padding-left:24px;">'.$button.'</td>'
             .'{{ /if }}'
-            .'</tr></table></td></tr>'
-            .'{{ /if }}';
+            .'</tr></table>';
+    }
+
+    /**
+     * "Samstag, den 17.10.26 um 20 Uhr" as Antlers, from the translation —
+     * with `$prefix` the bare loop fields of `more_events`, without it the
+     * `event:` ones. `$together` keeps it on one line: non-breaking spaces
+     * between the words, so a narrow phone breaks before the date, never
+     * inside it ("· 20 / Uhr").
+     */
+    protected function when(string $prefix = 'event:', bool $together = false): string
+    {
+        $when = $this->text_((string) __('marketing::templates.event_box_when', [
+            'weekday' => '%%WEEKDAY%%', 'date' => '%%DATE%%', 'time' => '%%TIME%%',
+        ]));
+
+        if ($together) {
+            $when = str_replace(' ', '&nbsp;', $when);
+        }
+
+        return str_replace(
+            ['%%WEEKDAY%%', '%%DATE%%', '%%TIME%%'],
+            ['{{ '.$prefix.'weekday }}', '{{ '.$prefix.'date_short }}', '{{ '.$prefix.'time_label }}'],
+            $when,
+        );
     }
 
     /**
@@ -225,24 +297,50 @@ class BlockLayoutCompiler
      */
     protected function moreEvents(array $block): string
     {
+        return '{{ unless weitere_termine_in_content }}{{ if more_events }}'
+            .sprintf('<tr><td class="m-cell" style="padding:24px 32px 8px 32px;font-family:%s;color:%s;">', self::THEME['font'], self::THEME['text'])
+            .$this->moreEventsTable($block)
+            .'</td></tr>'
+            .'{{ /if }}{{ /unless }}';
+    }
+
+    /**
+     * The same list for a place inside the campaign text
+     * (`{{ weitere_termine }}`).
+     *
+     * @param  array<string, mixed>  $block  the layout's block, or [] for the theme
+     */
+    public function moreEventsInline(array $block = []): string
+    {
+        return '{{ if more_events }}<div style="margin:16px 0;">'.$this->moreEventsTable($block).'</div>{{ /if }}';
+    }
+
+    /**
+     * Heading, then one line per date: the day as the box writes it, kept
+     * on one line; city and venue below it; "Tickets" on the right. The
+     * heading sits a step below the box's date (20px against 24px), so the
+     * box stays the mail's main event.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    protected function moreEventsTable(array $block): string
+    {
         $t = self::THEME;
         $accent = $this->color($block['accent'] ?? null) ?? $t['accent'];
+        $text = $this->color($block['text_color'] ?? null) ?? $t['text'];
         $heading = trim((string) ($block['heading'] ?? '')) ?: (string) __('marketing::templates.more_events_heading_default');
         $link = trim((string) ($block['link_label'] ?? '')) ?: (string) __('marketing::templates.more_events_link_default');
 
-        $line = sprintf('<td style="padding:12px 0;border-top:1px solid %s;font-family:%s;font-size:15px;line-height:22px;color:%s;">', $t['rule'], $t['font'], $t['text'])
-            .sprintf('<strong class="m-accent" style="color:%s;">{{ weekday }}, {{ date_short }} · {{ time_label }}</strong><br>', $accent)
+        $line = sprintf('<td style="padding:12px 0;border-top:1px solid %s;font-family:%s;font-size:16px;line-height:165%%;color:%s;">', $t['rule'], $t['font'], $text)
+            .sprintf('<strong class="m-accent" style="color:%s;white-space:nowrap;">%s</strong><br>', $accent, $this->when('', true))
             .'{{ city | sanitize }}, {{ venue | sanitize }}</td>'
-            .sprintf('<td align="right" valign="middle" style="padding:12px 0 12px 16px;border-top:1px solid %s;font-family:%s;font-size:15px;line-height:22px;white-space:nowrap;">', $t['rule'], $t['font'])
+            .sprintf('<td align="right" valign="middle" style="padding:12px 0 12px 16px;border-top:1px solid %s;font-family:%s;font-size:16px;line-height:165%%;white-space:nowrap;">', $t['rule'], $t['font'])
             .sprintf('{{ if tickets_url }}<a href="{{ tickets_url | sanitize }}" class="m-accent" style="color:%s;font-weight:600;text-decoration:underline;">%s</a>{{ /if }}</td>', $accent, $this->text_($link));
 
-        return '{{ if more_events }}'
-            .sprintf('<tr><td class="m-cell" style="padding:24px 32px 8px 32px;font-family:%s;color:%s;">', $t['font'], $t['text'])
-            .sprintf('<h2 style="margin:0 0 8px 0;font-family:%s;font-size:20px;line-height:26px;font-weight:700;color:%s;">%s</h2>', $t['font'], $t['text'], $this->text_($heading))
+        return sprintf('<h2 class="m-block-heading" style="margin:0 0 8px 0;font-family:%s;font-size:20px;line-height:125%%;font-weight:700;color:%s;">%s</h2>', $t['font'], $text, $this->text_($heading))
             .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
             .'{{ more_events }}<tr>'.$line.'</tr>{{ /more_events }}'
-            .'</table></td></tr>'
-            .'{{ /if }}';
+            .'</table>';
     }
 
     /** A `#rgb`/`#rrggbb` colour, or null for "use the theme". */
@@ -321,9 +419,17 @@ class BlockLayoutCompiler
         $parts = [];
 
         if ($heading = trim((string) ($block['heading'] ?? ''))) {
+            // 22px unless the block asks for more: the ANDERS headline
+            // ("Wir kommen zu dir!") is 36px, an ordinary newsletter's
+            // section heading is not, and existing layouts keep their look
+            // when they are saved again.
+            $size = $this->pixels($block['heading_size'] ?? null, 22, 14, 48);
+
             $parts[] = sprintf(
-                '<h2 style="margin:0 0 12px 0;font-family:%s;font-size:22px;line-height:30px;font-weight:700;color:%s;">%s</h2>',
+                '<h2 style="margin:0 0 12px 0;font-family:%s;font-size:%dpx;line-height:%s;font-weight:700;color:%s;">%s</h2>',
                 self::THEME['font'],
+                $size,
+                $size === 22 ? '30px' : '125%',
                 self::THEME['text'],
                 $this->text_($heading),
             );
@@ -636,6 +742,20 @@ class BlockLayoutCompiler
     {
         $t = self::THEME;
 
+        return str_replace('%%WEB_LABEL%%', $this->text_((string) __('marketing::templates.view_in_browser')), $this->shell($rows));
+    }
+
+    /**
+     * The document itself. Above the canvas, as in the ANDERS mails: the
+     * preheader as a visible top line, "Im Browser lesen" beside it when the
+     * campaign has a web version — and the preheader once more, hidden, as
+     * the first text of the body, which is what an inbox shows after the
+     * subject.
+     */
+    protected function shell(string $rows): string
+    {
+        $t = self::THEME;
+
         return <<<HTML
 <!DOCTYPE html>
 <html>
@@ -661,12 +781,23 @@ class BlockLayoutCompiler
     .m-shell td.m-rule { background-color: #3f3f46 !important; }
     .m-shell td.m-foot { border-top-color: #3f3f46 !important; }
     .m-shell td.m-box { background-color: #3f3f46 !important; }
-    .m-shell .m-accent, .m-shell h3 { color: #fafafa !important; }
+    .m-shell .m-accent, .m-shell td.m-box h2, .m-shell td.m-box h3 { color: #fafafa !important; }
+    .m-top td { color: #a1a1aa !important; }
+    .m-top a { color: #a1a1aa !important; }
 }
 </style>
 </head>
 <body style="margin:0;padding:0;width:100%;background-color:{$t['page_background']};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<div class="m-preheader" style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{$t['page_background']};opacity:0;">{{ preheader }}</div>
 <table role="presentation" class="m-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$t['page_background']};">
+{{ if preheader || web_url }}
+<tr><td align="center" style="padding:16px 12px 0 12px;">
+<table role="presentation" class="m-top" width="{$t['width']}" cellpadding="0" cellspacing="0" border="0" style="width:{$t['width']}px;max-width:100%;">
+<tr><td style="padding:0 20px;font-family:{$t['font']};font-size:12px;line-height:18px;color:{$t['muted']};">{{ preheader }}</td>
+{{ if web_url }}<td align="right" style="padding:0 20px;font-family:{$t['font']};font-size:12px;line-height:18px;white-space:nowrap;"><a href="{{ web_url }}" style="color:{$t['muted']};text-decoration:underline;">%%WEB_LABEL%%</a></td>{{ /if }}</tr>
+</table>
+</td></tr>
+{{ /if }}
 <tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" class="m-shell" width="{$t['width']}" cellpadding="0" cellspacing="0" border="0" style="width:{$t['width']}px;max-width:100%;background-color:{$t['canvas']};border-radius:{$t['radius']};">
 {$rows}

@@ -347,7 +347,8 @@ it('markiert die Umkreis-Segmente als von der Serie verwaltet', function (): voi
     expect($segment->managedBy())->toBe([
         'source' => 'statamic-marketing',
         'label' => 'Serie „VVK-Start“',
-        'url' => cp_route('marketing.campaigns.show', $template->handle),
+        // Relative since round 5 (host-independent, see SeriesRound5Test).
+        'url' => route('statamic.cp.marketing.campaigns.show', ['handle' => $template->handle], false),
     ]);
 
     // Renamed template: the mark follows on the next sync.

@@ -2,7 +2,7 @@
 
 return [
     'not_installed' => 'The events addon is not installed.',
-    'summary' => ':created campaign(s) created, :updated updated, :removed removed, :skipped skipped without a postal code and :presale without a presale date.',
+    'summary' => ':created campaign(s) created, :updated updated, :removed removed, :skipped skipped without a postal code, :presale without a presale date and :late with a send time after the concert.',
 
     // Editor: "Series for terms"
     'heading' => 'Series for terms',
@@ -67,6 +67,8 @@ return [
     'preview_for' => 'Preview for',
     'open_segment' => 'Open segment in LeadHub',
     'presale_since' => 'Presale from :date',
+    'content_hint_event' => 'For this date:',
+    'content_hint_blocks' => 'On a line of their own these place the event box or the list of more concerts exactly there, in the layout\'s style (text before and after works):',
     'anchor' => 'Send time follows',
     'anchor_concert' => 'Concert',
     'anchor_presale' => 'Presale start',

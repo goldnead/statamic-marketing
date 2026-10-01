@@ -1004,6 +1004,7 @@ class CampaignController extends Controller
                 'removed' => $result['removed'],
                 'skipped' => $result['skipped_no_postal_code'],
                 'presale' => $result['skipped_no_presale'],
+                'late' => $result['skipped_too_late'],
             ]));
         }
 

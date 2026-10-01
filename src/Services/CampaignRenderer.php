@@ -11,10 +11,12 @@ use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Support\LayoutBlocks;
 use Goldnead\Marketing\Support\PreferenceLink;
 use Goldnead\Marketing\Support\RenderedMail;
 use Goldnead\Marketing\Support\StatamicReferences;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Statamic\Facades\Antlers;
 
@@ -141,13 +143,18 @@ class CampaignRenderer
         // Bard speichert ein im CP eingefuegtes Bild als
         // `statamic://asset::…`, und das geht sonst woertlich in die Mail —
         // ein kaputtes Bild in jedem Postfach. Siehe StatamicReferences.
+        // The preheader is a template too (`{{ event:venue }}, {{ event:time }}`),
+        // and the layout prints it as a value — parsed here, once.
+        $variables['preheader'] = $this->parse((string) ($variables['preheader'] ?? ''), $variables);
+
         $content = StatamicReferences::toAbsoluteUrls(
-            $this->parse($campaign->content, $variables)
+            $this->parse($this->expandBlockPlaceholders($campaign, $variables), $variables)
         );
 
         $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 
         $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
+        $html = $this->ensurePreheader($html, $templateHtml, (string) $variables['preheader']);
 
         $html = $this->ensureSelfServiceFooter($html, $variables, $subscription);
         $html = $this->ensurePostalLine($html);
@@ -171,6 +178,97 @@ class CampaignRenderer
             unsubscribeUrl: $variables['unsubscribe_url'],
             oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
+    }
+
+    /**
+     * `{{ terminkasten }}` and `{{ weitere_termine }}` in the campaign text:
+     * the box and the list, at that place, so text can stand before and after
+     * them — as in the ANDERS mail, where the box sits between the invitation
+     * and the greeting. A placeholder on a line of its own (`<p>…</p>`) takes
+     * the whole paragraph with it; a table inside a `<p>` is not HTML.
+     *
+     * Styled like the layout's own block of the same kind when the layout is
+     * built from blocks (colours, sizes, labels), and in the theme otherwise.
+     * When the text places one, the layout's fixed copy steps aside
+     * (`terminkasten_in_content`), so a mail never shows the box twice.
+     *
+     * Replaced by Antlers markup, not by finished HTML: the content is parsed
+     * right after this with the same variables, so `event` and `more_events`
+     * fill it exactly as they fill the layout's blocks.
+     *
+     * @param  array<string, mixed>  $variables
+     */
+    protected function expandBlockPlaceholders(Campaign $campaign, array &$variables): string
+    {
+        $content = $campaign->content;
+
+        if (! str_contains($content, 'terminkasten') && ! str_contains($content, 'weitere_termine')) {
+            return $content;
+        }
+
+        $blocks = [];
+        $layout = $campaign->templateHandle ? $this->templates->find($campaign->templateHandle) : null;
+
+        foreach ($layout === null ? [] : $layout->blocks as $block) {
+            $type = (string) ($block['type'] ?? '');
+
+            if ($type !== '' && ! isset($blocks[$type])) {
+                $blocks[$type] = $block;
+            }
+        }
+
+        $compiler = app(BlockLayoutCompiler::class);
+        $markup = [
+            'terminkasten' => fn () => $compiler->eventBoxInline($blocks[LayoutBlocks::SET_EVENT_BOX] ?? []),
+            'weitere_termine' => fn () => $compiler->moreEventsInline($blocks[LayoutBlocks::SET_MORE_EVENTS] ?? []),
+        ];
+
+        foreach ($markup as $name => $build) {
+            $pattern = '~<p[^>]*>\s*\{\{\s*'.$name.'\s*\}\}\s*</p>|\{\{\s*'.$name.'\s*\}\}~';
+
+            if (preg_match($pattern, $content) !== 1) {
+                continue;
+            }
+
+            $html = $build();
+            $content = (string) preg_replace_callback($pattern, fn () => $html, $content);
+            $variables[$name.'_in_content'] = true;
+        }
+
+        return $content;
+    }
+
+    /** The campaign's web version, or the empty string. */
+    protected function webUrl(Campaign $campaign): string
+    {
+        if (! $campaign->inArchive || ! config('marketing.archive.enabled', false)
+            || ! Route::has('marketing.archive.show')) {
+            return '';
+        }
+
+        return route('marketing.archive.show', ['marketingCampaign' => $campaign->handle]);
+    }
+
+    /**
+     * The preheader where an inbox reads it: the first text of the body,
+     * hidden. Layouts that print `{{ preheader }}` themselves (the block
+     * layouts do, hidden and as a top line) are left alone; for every other
+     * one — the built-in fallback, a hand-written layout — it is put in right
+     * after `<body>`, or at the very start when there is no body tag.
+     */
+    protected function ensurePreheader(string $html, string $templateHtml, string $preheader): string
+    {
+        if (trim($preheader) === '' || preg_match('/\{\{\s*preheader\s*[}|]/', $templateHtml) === 1) {
+            return $html;
+        }
+
+        $hidden = '<div style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;opacity:0;">'
+            .htmlspecialchars($preheader, ENT_QUOTES, 'UTF-8', false).'</div>';
+
+        $count = 0;
+        $html = (string) preg_replace('~(<body[^>]*>)~i', '$1'.str_replace('$', '\$', $hidden), $html, 1, $count);
+
+        return $count === 1 ? $html : $hidden.$html;
     }
 
     /**
@@ -379,6 +477,10 @@ class CampaignRenderer
             'sequence_unsubscribe_url' => $this->sequenceUnsubscribeUrl($sequenceUuid, $subscription),
             'subject' => $subjectTemplate ?? $campaign->subject,
             'preheader' => $campaign->preheader ?? '',
+            // "Im Browser lesen": the public web version, where this campaign
+            // has one — the archive switched on and the campaign released to
+            // it. Empty otherwise, and the link is then not printed.
+            'web_url' => $this->webUrl($campaign),
             'campaign' => [
                 'handle' => $campaign->handle,
                 'name' => $campaign->name,
