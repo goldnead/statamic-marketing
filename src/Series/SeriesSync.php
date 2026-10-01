@@ -11,6 +11,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
  * Holds the concert-mail series together: for every template campaign (status
@@ -185,12 +186,10 @@ class SeriesSync
         // without going through it (a date of a draft event fires
         // OccurrenceScheduled too, and a mail for an unpublished concert is
         // worse than no mail).
-        if (! $occurrence->event?->isPubliclyReadable()) {
-            return 'untouched';
-        }
-
-        if (! $this->wantsEvent($template, $occurrence)) {
-            return 'untouched';
+        if (! $occurrence->event?->isPubliclyReadable() || ! $this->wantsEvent($template, $occurrence)) {
+            // An unpublished event, or one the template no longer names: an
+            // unsent child (approved or not) goes like a cancelled one.
+            return $this->removeChild($this->childHandle($template, $occurrence)) ? 'removed' : 'untouched';
         }
 
         if (blank($occurrence->venue_postal_code)) {
@@ -204,7 +203,7 @@ class SeriesSync
         }
 
         $settings = $this->settings($template);
-        $segmentHandle = $this->ensureSegment($occurrence, $settings);
+        $segmentHandle = $this->ensureSegment($template, $occurrence, $settings);
 
         if (! $child) {
             // Nothing for a term that already started; the approval guard
@@ -272,8 +271,14 @@ class SeriesSync
         $sendAt = $this->sendAt($occurrence, $settings);
         $eventMeta = $this->eventMeta($occurrence, $settings);
 
-        $scheduledEven = ($child->scheduledAt === null) === ($sendAt === null)
-            && ($sendAt === null || $child->scheduledAt->equalTo($sendAt));
+        // An approved child whose calculated time has passed (approve() sent
+        // it "now") keeps what the approval set; only a waiting child follows
+        // the calculation down to "no time yet".
+        $keepApproval = $sendAt === null && $child->status === Campaign::STATUS_SCHEDULED;
+
+        $scheduledEven = $keepApproval
+            || (($child->scheduledAt === null) === ($sendAt === null)
+                && ($sendAt === null || $child->scheduledAt->equalTo($sendAt)));
 
         if (($child->meta['event'] ?? null) === $eventMeta
             && $child->segmentHandle === $segmentHandle
@@ -283,15 +288,9 @@ class SeriesSync
 
         $child->meta = ['event' => $eventMeta];
         $child->segmentHandle = $segmentHandle;
-        $child->scheduledAt = $sendAt;
 
-        // The one status move the sync ever makes on its own: the calculated
-        // send time has passed while the term is still upcoming. A child that
-        // stayed `scheduled` with a past date would be picked up by
-        // marketing:send-scheduled without anybody having approved it — the
-        // one thing the waiting state exists to prevent.
-        if ($sendAt === null) {
-            $child->status = Campaign::STATUS_AWAITING_APPROVAL;
+        if (! $keepApproval) {
+            $child->scheduledAt = $sendAt;
         }
 
         $this->campaigns->save($child);
@@ -347,12 +346,13 @@ class SeriesSync
 
     /**
      * The segment for one term, created or pulled even: „Konzert: <Stadt>
-     * <PLZ> (<km> km)", handle from the occurrence UUID — one segment per
-     * term, shared by every template that aims at it.
+     * <PLZ> (<km> km)", handle from template handle and occurrence UUID —
+     * one segment per template and term, because two templates may draw
+     * different radii around the same venue.
      */
-    protected function ensureSegment(Occurrence $occurrence, array $settings): string
+    protected function ensureSegment(Campaign $template, Occurrence $occurrence, array $settings): string
     {
-        $handle = $occurrence->uuid;
+        $handle = $this->segmentHandle($template, $occurrence);
         $rules = [
             'match' => 'all',
             'conditions' => [[
@@ -373,9 +373,20 @@ class SeriesSync
         $existing = $this->segments->findByHandle($handle);
 
         if ($existing === null) {
-            $this->segments->create(['name' => $name, 'handle' => $handle, 'rules' => $rules]);
+            try {
+                $this->segments->create(['name' => $name, 'handle' => $handle, 'rules' => $rules]);
 
-            return $handle;
+                return $handle;
+            } catch (Throwable $e) {
+                // The listener and the night run may race to the same
+                // handle; the loser finds what the winner wrote. Anything
+                // else (no row afterwards) is a real failure.
+                $existing = $this->segments->findByHandle($handle);
+
+                if ($existing === null) {
+                    throw $e;
+                }
+            }
         }
 
         // Pull the rule even when only the radius changed — a segment that
@@ -418,15 +429,26 @@ class SeriesSync
             ->all();
 
         $alive = Occurrence::query()
+            ->with('event')
             ->whereIn('uuid', $uuids)
             ->scheduled()
-            ->pluck('uuid')
-            ->all();
+            ->get()
+            ->keyBy('uuid');
+
+        $templatesByHandle = $templates->keyBy(fn (Campaign $campaign): string => $campaign->handle);
 
         foreach ($children as $child) {
             $uuid = (string) substr((string) $child->sourceKey, strlen('occurrence:'));
+            $occurrence = $alive->get($uuid);
+            $template = $templatesByHandle->get($child->series);
 
-            if (in_array($uuid, $alive, true) && in_array($child->series, $templateHandles, true)) {
+            // Kept only while the term stands, its event is still public and
+            // the template still names that event.
+            if ($occurrence !== null
+                && $template !== null
+                && in_array($child->series, $templateHandles, true)
+                && $occurrence->event?->isPubliclyReadable()
+                && $this->wantsEvent($template, $occurrence)) {
                 continue;
             }
 
@@ -527,6 +549,53 @@ class SeriesSync
     protected function childHandle(Campaign $template, Occurrence $occurrence): string
     {
         return $template->handle.'-'.$occurrence->uuid;
+    }
+
+    /**
+     * The segment's handle: `series-` + the child's handle. The leadhub
+     * column is a plain unique string(255); template handles are at most 100
+     * characters of [a-z0-9_] and a UUID adds 37, so this always fits.
+     */
+    protected function segmentHandle(Campaign $template, Occurrence $occurrence): string
+    {
+        return 'series-'.$this->childHandle($template, $occurrence);
+    }
+
+    /**
+     * Delete one unsent child and its segment when nothing else uses it.
+     */
+    protected function removeChild(string $handle): bool
+    {
+        $child = $this->campaigns->find($handle);
+
+        if (! $child || in_array($child->status, [Campaign::STATUS_SENDING, Campaign::STATUS_SENT], true)) {
+            return false;
+        }
+
+        $this->campaigns->delete($child->handle);
+        $this->deleteSegmentIfUnused($child->segmentHandle);
+
+        return true;
+    }
+
+    /**
+     * Remove the children whose template or term is gone — what a template
+     * delete in the CP asks for right away instead of waiting for the night.
+     *
+     * @return int how many children went
+     */
+    public function cleanUp(): int
+    {
+        if (! static::available()) {
+            return 0;
+        }
+
+        $all = $this->campaigns->all();
+        $result = self::EMPTY_RESULT;
+
+        $this->cleanUpOrphans($this->templatesOf($all), $all, $result);
+
+        return $result['removed'];
     }
 
     /** @return Collection<int, Campaign> */

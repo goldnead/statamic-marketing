@@ -323,7 +323,14 @@ class ServiceProvider extends AddonServiceProvider
         // "bring this term's campaigns in line", which is exactly the one
         // question syncOccurrence() answers.
         $listener = function (OccurrenceScheduled|OccurrenceRescheduled|OccurrenceCancelled $event): void {
-            app(SeriesSync::class)->syncOccurrence($event->occurrence);
+            // The sync runs inside the events addon's own create/cancel
+            // action; whatever goes wrong here (LeadHub down, a handle race)
+            // must never break that action. The night run catches up.
+            try {
+                app(SeriesSync::class)->syncOccurrence($event->occurrence);
+            } catch (Throwable $e) {
+                report($e);
+            }
         };
 
         Event::listen(OccurrenceScheduled::class, $listener);

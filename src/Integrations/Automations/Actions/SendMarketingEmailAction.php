@@ -7,6 +7,7 @@ use Goldnead\Marketing\Contracts\MailClass;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Jobs\SendMessageJob;
 use Goldnead\Marketing\Models\Subscription;
@@ -315,6 +316,19 @@ class SendMarketingEmailAction implements AutomationAction
 
         if ($campaign === null) {
             return ActionResult::failed("Campaign [{$mode->campaign}] does not exist.");
+        }
+
+        // A series template is a blueprint and a child awaiting approval has
+        // not been released by a person; neither is a mail a flow may send.
+        if (in_array($campaign->status, [Campaign::STATUS_SERIES, Campaign::STATUS_AWAITING_APPROVAL], true)) {
+            Log::warning(
+                "Marketing automation skipped campaign [{$campaign->handle}]: status [{$campaign->status}] "
+                .'cannot be sent by an automation.'
+            );
+
+            return ActionResult::skipped(
+                "Campaign [{$campaign->handle}] is a series template or awaits approval and is not sent by automations."
+            );
         }
 
         $listHandle = $mode->list !== '' ? $mode->list : (string) $campaign->listHandle;

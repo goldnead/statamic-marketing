@@ -165,7 +165,9 @@ class Campaign
 
     public function isEditable(): bool
     {
-        return $this->isSendable();
+        // A series template is edited like any campaign but never sent, so it
+        // is editable without being sendable.
+        return $this->isSendable() || $this->isSeries();
     }
 
     public static function fromArray(array $data): self

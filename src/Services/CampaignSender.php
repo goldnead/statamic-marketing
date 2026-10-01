@@ -64,6 +64,13 @@ class CampaignSender
     /** Revert a scheduled campaign back to draft. */
     public function unschedule(Campaign $campaign): Campaign
     {
+        // A series child never becomes a draft: as a draft it would be
+        // unmanaged and sendable without approval. Back to waiting, exactly
+        // what withdraw() does.
+        if ($campaign->isScheduled() && $campaign->series !== null) {
+            return $this->withdraw($campaign);
+        }
+
         if ($campaign->isScheduled()) {
             $campaign->status = Campaign::STATUS_DRAFT;
             $campaign->scheduledAt = null;

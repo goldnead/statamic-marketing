@@ -238,6 +238,17 @@ class StartCampaignJob implements ShouldQueue
         $handle = $campaign->segmentHandle;
 
         if (! $handle) {
+            // A series child without a segment is a broken child, not a
+            // "whole list" campaign: the mail was built around the circle.
+            if ($campaign->series !== null) {
+                Log::error(
+                    "Marketing campaign [{$campaign->handle}] belongs to a series but has no segment "
+                    .'handle; sending to nobody rather than to the whole list.'
+                );
+
+                return [];
+            }
+
             return null;
         }
 

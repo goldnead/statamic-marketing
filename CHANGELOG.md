@@ -26,7 +26,19 @@ Speichern einer Vorlage.
 
 **Fail closed für Serien:** Hat eine erzeugte Kampagne ihr Segment nicht (fehlend, inaktiv, oder
 LeadHub kann es nicht auflösen), bekommt sie **niemand** — mit Fehler im Log. Das bestehende
-fail-open für gewöhnliche Kampagnen bleibt unverändert.
+fail-open für gewöhnliche Kampagnen bleibt unverändert. Das gilt jetzt auch für ein **leeres oder
+fehlendes Segment-Handle** (vorher ging so eine Kampagne an die ganze Liste); im CP sind Liste und
+Segment einer Serien-Kampagne gesperrt.
+
+**Nach Review nachgezogen:** Das Segment heißt `series-<Vorlage>-<Termin-UUID>`, je Vorlage und Termin
+eines (zwei Vorlagen mit verschiedenem Radius überschrieben sich vorher). Vorlagen sind im CP
+bearbeitbar (und lösen den Sync beim Speichern aus); Löschen einer Vorlage räumt ihre ungesendeten
+Kinder und unbenutzten Segmente sofort weg. Der Termin-Listener fängt Fehler ab und meldet sie, statt
+die Aktion der Termine-Erweiterung zu brechen; die Segment-Anlage verträgt einen parallelen Lauf.
+Kinder entveröffentlichter oder aus `event_ids` genommener Termine werden entfernt; ein freigegebenes
+Kind mit vergangener Sendezeit bleibt freigegeben; `unschedule()` stellt ein Serien-Kind wieder auf
+`awaiting_approval` statt auf Entwurf; die Automations-Aktion „E-Mail senden" lehnt Vorlagen und
+wartende Kinder ab.
 
 `{{ event:city }}`, `{{ event:date }}` & Co. stehen im Betreff, Preheader und Inhalt
 (`meta['event']` als Momentaufnahme, beim Sync nachgezogen); die Vorlage zeigt in der Vorschau

@@ -569,8 +569,14 @@ class CampaignController extends Controller
         $campaign->fromName = $data['from_name'] ?? null;
         $campaign->fromEmail = $data['from_email'] ?? null;
         $campaign->replyTo = $data['reply_to'] ?? null;
-        $campaign->listHandle = $data['list'] ?? null;
-        $campaign->segmentHandle = $data['segment'] ?? null;
+        // A series child is built around its list and its circle segment; the
+        // form may not move either (an empty segment would mean the whole
+        // list). Templates and ordinary campaigns choose freely.
+        if ($campaign->series === null) {
+            $campaign->listHandle = $data['list'] ?? null;
+            $campaign->segmentHandle = $data['segment'] ?? null;
+        }
+
         $campaign->templateHandle = $data['template'] ?? null;
         $campaign->content = app(CampaignContentField::class)->fromForm($data['content'] ?? '');
         $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
@@ -592,9 +598,16 @@ class CampaignController extends Controller
     {
         $this->authorizeOrFail($request, 'manage marketing campaigns');
 
-        abort_unless($this->campaigns->find($handle), 404);
+        $campaign = $this->campaigns->find($handle);
+        abort_unless($campaign, 404);
 
         $this->campaigns->delete($handle);
+
+        // A template's unsent children and their unused segments go with it
+        // now, not at the night run.
+        if ($campaign->isSeries()) {
+            app(SeriesSync::class)->cleanUp();
+        }
 
         return redirect()
             ->to(cp_route('marketing.campaigns.index'))

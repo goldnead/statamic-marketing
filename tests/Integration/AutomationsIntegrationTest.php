@@ -271,6 +271,31 @@ it('sends a campaign to the contact in the run, through the marketing gates', fu
         ->and($result->output['email'])->toBe('seq@example.com');
 });
 
+it('refuses series templates and campaigns awaiting approval', function (string $status): void {
+    Mail::fake();
+
+    app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter', doubleOptIn: false));
+    app(SubscriptionService::class)->subscribe(app(MailingListRepository::class)->find('newsletter'), 'seq@example.com', ['first_name' => 'Seq']);
+
+    app(CampaignRepository::class)->save(new Campaign(
+        handle: 'konzert',
+        name: 'Konzert',
+        subject: 'Konzert',
+        listHandle: 'newsletter',
+        content: '<p>Hi.</p>',
+        status: $status,
+    ));
+
+    $result = app('automations')->actions()->instance('marketing.send_email')->execute(
+        AutomationContext::make(['subscriber' => ['email' => 'seq@example.com']]),
+        ['campaign' => 'konzert'],
+    );
+
+    Mail::assertNothingSent();
+    expect($result->isSuccess())->toBeFalse()
+        ->and($result->isFailed())->toBeFalse();
+})->with([Campaign::STATUS_SERIES, Campaign::STATUS_AWAITING_APPROVAL]);
+
 it('ends the flow rather than skipping one mail when consent is missing', function (): void {
     Mail::fake();
 
