@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.26.0 — 2026-10-01
+
 ### Fixed: Kampagnenserie, Runde 5
 
 - **Nie nach dem Konzert.** Ein Serien-Kind, dessen geplante Versandzeit am oder nach dem Beginn
