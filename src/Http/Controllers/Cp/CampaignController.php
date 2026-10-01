@@ -11,6 +11,7 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Series\SeriesSync;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\CampaignSender;
@@ -577,6 +578,13 @@ class CampaignController extends Controller
 
         $this->campaigns->save($campaign);
 
+        // Saving a series template is the editor's way of changing what the
+        // series does; the children answer immediately rather than on the
+        // night run.
+        if ($campaign->isSeries()) {
+            app(SeriesSync::class)->syncTemplate($campaign);
+        }
+
         return back()->with('success', __('marketing::campaigns.flashes.updated'));
     }
 
@@ -641,6 +649,40 @@ class CampaignController extends Controller
         $sender->unschedule($campaign);
 
         return back()->with('success', __('marketing::campaigns.flashes.unscheduled'));
+    }
+
+    /**
+     * Release a waiting series child into its send time. Endpoint only for
+     * now — the Vue side of the series is its own build phase; the route is
+     * the whole contract that phase may rely on.
+     */
+    public function approve(Request $request, string $handle, CampaignSender $sender)
+    {
+        $this->authorizeOrFail($request, 'send marketing campaigns');
+
+        $campaign = $this->campaigns->find($handle);
+        abort_if($campaign === null, 404);
+
+        try {
+            $sender->approve($campaign);
+        } catch (InvalidArgumentException $e) {
+            return back()->withErrors(['send' => $e->getMessage()]);
+        }
+
+        return back()->with('success', __('marketing::campaigns.flashes.approved'));
+    }
+
+    /** Take a release back: a scheduled series child returns to waiting. */
+    public function withdraw(Request $request, string $handle, CampaignSender $sender)
+    {
+        $this->authorizeOrFail($request, 'send marketing campaigns');
+
+        $campaign = $this->campaigns->find($handle);
+        abort_if($campaign === null, 404);
+
+        $sender->withdraw($campaign);
+
+        return back()->with('success', __('marketing::campaigns.flashes.withdrawn'));
     }
 
     public function sendTest(Request $request, string $handle, CampaignSender $sender)

@@ -25,7 +25,7 @@
     },
     "require": {
         "goldnead/statamic-brand-context": "^1.13",
-        "goldnead/statamic-leadhub": "^1.4|^2.0",
+        "goldnead/statamic-leadhub": "^2.14",
         "goldnead/statamic-suppression": "^1.0",
         "inertiajs/inertia-laravel": "^2.0 || ^3.0",
         "laravel/framework": "^12.0|^13.0",
@@ -34,6 +34,7 @@
         "symfony/yaml": "^6.0|^7.0|^8.0"
     },
     "require-dev": {
+        "goldnead/statamic-events": "^2.6",
         "larastan/larastan": "^3.0",
         "laravel/pint": "^1.18",
         "orchestra/testbench": "^10.0|^11.0",
@@ -42,6 +43,7 @@
     },
     "suggest": {
         "goldnead/statamic-automations": "Build drip sequences and welcome flows from marketing triggers/actions in the visual workflow builder",
+        "goldnead/statamic-events": "Run a concert-mail series: one template, one waiting campaign per upcoming term, aimed at a postal-code radius around the venue",
         "goldnead/statamic-webhook-manager": "Receive ESP feedback webhooks (bounces, complaints) and fire outbound webhooks on marketing events",
         "goldnead/statamic-insights": "Put the newsletter figures — sign-ups, unsubscribes, list size, mails sent, open and click rate — on the shared Insights dashboard next to revenue"
     },

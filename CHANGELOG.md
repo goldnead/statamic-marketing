@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### Added: Kampagnenserie aus Terminen (Backend)
+
+Für jeden kommenden Termin aus `statamic-events` entsteht aus einer Vorlage-Kampagne automatisch eine
+Kampagne an die Kontakte im PLZ-Umkreis des Termins, N Tage vorher eingeplant — und erst nach einer
+Freigabe wird sie wirklich versendet. Was in MailerLite Handarbeit war (je Konzert eine Kampagne, je
+Konzert ein Umkreis-Segment), läuft jetzt über den Terminkalender.
+
+**Die Serie ist eine Kampagne.** Eine Kampagne mit `status = series` ist die Vorlage; Inhalt, Betreff,
+Liste, Layout, Marke, Mailklasse kommen aus dem normalen Kampagnen-Editor, die Serien-Einstellungen
+(Umkreis, Tage vorher, Uhrzeit, Ereignis-Auswahl) liegen in `meta['series']`. Erzeugte Kampagnen
+tragen den neuen Status `awaiting_approval`: nicht sendbar, nicht in `due()`, von
+`marketing:send-scheduled` ignoriert. Erst `CampaignSender::approve()` — per CP-Endpunkt, Rechte wie
+„Planen" — stellt sie auf `scheduled`; `withdraw()` nimmt die Freigabe zurück.
+
+**Ein idempotenter Sync ist der Kern** (`src/Series/SeriesSync.php`). Schlüssel sind
+`source_key = "occurrence:<uuid>"` und `series = <handle der Vorlage>`; zweimal laufen ändert nichts.
+Je Termin entsteht ein LeadHub-Segment „Konzert: <Stadt> <PLZ> (<km> km)" mit der vorhandenen
+`geo`-Bedingung (`within_km`) — Flo sieht dasselbe wie heute. Absagen und Löschungen räumen die
+nicht gesendeten Kinder und deren Segmente weg, Gesendetes bleibt unangetastet. Auslöser: Listener
+auf `OccurrenceScheduled/Rescheduled/Cancelled`, der tägliche `marketing:series-sync` und das
+Speichern einer Vorlage.
+
+**Fail closed für Serien:** Hat eine erzeugte Kampagne ihr Segment nicht (fehlend, inaktiv, oder
+LeadHub kann es nicht auflösen), bekommt sie **niemand** — mit Fehler im Log. Das bestehende
+fail-open für gewöhnliche Kampagnen bleibt unverändert.
+
+`{{ event:city }}`, `{{ event:date }}` & Co. stehen im Betreff, Preheader und Inhalt
+(`meta['event']` als Momentaufnahme, beim Sync nachgezogen); die Vorlage zeigt in der Vorschau
+Beispielwerte. `statamic-events` bleibt optional (`suggest`, Brücke hinter `class_exists`), der
+LeadHub-Constraint steigt dafür auf `^2.14` (Geo-Segmente). Das CP dazu — Statusbadges,
+Serien-Abschnitt im Editor, Freigabe-Bildschirm — folgt im zweiten Bauabschnitt.
+
 ## 2.25.1 — 2026-09-25
 
 ### Fixed

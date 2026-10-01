@@ -18,6 +18,14 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $mail_class The frequency-cap classification, one of
  *                              {@see MailClass}.
  *                              Defaults to `marketing`, which is the capped one.
+ * @property string|null $series Handle of the series template a campaign was
+ *                               cloned from. Null on ordinary campaigns.
+ * @property string|null $source_key The term a series child belongs to
+ *                                   (`occurrence:<uuid>`). Null on ordinary
+ *                                   campaigns.
+ * @property array|null $meta The term snapshot (`meta['event']`) a series
+ *                            child renders, or on a template the series
+ *                            settings (`meta['series']`).
  */
 class CampaignRecord extends Model
 {
@@ -31,5 +39,6 @@ class CampaignRecord extends Model
         'scheduled_at' => 'immutable_datetime',
         'sent_at' => 'immutable_datetime',
         'in_archive' => 'boolean',
+        'meta' => 'array',
     ];
 }

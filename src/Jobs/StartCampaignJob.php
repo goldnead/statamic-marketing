@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Jobs;
 
 use Carbon\CarbonImmutable;
 use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
+use Goldnead\Leadhub\Contracts\Repositories\SegmentRepository;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
@@ -221,6 +222,15 @@ class StartCampaignJob implements ShouldQueue
      * warning is logged. An empty segment yields an empty set (nobody), which
      * is the correct, explicit outcome of a segment that matches no one.
      *
+     * One campaign kind opts out of that mercy: a child of the concert-mail
+     * series (`series` set) was BUILT around its segment — the 50 km circle
+     * around the venue is the entire reason the mail exists. For it, a
+     * segment that cannot be resolved is an error and sends to nobody,
+     * because "the whole list" would mean a city's concert mail in every
+     * mailbox of the brand. Fail-closed there, fail-open everywhere else, and
+     * the difference is what the segment means to the campaign, not a style
+     * choice.
+     *
      * @return array<string,true>|null
      */
     protected function resolveSegmentMemberIds(Campaign $campaign): ?array
@@ -231,11 +241,33 @@ class StartCampaignJob implements ShouldQueue
             return null;
         }
 
+        if ($campaign->series !== null) {
+            $segment = app(SegmentRepository::class)->findByHandle($handle);
+
+            if ($segment === null || ! (bool) $segment->getAttribute('is_active')) {
+                Log::error(
+                    "Marketing campaign [{$campaign->handle}] belongs to a series but its segment "
+                    ."[{$handle}] is gone or inactive; sending to nobody rather than to the whole list."
+                );
+
+                return [];
+            }
+        }
+
         // Facades proxy via __callStatic, so method_exists must target the
         // resolved root object, not the facade class.
         $root = LeadHub::getFacadeRoot();
 
         if (! $root || ! method_exists($root, 'segmentMemberIds')) {
+            if ($campaign->series !== null) {
+                Log::error(
+                    "Marketing campaign [{$campaign->handle}] belongs to a series, which sends by "
+                    .'segment only, but the installed LeadHub does not support segments; sending to nobody.'
+                );
+
+                return [];
+            }
+
             Log::warning(
                 "Marketing campaign [{$campaign->handle}] references segment [{$handle}] but the "
                 .'installed LeadHub does not support segments; sending to the whole list instead.'

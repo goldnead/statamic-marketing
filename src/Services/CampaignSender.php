@@ -74,6 +74,69 @@ class CampaignSender
     }
 
     /**
+     * Release a series child from its waiting state: the one door back into
+     * the ordinary lifecycle.
+     *
+     * Approval is an editor's deliberate act, so it starts from
+     * `awaiting_approval` and from nowhere else — a draft someone scheduled
+     * by hand went through `schedule()`, and a series template never goes
+     * anywhere. The child keeps the send time the sync calculated; when that
+     * has already passed (or was never set because it had), it goes out now
+     * rather than never, which is what the person clicking the button means.
+     *
+     * A term that has started is refused. Nobody approves a mail for a
+     * concert that is over; the honest answer is an exception the CP turns
+     * into an error line, not a mail that arrives after the fact.
+     */
+    public function approve(Campaign $campaign): Campaign
+    {
+        if ($campaign->status !== Campaign::STATUS_AWAITING_APPROVAL) {
+            throw new InvalidArgumentException(
+                "Campaign [{$campaign->handle}] is not awaiting approval ({$campaign->status})."
+            );
+        }
+
+        $startsAt = $campaign->meta['event']['starts_at'] ?? null;
+
+        if ($startsAt && CarbonImmutable::parse($startsAt)->isPast()) {
+            throw new InvalidArgumentException(
+                "Campaign [{$campaign->handle}]: the term has started, so it can no longer be approved."
+            );
+        }
+
+        // The bridge into the ordinary lifecycle: `schedule()` answers every
+        // state but draft/scheduled with an exception, so the child becomes a
+        // draft for the length of this one call. At the calculated time when
+        // that is still ahead, now when it is not.
+        $at = $campaign->scheduledAt && $campaign->scheduledAt->isFuture()
+            ? $campaign->scheduledAt
+            : CarbonImmutable::now();
+
+        $campaign->status = Campaign::STATUS_DRAFT;
+
+        return $this->schedule($campaign, $at);
+    }
+
+    /**
+     * Take an approval back: a scheduled series child returns to waiting,
+     * send time untouched.
+     *
+     * Ordinary scheduled campaigns have `unschedule()`; this one may not
+     * reach draft, or the next sync would find a child in a state it does
+     * not own and leave it alone forever after — the waiting state is what
+     * keeps a child in the sync's care.
+     */
+    public function withdraw(Campaign $campaign): Campaign
+    {
+        if ($campaign->isScheduled() && $campaign->series !== null) {
+            $campaign->status = Campaign::STATUS_AWAITING_APPROVAL;
+            $this->campaigns->save($campaign);
+        }
+
+        return $campaign;
+    }
+
+    /**
      * Send a rendered test to one address without touching messages/stats.
      *
      * **Not gated like the real thing, and it should not be.** The docblock

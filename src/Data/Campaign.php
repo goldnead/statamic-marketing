@@ -9,7 +9,10 @@ use Goldnead\Marketing\Contracts\MailClass;
  * A campaign (broadcast) definition. Content is Antlers-enabled HTML that is
  * rendered per recipient and wrapped in the referenced template layout.
  *
- * Lifecycle: draft -> scheduled -> sending -> sent.
+ * Lifecycle: draft -> scheduled -> sending -> sent. Two states live beside
+ * that path rather than on it: `series` for a template that never sends
+ * itself (SeriesSync clones a child per term from it), and
+ * `awaiting_approval` for such a child before an editor releases it.
  */
 class Campaign
 {
@@ -20,6 +23,12 @@ class Campaign
     public const STATUS_SENDING = 'sending';
 
     public const STATUS_SENT = 'sent';
+
+    /** A template campaign: never sent, only cloned from. See SeriesSync. */
+    public const STATUS_SERIES = 'series';
+
+    /** A series child waiting for an editor's approval to go out. */
+    public const STATUS_AWAITING_APPROVAL = 'awaiting_approval';
 
     public function __construct(
         public string $handle,
@@ -71,6 +80,28 @@ class Campaign
          * answer when that arrives. See README, "A/B test share".
          */
         public int $abShare = 0,
+        /**
+         * The handle of the template this campaign was cloned from, on a
+         * child of the concert-mail series. Null on every ordinary campaign.
+         *
+         * @see SeriesSync
+         */
+        public ?string $series = null,
+        /**
+         * What term this child belongs to (`occurrence:<uuid>`), the key the
+         * idempotent sync finds its own rows by. Null on every ordinary
+         * campaign.
+         */
+        public ?string $sourceKey = null,
+        /**
+         * The term snapshot a series child renders through `{{ event:… }}`
+         * (`meta['event']`), and on the template the series settings
+         * (`meta['series']`: radius, days before, send time). Empty on every
+         * ordinary campaign.
+         *
+         * @var array<string, mixed>
+         */
+        public array $meta = [],
     ) {}
 
     /** Is a test share set that a winner send would act on? */
@@ -117,6 +148,11 @@ class Campaign
         return $this->status === self::STATUS_DRAFT;
     }
 
+    public function isSeries(): bool
+    {
+        return $this->status === self::STATUS_SERIES;
+    }
+
     public function isScheduled(): bool
     {
         return $this->status === self::STATUS_SCHEDULED;
@@ -161,6 +197,9 @@ class Campaign
             inArchive: (bool) ($data['archive'] ?? false),
             mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
             abShare: (int) ($data['ab_share'] ?? 0),
+            series: $data['series'] ?? null,
+            sourceKey: $data['source_key'] ?? null,
+            meta: (array) ($data['meta'] ?? []),
         );
     }
 
@@ -185,6 +224,9 @@ class Campaign
             'archive' => $this->inArchive,
             'mail_class' => $this->mailClass,
             'ab_share' => $this->abShare,
+            'series' => $this->series,
+            'source_key' => $this->sourceKey,
+            'meta' => $this->meta,
         ];
     }
 }

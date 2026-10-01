@@ -126,6 +126,8 @@ return [
         'sending' => 'Kampagne wird versendet.',
         'scheduled' => 'Kampagne geplant.',
         'unscheduled' => 'Kampagne zurück auf Entwurf gesetzt.',
+        'approved' => 'Kampagne freigegeben.',
+        'withdrawn' => 'Freigabe zurückgenommen; die Kampagne wartet wieder.',
         'test_sent' => 'Test-E-Mail versendet.',
         'archive_released' => 'Kampagne im Webarchiv veröffentlicht.',
         'archive_withdrawn' => 'Kampagne aus dem Webarchiv entfernt.',

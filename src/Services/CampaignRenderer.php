@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Services;
 
+use Carbon\CarbonImmutable;
 use Goldnead\EmailTemplates\Facades\EmailTemplates;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\Campaign;
@@ -366,7 +367,59 @@ class CampaignRenderer
                 'handle' => $list->handle,
                 'name' => $list->name,
             ],
+            'event' => $this->eventVariables($campaign),
         ]);
+    }
+
+    /**
+     * Der Termin dieser Mail, als `{{ event:city }}` und Geschwister.
+     *
+     * Auf einem Kind der Serie ist es die Momentaufnahme aus `meta['event']`,
+     * die der Sync beim Anlegen eingefroren hat — die Stadt steht darin, wie
+     * sie war, nicht wie sie heute ist. Auf der Vorlage selbst (und nur dort)
+     * gibt es keinen Termin; eine Vorschau braucht trotzdem etwas zum
+     * Ansehen, also stehen dort die Beispielwerte, die der Editor unter
+     * `meta['series']['preview_event']` hinterlegen kann, sonst ein festes
+     * Beispiel. Alles andere — jeder normale Versandsfall ohne Terminbezug —
+     * bekommt ein leeres Array, und Antlers löst `{{ event:… }}` zum leeren
+     * String auf, genau wie jede andere unbekannte Variable.
+     *
+     * @return array<string, mixed>
+     */
+    protected function eventVariables(Campaign $campaign): array
+    {
+        $event = (array) ($campaign->meta['event'] ?? []);
+
+        if ($event !== []) {
+            return $event;
+        }
+
+        if ($campaign->series === null && ! $campaign->isSeries()) {
+            return [];
+        }
+
+        $preview = (array) ($campaign->meta['series']['preview_event'] ?? []);
+
+        if ($preview !== []) {
+            return $preview;
+        }
+
+        // Zwei Wochen ab heute, abends — die Gestalt eines Konzertabends,
+        // nicht der heutige Nachmittag.
+        $start = CarbonImmutable::now()->addDays(14)->setTime(19, 0);
+
+        return [
+            'title' => 'Beispielkonzert',
+            'city' => 'Ulm',
+            'venue' => 'Beispielhalle',
+            'postal_code' => '89077',
+            'country' => 'DE',
+            'starts_at' => $start->toIso8601String(),
+            'date' => $start->format('d.m.Y'),
+            'time' => '19:00',
+            'tickets_url' => '',
+            'url' => '',
+        ];
     }
 
     /**

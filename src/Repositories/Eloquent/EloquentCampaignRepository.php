@@ -50,6 +50,9 @@ class EloquentCampaignRepository implements CampaignRepository
                 'in_archive' => $campaign->inArchive,
                 'mail_class' => $campaign->mailClass,
                 'ab_share' => $campaign->abShare,
+                'series' => $campaign->series,
+                'source_key' => $campaign->sourceKey,
+                'meta' => $campaign->meta,
             ],
         );
 
@@ -92,6 +95,9 @@ class EloquentCampaignRepository implements CampaignRepository
             inArchive: (bool) $record->in_archive,
             mailClass: MailClass::fromValue($record->mail_class)->value,
             abShare: (int) ($record->ab_share ?? 0),
+            series: $record->series,
+            sourceKey: $record->source_key,
+            meta: (array) ($record->meta ?? []),
         );
     }
 }

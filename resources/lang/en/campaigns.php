@@ -126,6 +126,8 @@ return [
         'sending' => 'Campaign queued for delivery.',
         'scheduled' => 'Campaign scheduled.',
         'unscheduled' => 'Campaign moved back to draft.',
+        'approved' => 'Campaign approved.',
+        'withdrawn' => 'Approval withdrawn; the campaign is waiting again.',
         'test_sent' => 'Test email sent.',
         'archive_released' => 'Campaign released to the web archive.',
         'archive_withdrawn' => 'Campaign removed from the web archive.',

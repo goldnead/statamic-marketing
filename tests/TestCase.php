@@ -5,6 +5,7 @@ namespace Goldnead\Marketing\Tests;
 use Goldnead\BrandContext\Sending\SaidRecently;
 use Goldnead\Leadhub\ServiceProvider;
 use Goldnead\Marketing\Sequences\SequenceSync;
+use Goldnead\Marketing\Series\SeriesSync;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\SubstituteBindings;
@@ -32,6 +33,11 @@ abstract class TestCase extends OrchestraTestCase
         // every test — so a case that migrates or changes the driver would
         // otherwise be answered from the case before it.
         SequenceSync::forgetAvailability();
+
+        // SeriesSync memoises the same thing for the term addon, for the same
+        // reason: a per-process memo must not answer for a database the next
+        // test has not migrated yet.
+        SeriesSync::forgetAvailability();
 
         // Marketing runtime tables + LeadHub tables (hard dependency).
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');

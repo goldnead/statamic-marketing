@@ -3,11 +3,15 @@
 namespace Goldnead\Marketing;
 
 use Goldnead\BrandContext\Settings\SettingsRegistry;
+use Goldnead\Events\Events\OccurrenceCancelled;
+use Goldnead\Events\Events\OccurrenceRescheduled;
+use Goldnead\Events\Events\OccurrenceScheduled;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\ReleaseStaleSendsCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
+use Goldnead\Marketing\Console\SeriesSyncCommand;
 use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
 use Goldnead\Marketing\Contracts\PostalLineResolver;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
@@ -33,9 +37,11 @@ use Goldnead\Marketing\Repositories\FlatFile\FlatFileMailingListRepository;
 use Goldnead\Marketing\Repositories\FlatFile\YamlStore;
 use Goldnead\Marketing\Sending\BrandSenderIdentity;
 use Goldnead\Marketing\Sending\DatabaseFrequencyCap;
+use Goldnead\Marketing\Series\SeriesSync;
 use Goldnead\Marketing\Support\ConfiguredPostalLine;
 use Goldnead\Marketing\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
@@ -79,6 +85,7 @@ class ServiceProvider extends AddonServiceProvider
         SendScheduledCampaignsCommand::class,
         MigrateFlatBrandsCommand::class,
         ConsentIntegrityCommand::class,
+        SeriesSyncCommand::class,
     ];
 
     public function register(): void
@@ -281,8 +288,49 @@ class ServiceProvider extends AddonServiceProvider
             ->registerNavigation()
             ->registerPermissions()
             ->registerSchedule()
+            ->registerSeriesListeners()
             ->bootCommands()
             ->registerPublishables();
+    }
+
+    /**
+     * The term events onto the series sync, when the term addon is there.
+     *
+     * Registered directly in `bootAddon()` and NOT through the double
+     * `booted()` queue of {@see registerSiblingBridges()}: that pattern exists
+     * because a sibling's container bindings only exist after its own boot.
+     * The term addon needs no binding from us — we reach for the Occurrence
+     * models and the dispatcher, both framework-owned — and an event listener
+     * registered twice would run the sync twice per term. `bootAddon()` runs
+     * once (see {@see registerSchedule()} for the one place it does not).
+     *
+     * The class guard is the whole availability story for the listener half:
+     * without the sibling there is nothing to listen to, and the sync's own
+     * {@see SeriesSync::available()} covers the installed-but-not-migrated
+     * case at runtime.
+     */
+    protected function registerSeriesListeners(): self
+    {
+        // The class name as the class constant spells it, not a string with a
+        // leading backslash: the dispatcher keys listeners by the event name
+        // verbatim, and `OccurrenceScheduled::class` answers without the
+        // backslash — a listener registered as '\Goldnead\…' never fires.
+        if (! class_exists(OccurrenceScheduled::class)) {
+            return $this;
+        }
+
+        // One closure for all three: added, moved and cancelled each mean
+        // "bring this term's campaigns in line", which is exactly the one
+        // question syncOccurrence() answers.
+        $listener = function (OccurrenceScheduled|OccurrenceRescheduled|OccurrenceCancelled $event): void {
+            app(SeriesSync::class)->syncOccurrence($event->occurrence);
+        };
+
+        Event::listen(OccurrenceScheduled::class, $listener);
+        Event::listen(OccurrenceRescheduled::class, $listener);
+        Event::listen(OccurrenceCancelled::class, $listener);
+
+        return $this;
     }
 
     /**
@@ -417,6 +465,17 @@ class ServiceProvider extends AddonServiceProvider
                 ->withoutOverlapping(10)
                 ->onOneServer()
                 ->name('marketing-release-stale-sends');
+
+            // The series sync, once a night in the small hours: it catches the
+            // terms nobody fired an event for — deleted rows above all, which
+            // fire nothing. Short and withoutOverlapping like the others; the
+            // listeners already handle the common cases the moment they
+            // happen, so this is the net, not the machine.
+            $schedule->command('marketing:series-sync')
+                ->dailyAt('03:07')
+                ->withoutOverlapping(10)
+                ->onOneServer()
+                ->name('marketing-series-sync');
         });
 
         return $this;

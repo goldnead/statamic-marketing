@@ -53,6 +53,8 @@ Route::prefix('marketing')->name('marketing.')->group(function () {
         Route::post('/{handle}/send', [CampaignController::class, 'send'])->name('send');
         Route::post('/{handle}/schedule', [CampaignController::class, 'schedule'])->name('schedule');
         Route::post('/{handle}/unschedule', [CampaignController::class, 'unschedule'])->name('unschedule');
+        Route::post('/{handle}/approve', [CampaignController::class, 'approve'])->name('approve');
+        Route::post('/{handle}/withdraw', [CampaignController::class, 'withdraw'])->name('withdraw');
         Route::post('/{handle}/test', [CampaignController::class, 'sendTest'])->name('test');
         Route::get('/{handle}/preview', [CampaignController::class, 'preview'])->name('preview');
 
