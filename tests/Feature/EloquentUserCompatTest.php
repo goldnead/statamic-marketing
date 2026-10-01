@@ -69,6 +69,33 @@ class EloquentUserCompatTest extends TestCase
                 $table->string('group_id');
             });
         }
+
+        // The DDL above ended RefreshDatabase's transaction on MySQL. Open
+        // another so the rest of the test is rolled back like any other.
+        $connection = $this->app['db']->connection();
+
+        if ($connection->transactionLevel() === 0) {
+            $connection->beginTransaction();
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        // Created by hand in setUp(); DDL commits under MySQL (and the
+        // creation committed the test's transaction, so its rows are already
+        // out). Rolling back what is still open and dropping the tables here
+        // is cheaper than forcing a fresh migration after every test.
+        $connection = $this->app['db']->connection();
+
+        while ($connection->transactionLevel() > 0) {
+            $connection->rollBack();
+        }
+
+        Schema::dropIfExists('group_user');
+        Schema::dropIfExists('role_user');
+        Schema::dropIfExists('users');
+
+        parent::tearDown();
     }
 
     private function makeUser(bool $super): PlainAuthUser

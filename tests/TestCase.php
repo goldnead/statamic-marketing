@@ -8,10 +8,13 @@ use Goldnead\Marketing\Sequences\SequenceSync;
 use Goldnead\Marketing\Series\SeriesSync;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Orchestra\Testbench\TestCase as OrchestraTestCase;
 use Statamic\Addons\Manifest;
 use Statamic\Providers\StatamicServiceProvider;
+
+use function Orchestra\Testbench\load_migration_paths;
 
 abstract class TestCase extends OrchestraTestCase
 {
@@ -39,15 +42,70 @@ abstract class TestCase extends OrchestraTestCase
         // test has not migrated yet.
         SeriesSync::forgetAvailability();
 
-        // Marketing runtime tables + LeadHub tables (hard dependency).
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
-        $this->loadMigrationsFrom(__DIR__.'/../vendor/goldnead/statamic-leadhub/database/migrations');
-
         // Statamic runs bootAddon() inside Statamic::booted callbacks that
         // orchestra/testbench never fires — force them so Nav, permissions,
         // views, and migrations register (see LeadHub's TestCase).
         $this->app->getProvider(ServiceProvider::class)?->bootAddon();
         $this->app->getProvider(\Goldnead\Marketing\ServiceProvider::class)?->bootAddon();
+    }
+
+    /**
+     * Marketing runtime tables + LeadHub tables (hard dependency), plus
+     * whatever a subclass adds through {@see extraMigrationPaths()}.
+     *
+     * This hook, not setUp(), on purpose. Testbench runs RefreshDatabase
+     * inside parent::setUp(); a loadMigrationsFrom() call made after it sees
+     * the database already migrated and falls back to migrating those paths
+     * itself for this one test and rolling them back in tearDown, and the
+     * rollback resets RefreshDatabase's "migrated" flag, so the NEXT test
+     * runs migrate:fresh over all ~55 migrations again. On SQLite in memory
+     * that is invisible; on MySQL it was 12 to 20 seconds per test. Paths
+     * registered here are merely added to the one migrate:fresh per process.
+     *
+     * load_migration_paths() rather than loadMigrationsFrom(): from the
+     * second test on, the flag is already set when this hook runs and
+     * loadMigrationsFrom() would migrate and roll back again. The application
+     * is new for every test, so the paths must be registered every time, but
+     * they must never be run here.
+     *
+     * statamic-events (require-dev) is always part of it: which test runs
+     * first in a process decides which tables migrate:fresh creates, so the
+     * set cannot depend on the test. The one test that needs it absent says so
+     * itself (CampaignSeriesCpUnavailableTest).
+     */
+    protected function defineDatabaseMigrations(): void
+    {
+        $paths = [
+            __DIR__.'/../database/migrations',
+            __DIR__.'/../vendor/goldnead/statamic-leadhub/database/migrations',
+            __DIR__.'/../vendor/goldnead/statamic-events/database/migrations',
+            ...$this->extraMigrationPaths(),
+        ];
+
+        load_migration_paths($this->app, array_values(array_filter($paths, 'is_dir')));
+    }
+
+    /**
+     * Further migration paths of one test bed (the optional siblings).
+     *
+     * @return list<string>
+     */
+    protected function extraMigrationPaths(): array
+    {
+        return [];
+    }
+
+    /**
+     * Run a test body that changes the schema (drops a table or a column).
+     *
+     * Under MySQL DDL commits implicitly, so what the body did survives the
+     * rollback RefreshDatabase relies on and every later test would meet a
+     * damaged schema. Marking the database as not migrated makes the next test
+     * run migrate:fresh again. Under SQLite in memory it costs nothing.
+     */
+    protected function schemaWasChanged(): void
+    {
+        RefreshDatabaseState::$migrated = false;
     }
 
     protected function getPackageProviders($app): array

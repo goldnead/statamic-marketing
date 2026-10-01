@@ -81,6 +81,9 @@ it('upgrades an install that still carries the wide index', function (): void {
     // Put the table back into its 1.6.0 shape — no key column, the unique over
     // (brand_id, list_handle, email_normalized) — and fill it the way a real
     // install would be filled.
+    // DDL commits under MySQL, rows included: the next test migrates afresh.
+    $this->schemaWasChanged();
+
     Schema::table('marketing_subscriptions', function (Blueprint $table) {
         $table->dropUnique('ms_brand_list_email_unique');
         $table->dropColumn('uniqueness_key');

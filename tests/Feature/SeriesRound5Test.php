@@ -37,8 +37,6 @@ beforeEach(function (): void {
     CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-01 12:00', 'Europe/Berlin'));
     Mail::fake();
 
-    $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-events/database/migrations');
-
     app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter', doubleOptIn: false));
 
     foreach ([['89077', 48.40, 9.97], ['89075', 48.67, 9.97]] as [$plz, $lat, $lng]) {
@@ -221,6 +219,8 @@ it('zählt ein Kind, das mit seinem Vorverkaufsdatum verschwindet, als entfernt 
 
 it('übersteht einen Lauf ohne PLZ-Verzeichnis und lässt die weiteren Konzerte dann leer', function (): void {
     Schema::drop('leadhub_postal_codes');
+    // DDL commits under MySQL: the next test must migrate from scratch.
+    $this->schemaWasChanged();
     r5Template();
 
     $event = Event::create(['title' => 'Tour ohne Verzeichnis']);

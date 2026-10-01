@@ -34,8 +34,6 @@ use Statamic\Facades\User;
 beforeEach(function (): void {
     Mail::fake();
 
-    $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-events/database/migrations');
-
     app(MailingListRepository::class)->save(new MailingList(
         handle: 'newsletter',
         name: 'Newsletter',

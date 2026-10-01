@@ -36,8 +36,6 @@ beforeEach(function (): void {
     CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-01 12:00', 'Europe/Berlin'));
     Mail::fake();
 
-    $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-events/database/migrations');
-
     app(MailingListRepository::class)->save(new MailingList(handle: 'newsletter', name: 'Newsletter', doubleOptIn: false));
 
     // Ulm, ~30 km north of it, Heidenheim (~78 km), Freiburg (~150 km).
@@ -363,6 +361,8 @@ it('markiert die Umkreis-Segmente als von der Serie verwaltet', function (): voi
 it('legt Segmente auch an, wenn LeadHub managed_by nicht kennt', function (): void {
     if (Schema::hasColumn('leadhub_segments', 'managed_by')) {
         Schema::table('leadhub_segments', fn ($table) => $table->dropColumn('managed_by'));
+        // DDL commits under MySQL: the next test must migrate from scratch.
+        $this->schemaWasChanged();
     }
 
     presaleTemplate([], 'konzert');

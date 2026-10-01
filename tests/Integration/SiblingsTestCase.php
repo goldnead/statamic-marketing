@@ -36,14 +36,6 @@ abstract class SiblingsTestCase extends TestCase
         // `AutomationsIntegrationTest > it runs a two-mail sequence as an
         // ordinary node chain` reported as "2 is identical to 1". Nothing in
         // the addons was wrong: a real installation boots each addon once.
-        if (class_exists(ServiceProvider::class)) {
-            $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-automations/database/migrations');
-        }
-
-        if (class_exists(WebhookManagerServiceProvider::class)) {
-            $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-webhook-manager/database/migrations');
-        }
-
         // The sibling bridges boot via app->booted() callbacks that already
         // fired during app creation, before this suite's providers were all
         // registered. Re-run them now that everything is in place; unlike
@@ -51,6 +43,14 @@ abstract class SiblingsTestCase extends TestCase
         // invocation really is a no-op.
         app(AutomationsBridge::class)->boot(app('events'));
         app(WebhookManagerBridge::class)->boot(app('events'));
+    }
+
+    protected function extraMigrationPaths(): array
+    {
+        return array_values(array_filter([
+            class_exists(ServiceProvider::class) ? __DIR__.'/../../vendor/goldnead/statamic-automations/database/migrations' : null,
+            class_exists(WebhookManagerServiceProvider::class) ? __DIR__.'/../../vendor/goldnead/statamic-webhook-manager/database/migrations' : null,
+        ]));
     }
 
     protected function getPackageProviders($app): array

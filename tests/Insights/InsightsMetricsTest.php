@@ -381,6 +381,7 @@ it('will not state an open rate on an install that cannot tell a proxy from a pe
     // column that is already gone makes the teardown throw — which reports the
     // wrong failure in every test that follows.
     Schema::table('marketing_message_events', fn (Blueprint $table) => $table->dropColumn('machine'));
+    $this->schemaWasChanged();
 
     try {
         expect((new OpenRate)->available())->toBeFalse();

@@ -26,8 +26,6 @@ use Statamic\Facades\User;
 beforeEach(function (): void {
     Mail::fake();
 
-    $this->loadMigrationsFrom(__DIR__.'/../../vendor/goldnead/statamic-events/database/migrations');
-
     $user = User::make()->email('serie@example.com')->makeSuper();
     $user->save();
     $this->actingAs($user);

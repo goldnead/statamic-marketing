@@ -2,15 +2,20 @@
 
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Series\SeriesSync;
 use Statamic\Facades\User;
 
 /**
- * Without statamic-events (here: its tables never migrated, which
- * SeriesSync::available() answers like a missing addon) the editor keeps its
- * series section as a one-line hint, and the switch cannot be thrown behind
- * the screen's back either.
+ * Without statamic-events (here: SeriesSync::available() pinned to false, the
+ * answer an installed-but-unmigrated sibling gets as well — the suite migrates
+ * the events tables for every test, and which test runs first in a process
+ * must not decide whether they exist) the editor keeps its series section as
+ * a one-line hint, and the switch cannot be thrown behind the screen's back
+ * either.
  */
 beforeEach(function (): void {
+    (new ReflectionProperty(SeriesSync::class, 'available'))->setValue(null, false);
+
     $user = User::make()->email('ohne-termine@example.com')->makeSuper();
     $user->save();
     $this->actingAs($user);

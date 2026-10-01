@@ -370,6 +370,7 @@ it('falls open rather than stopping a send it cannot count', function (): void {
     ($this->fillTheWindow)(5);
 
     Schema::drop('marketing_mail_log');
+    $this->schemaWasChanged();
 
     expect(app(FrequencyCap::class)->countInWindow('jane@example.com'))->toBe(0)
         ->and(app(FrequencyCap::class)->allows('jane@example.com', MailClass::Marketing))->toBeTrue();

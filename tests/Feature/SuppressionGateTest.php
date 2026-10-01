@@ -120,6 +120,7 @@ it('aborts the campaign rather than sending when the gate cannot answer', functi
     app(SubscriptionService::class)->subscribe($this->list, 'anyone@example.test');
 
     Schema::drop('suppressions');
+    $this->schemaWasChanged();
 
     expect(fn () => app(CampaignSender::class)->queue($this->campaign))
         ->toThrow(SuppressionCheckFailed::class);
@@ -173,6 +174,7 @@ it('fails the single message rather than sending when the gate cannot answer', f
     ]);
 
     Schema::drop('suppressions');
+    $this->schemaWasChanged();
 
     (new SendMessageJob($message->id))->handle(
         app(CampaignRepository::class),
@@ -285,6 +287,7 @@ it('sends a test to an address that is simply not subscribed', function (): void
 
 it('refuses a test send when the gate cannot answer', function (): void {
     Schema::drop('suppressions');
+    $this->schemaWasChanged();
 
     expect(fn () => app(CampaignSender::class)->sendTest($this->campaign, 'fine@example.test'))
         ->toThrow(InvalidArgumentException::class);
