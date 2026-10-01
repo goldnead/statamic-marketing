@@ -13,6 +13,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Series\SeriesSync;
+use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Support\Facades\Mail;
 use Statamic\Facades\User;
 
@@ -442,6 +443,114 @@ it('begrüßt in der Vorschau eine Beispielperson mit Namen', function (): void 
         'content' => '<p>Hallo {{ first_name }},</p>',
         'list_handle' => 'newsletter',
     ])->json('data.html'))->toContain('Hallo Alex,');
+});
+
+// --- Runde 3 -------------------------------------------------------------
+
+it('zeigt vor dem Versand keinen Bericht, sondern wie viele es bekommen', function (): void {
+    app(CampaignRepository::class)->save(new Campaign(
+        handle: 'geplant',
+        name: 'Geplant',
+        subject: 'Hallo',
+        listHandle: 'newsletter',
+        content: '<p>x</p>',
+        status: Campaign::STATUS_SCHEDULED,
+        scheduledAt: CarbonImmutable::now()->addDay(),
+    ));
+
+    $list = app(MailingListRepository::class)->find('newsletter');
+    $subs = app(SubscriptionService::class);
+    $subs->subscribe($list, 'a@example.com');
+    $subs->subscribe($list, 'b@example.com');
+
+    $props = cpProps('marketing.campaigns.show', 'geplant');
+
+    expect($props['sendingStarted'])->toBeFalse()
+        ->and($props['audienceEstimate'])->toBe(2);
+});
+
+it('zeigt den Bericht, sobald der Versand begonnen hat', function (): void {
+    app(CampaignRepository::class)->save(new Campaign(
+        handle: 'raus',
+        name: 'Raus',
+        subject: 'Hallo',
+        listHandle: 'newsletter',
+        content: '<p>x</p>',
+        status: Campaign::STATUS_SENT,
+        sentAt: CarbonImmutable::now(),
+    ));
+
+    $props = cpProps('marketing.campaigns.show', 'raus');
+
+    expect($props['sendingStarted'])->toBeTrue()
+        ->and($props['audienceEstimate'])->toBeNull();
+});
+
+it('zählt für ein Kind nur die Abonnent:innen im Umkreis', function (): void {
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+
+    $list = app(MailingListRepository::class)->find('newsletter');
+    $near = Contact::create(['email' => 'nah@example.com', 'status' => 'qualified', 'postal_code' => '89075', 'country' => 'DE']);
+    Contact::create(['email' => 'nichtabo@example.com', 'status' => 'qualified', 'postal_code' => '89077', 'country' => 'DE']);
+    $sub = app(SubscriptionService::class)->subscribe($list, 'nah@example.com');
+    $sub->contact_uuid = $near->uuid;
+    $sub->save();
+    app(SubscriptionService::class)->subscribe($list, 'weit@example.com'); // ohne Kontakt, also nicht im Umkreis
+
+    $approval = cpProps('marketing.campaigns.show', 'konzertmail-'.$occurrence->uuid)['approval'];
+
+    expect($approval['recipients'])->toBe(2)
+        ->and($approval['list_recipients'])->toBe(1);
+});
+
+it('rendert die Vorschau der Vorlage mit einem echten Termin', function (): void {
+    cpSeriesCampaign();
+    $ulm = cpSeriesOccurrence();
+    $neuUlm = cpSeriesOccurrence(['venue_city' => 'Neu-Ulm', 'venue_postal_code' => '89075']);
+
+    $render = fn (?string $child) => $this->postJson(cp_route('marketing.campaigns.live-preview'), [
+        'handle' => 'konzertmail',
+        'name' => 'Konzert',
+        'content' => '<p>Wir spielen in {{ event:city }} im {{ event:venue }}.</p>',
+        'list_handle' => 'newsletter',
+        'series' => true,
+        'preview_child' => $child,
+    ])->json('data.html');
+
+    expect($render('konzertmail-'.$neuUlm->uuid))->toContain('Wir spielen in Neu-Ulm im Roxy.')
+        ->and($render('konzertmail-'.$ulm->uuid))->toContain('Wir spielen in Ulm im Roxy.')
+        // Kein Kind dieser Vorlage: der Beispieltermin, nicht fremde Daten.
+        ->and($render('irgendwas-anderes'))->toContain('im Beispielhalle.');
+
+    $children = collect(cpProps('marketing.campaigns.edit', 'konzertmail')['series']['children'])->pluck('handle');
+
+    expect($children)->toContain('konzertmail-'.$neuUlm->uuid);
+});
+
+it('rendert die gespeicherte Vorschau der Vorlage mit ihrem ersten Termin', function (): void {
+    cpSeriesCampaign();
+    cpSeriesOccurrence(['venue_city' => 'Neu-Ulm', 'venue_postal_code' => '89075', 'venue_name' => 'Wiley']);
+
+    expect($this->get(cp_route('marketing.campaigns.preview', 'konzertmail'))->getContent())
+        ->toContain('Wir spielen in Neu-Ulm.');
+});
+
+it('zeigt im Editor eines Kindes den aufgelösten Absender', function (): void {
+    app()->instance(SenderIdentityResolver::class, new class implements SenderIdentityResolver
+    {
+        public function resolve(?int $brandId): SenderIdentity
+        {
+            return SenderIdentity::of(null, 'tour@halbmond.test', 'Kollektiv Halbmond');
+        }
+    });
+
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+
+    $sender = cpProps('marketing.campaigns.edit', 'konzertmail-'.$occurrence->uuid)['series']['sender'];
+
+    expect($sender)->toBe(['address' => 'tour@halbmond.test', 'name' => 'Kollektiv Halbmond', 'refusal' => null]);
 });
 
 it('rendert die Vorschau eines Kindes mit seiner eigenen Stadt', function (): void {

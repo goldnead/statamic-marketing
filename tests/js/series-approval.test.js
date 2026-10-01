@@ -118,6 +118,27 @@ describe('approving a series child', () => {
         expect(wrapper.find('[data-marketing-approval]').exists()).toBe(true);
     });
 
+    it('shows the plan, not a report of zeros, before the send has started', () => {
+        const props = {
+            ...showProps('scheduled', null),
+            sendingStarted: false,
+            audienceEstimate: 3,
+            timeline: [{ key: 'scheduled', at: '2099-01-01T10:00:00Z' }],
+        };
+        const wrapper = mount(CampaignsShow, { props });
+
+        expect(wrapper.findComponent({ name: 'Tabs' }).exists()).toBe(false);
+        expect(wrapper.find('[data-marketing-not-started]').exists()).toBe(true);
+        expect(wrapper.find('[data-marketing-audience-estimate]').text()).toContain('marketing::campaigns.audience_estimate_many');
+    });
+
+    it('keeps the report once the send has started', () => {
+        const wrapper = mount(CampaignsShow, { props: { ...showProps('sending', null), sendingStarted: true } });
+
+        expect(wrapper.findComponent({ name: 'Tabs' }).exists()).toBe(true);
+        expect(wrapper.find('[data-marketing-not-started]').exists()).toBe(false);
+    });
+
     it('has no approval at all on an ordinary campaign', () => {
         const wrapper = mount(CampaignsShow, { props: showProps('draft', null) });
 

@@ -64,6 +64,10 @@ return [
     'audience_hint' => 'Contacts in the radius',
     'edit_awaiting' => 'This campaign is awaiting approval. You can still change its text, subject and preheader here; list and segment belong to the series. The nightly sync leaves your changes in place.',
     'sender_refused' => 'No sender: :reason',
+    'preview_for' => 'Preview for',
+    'preview_sample' => 'Sample term',
+    'sender_readonly' => 'This is who the campaign goes out as. The sender comes from the brand; change it in the template or on the brand.',
+    'reply_to' => 'Reply-to',
 
     'errors' => [
         'only_drafts' => 'Only a draft can become a template.',

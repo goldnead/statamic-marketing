@@ -226,6 +226,24 @@ const seriesToggleLock = computed(() => {
     return __('marketing::series.toggle_locked_status');
 });
 
+// Which term the template's preview is rendered for. The first generated
+// campaign by default, so the preview shows a real city, date and ticket
+// link instead of the invented sample; the sample only when there is none.
+const previewChildOptions = computed(() => [
+    ...seriesChildren.value.map((child) => ({
+        value: child.handle,
+        label: [child.city, child.date].filter(Boolean).join(' · ') || child.name,
+    })),
+]);
+const previewChild = ref(seriesChildren.value[0]?.handle ?? '');
+
+// A child's resolved sender, "Name <address>", or null when the brand refuses.
+const childSenderLine = computed(() => {
+    const sender = props.series?.sender;
+    if (! sender?.address) return null;
+    return [sender.name, `<${sender.address}>`].filter(Boolean).join(' ');
+});
+
 const seriesSkipped = computed(() => props.series?.skipped_no_postal_code ?? 0);
 const seriesSkippedText = computed(() => seriesSkipped.value === 1
     ? __('marketing::series.skipped_one')
@@ -428,8 +446,10 @@ async function refreshPreview() {
                 content: contentValues.value.content ?? null,
                 list_handle: list.value,
                 template_handle: template.value,
-                // A template renders `{{ event:… }}` against the sample term.
+                // A template renders `{{ event:… }}` against one of its real
+                // terms when it has any, the sample when it has none.
                 series: seriesEnabled.value,
+                preview_child: seriesEnabled.value ? (previewChild.value || null) : null,
             }),
         });
 
@@ -457,7 +477,7 @@ function schedulePreview() {
     previewTimer = setTimeout(refreshPreview, 500);
 }
 
-watch([contentValues, subject, preheader, template, seriesEnabled], schedulePreview, { deep: true });
+watch([contentValues, subject, preheader, template, seriesEnabled, previewChild], schedulePreview, { deep: true });
 watch(showPreview, (open) => { if (open) refreshPreview(); });
 // The preview now stands open when the screen loads, so there has to be
 // something in it before the first keystroke. Without this the panel was
@@ -909,7 +929,32 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                         </Card>
                     </Panel>
 
-                    <Panel :heading="__('marketing::campaigns.sender')">
+                    <!-- A series child: who it really goes out as, read-only.
+                         The fields below explain a brand override to whoever
+                         configures one; on a child that comes from the
+                         template and the brand, there is nothing to type. -->
+                    <Panel v-if="isSeriesChild" :heading="__('marketing::campaigns.sender')" data-marketing-child-sender>
+                        <Card>
+                            <dl class="divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                                <div class="grid grid-cols-3 gap-3 pb-2.5">
+                                    <dt class="text-gray-500 dark:text-gray-400">{{ __('marketing::series.sender') }}</dt>
+                                    <dd class="col-span-2 min-w-0 break-words text-gray-900 dark:text-gray-100">
+                                        <template v-if="childSenderLine">{{ childSenderLine }}</template>
+                                        <span v-else class="text-red-600 dark:text-red-400">
+                                            {{ __('marketing::series.sender_refused', { reason: series.sender?.refusal || '—' }) }}
+                                        </span>
+                                    </dd>
+                                </div>
+                                <div class="grid grid-cols-3 gap-3 pt-2.5">
+                                    <dt class="text-gray-500 dark:text-gray-400">{{ __('marketing::series.reply_to') }}</dt>
+                                    <dd class="col-span-2 min-w-0 break-words text-gray-900 dark:text-gray-100">{{ replyTo || '—' }}</dd>
+                                </div>
+                            </dl>
+                            <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('marketing::series.sender_readonly') }}</p>
+                        </Card>
+                    </Panel>
+
+                    <Panel v-else :heading="__('marketing::campaigns.sender')">
                         <Card>
                             <div class="space-y-4">
                                 <!--
@@ -1063,6 +1108,21 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                             <ToggleItem value="light" :label="__('marketing::campaigns.preview_light')" />
                                             <ToggleItem value="dark" :label="__('marketing::campaigns.preview_dark')" />
                                         </ToggleGroup>
+
+                                        <!-- A template's preview, for one of its real terms. -->
+                                        <div
+                                            v-if="seriesSection && seriesEnabled && previewChildOptions.length"
+                                            class="flex items-center gap-2"
+                                            data-marketing-preview-child
+                                        >
+                                            <Text size="sm" variant="subtle" class="whitespace-nowrap">{{ __('marketing::series.preview_for') }}</Text>
+                                            <Select
+                                                v-model="previewChild"
+                                                :options="previewChildOptions"
+                                                size="sm"
+                                                adaptive-width
+                                            />
+                                        </div>
                                     </template>
                                 </div>
 

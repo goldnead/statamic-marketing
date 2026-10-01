@@ -64,6 +64,10 @@ return [
     'audience_hint' => 'Kontakte im Umkreis',
     'edit_awaiting' => 'Diese Kampagne wartet auf Freigabe. Text, Betreff und Preheader kannst du hier noch ändern; Liste und Segment gehören zur Serie. Der nächtliche Abgleich lässt deine Änderungen stehen.',
     'sender_refused' => 'Kein Absender: :reason',
+    'preview_for' => 'Vorschau für',
+    'preview_sample' => 'Beispieltermin',
+    'sender_readonly' => 'So geht diese Kampagne raus. Der Absender kommt von der Marke; ändern lässt er sich in der Vorlage oder bei der Marke.',
+    'reply_to' => 'Antwort an',
 
     'errors' => [
         'only_drafts' => 'Nur ein Entwurf kann zur Vorlage werden.',

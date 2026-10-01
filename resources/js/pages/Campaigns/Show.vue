@@ -35,6 +35,10 @@ const props = defineProps([
     'canManage',     // bool
     'mailPreviewUrl', // string|null — Versand-Schnappschuss; null, solange nichts raus ist
     'statusLabel',   // string — the status in the reader's language
+    // false until the send has started (draft, scheduled, waiting): no report
+    // then, only the plan. Absent is read as started, the screen before this.
+    'sendingStarted',
+    'audienceEstimate', // int|null — at most this many subscribers, before the send
     // A series child before its send: { subject, from_name, from_email, list, segment,
     //   recipients, event, scheduled_at, template, preview_url, approve_url, withdraw_url,
     //   can_send } — null for everything else. See CampaignController::approvalPayload().
@@ -85,9 +89,14 @@ const approvalRows = computed(() => {
             key: 'audience',
             label: __('marketing::series.audience'),
             value: audience,
-            note: a.recipients == null ? null : (a.recipients === 1
-                ? __('marketing::series.recipients_count_one')
-                : __('marketing::series.recipients_count', { count: a.recipients })),
+            note: [
+                a.recipients == null ? null : (a.recipients === 1
+                    ? __('marketing::series.recipients_count_one')
+                    : __('marketing::series.recipients_count', { count: a.recipients })),
+                a.list_recipients == null ? null : (a.list_recipients === 1
+                    ? __('marketing::campaigns.audience_estimate_one')
+                    : __('marketing::campaigns.audience_estimate_many', { count: a.list_recipients })),
+            ].filter(Boolean).join('. ') || null,
         },
         { key: 'term', label: __('marketing::series.term'), value: term, note: termWhen },
         {
@@ -669,9 +678,35 @@ const subline = computed(() => {
             </Card>
         </Panel>
 
-        <!-- A waiting campaign has not been anywhere yet: no report to show,
-             and five tabs of zeros under the approval would only bury it. -->
-        <Tabs v-if="!isAwaiting" :model-value="activeTab" @update:model-value="selectTab">
+        <!-- Before the send: the plan, not the report. Nine tiles of 0 under
+             "Recipients" read as "this goes to nobody", on a campaign that is
+             about to go to somebody. The stations that happened, and how many
+             people it is meant for. A waiting child says all of that in its
+             approval card already. -->
+        <div v-if="sendingStarted === false && !isAwaiting" class="mb-6" data-marketing-not-started>
+            <Subheading :text="__('marketing::campaigns.report.timeline_heading')" class="mb-2" />
+            <Card>
+                <ol v-if="timelineStations.length" class="text-sm">
+                    <li
+                        v-for="station in timelineStations"
+                        :key="station.key"
+                        class="flex items-baseline gap-3 py-1"
+                    >
+                        <span class="w-40 shrink-0 text-gray-500 dark:text-gray-400">{{ station.label }}</span>
+                        <span>{{ formatDate(station.at) }}</span>
+                    </li>
+                </ol>
+                <p v-if="audienceEstimate != null" class="mt-3 text-sm text-gray-900 dark:text-gray-100" data-marketing-audience-estimate>
+                    {{ audienceEstimate === 1
+                        ? __('marketing::campaigns.audience_estimate_one')
+                        : __('marketing::campaigns.audience_estimate_many', { count: audienceEstimate }) }}
+                    <span class="block text-xs text-gray-500 dark:text-gray-400">{{ __('marketing::campaigns.audience_estimate_note') }}</span>
+                </p>
+                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ __('marketing::campaigns.not_started_body') }}</p>
+            </Card>
+        </div>
+
+        <Tabs v-if="sendingStarted !== false" :model-value="activeTab" @update:model-value="selectTab">
             <TabList>
                 <TabTrigger v-for="item in tabs" :key="item.name" :name="item.name" :text="item.label" />
             </TabList>

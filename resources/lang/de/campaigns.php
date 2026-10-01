@@ -137,6 +137,11 @@ return [
     'sender' => 'Absender',
     'send_at' => 'Versand',
     'preview_first_name' => 'Alex',
+    'audience_estimate_one' => 'Geht an bis zu 1 Abonnent:in der Liste.',
+    'audience_estimate_many' => 'Geht an bis zu :count Abonnent:innen der Liste.',
+    'audience_estimate_note' => 'Gesperrte und abgemeldete Adressen fallen beim Versand noch heraus.',
+    'not_started_heading' => 'Noch nicht versendet',
+    'not_started_body' => 'Der Bericht erscheint, sobald der Versand beginnt.',
     'statuses' => [
         'draft' => 'Entwurf',
         'scheduled' => 'Geplant',

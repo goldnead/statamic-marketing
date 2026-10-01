@@ -95,6 +95,19 @@ Neue Validierung beim Speichern: `series_enabled`, `series.radius_km` (1–1000)
   unter `marketing/`.
 - Die Vorschau begrüßt eine Beispielperson („Hallo Alex,") statt „Hallo ,".
 
+### Changed: Kampagnenseite vor dem Versand, Vorlagen-Vorschau, Absender eines Kindes
+
+- **Kein Bericht vor dem Versand.** Die Seite einer Kampagne zeigt die Kennzahlen-Reiter erst ab
+  `sending`/`sent` (für alle Kampagnen, nicht nur Serien-Kinder). Davor stehen der Verlauf
+  („Geplant …") und „Geht an bis zu N Abonnent:innen der Liste" — die abonnierten Mitglieder der
+  Liste, durch das Segment live eingegrenzt wie beim Versand; Sperrliste und Abmeldungen fallen erst
+  dort heraus. Auf der Freigabe steht dieselbe Zahl neben „N Kontakte im Umkreis".
+- **Vorschau einer Vorlage mit echtem Termin.** Hat die Vorlage schon Kampagnen erzeugt, rendert die
+  Live-Vorschau mit dem Termin der ersten (Auswahl „Vorschau für" in der Vorschau-Leiste), die
+  gespeicherte Vorschau ebenso; der Beispieltermin nur, solange es keinen gibt.
+- **Absender eines Kindes nur lesend**, mit dem wirklich verwendeten Absender wie auf der Freigabe,
+  statt der Eingabefelder mit ihren Hinweisen zur Marken-Konfiguration.
+
 ## 2.25.1 — 2026-09-25
 
 ### Fixed

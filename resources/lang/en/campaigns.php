@@ -137,6 +137,11 @@ return [
     'sender' => 'Sender',
     'send_at' => 'Send time',
     'preview_first_name' => 'Alex',
+    'audience_estimate_one' => 'Goes to at most 1 subscriber of the list.',
+    'audience_estimate_many' => 'Goes to at most :count subscribers of the list.',
+    'audience_estimate_note' => 'Suppressed and unsubscribed addresses still drop out at the send.',
+    'not_started_heading' => 'Not sent yet',
+    'not_started_body' => 'The report appears once sending starts.',
     'statuses' => [
         'draft' => 'Draft',
         'scheduled' => 'Scheduled',

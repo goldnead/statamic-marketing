@@ -259,6 +259,8 @@ class CampaignController extends Controller
             ? $this->overviewPayload($campaign, $stats, $report)
             : $this->tabPayload($campaign, $report, $tab, $status, $canManage);
 
+        $sendingStarted = in_array($campaign->status, [Campaign::STATUS_SENDING, Campaign::STATUS_SENT], true);
+
         return Inertia::render('marketing::Campaigns/Show', $payload + [
             'campaign' => $campaign->toArray(),
             'tab' => $tab,
@@ -288,6 +290,11 @@ class CampaignController extends Controller
             ],
             'canManage' => $canManage,
             'mailPreviewUrl' => $this->mailPreviewUrl($campaign),
+            // The report is about a send. Before one has started there is
+            // nothing to count, and nine tiles of 0 under "Recipients" read as
+            // "this goes to nobody"; the page shows the plan instead.
+            'sendingStarted' => $sendingStarted,
+            'audienceEstimate' => $sendingStarted || $campaign->isSeries() ? null : $this->audienceEstimate($campaign),
             'statusLabel' => $this->statusLabel($campaign->status),
             'approval' => $this->approvalPayload($request, $campaign),
         ]);
@@ -336,7 +343,7 @@ class CampaignController extends Controller
         // Who it will really go out as: the brand in context (the one whose
         // campaign is open, as for a test send), through the same resolver
         // the send asks, in the same order CampaignMail applies.
-        $sender = CampaignMail::senderUnder($campaign, app(SenderIdentityResolver::class)->resolve(null));
+        $sender = $this->resolvedSender($campaign);
         $canSend = $this->userCan($request, 'send marketing campaigns');
 
         return [
@@ -348,6 +355,9 @@ class CampaignController extends Controller
             'list' => $list?->name,
             'segment' => $segment['label'] ?? $campaign->segmentHandle,
             'recipients' => $this->segmentMemberCount($campaign->segmentHandle),
+            // The circle intersected with the list's subscribers: who it
+            // goes to, as opposed to who lives nearby.
+            'list_recipients' => $this->audienceEstimate($campaign),
             'event' => $event === [] ? null : $event,
             'scheduled_at' => $campaign->scheduledAt?->toIso8601String(),
             'template' => $template ? [
@@ -380,6 +390,56 @@ class CampaignController extends Controller
         $subscription->token = 'test-preview';
 
         return $subscription;
+    }
+
+    /**
+     * Who a campaign will really go out as: the brand in context (the one
+     * whose campaign is open, as for a test send), through the resolver the
+     * send asks, in the order CampaignMail applies.
+     *
+     * @return array{address: string|null, name: string|null, refusal: string|null}
+     */
+    protected function resolvedSender(Campaign $campaign): array
+    {
+        return CampaignMail::senderUnder($campaign, app(SenderIdentityResolver::class)->resolve(null));
+    }
+
+    /**
+     * How many people a campaign that has not started would go to, at most:
+     * the list's subscribed members, narrowed by the segment's live members
+     * as the send narrows them. An upper bound — suppression and per-contact
+     * opt-outs take their share only at the send — and said as one.
+     *
+     * Null when the list is unknown or a segment cannot be resolved.
+     */
+    protected function audienceEstimate(Campaign $campaign): ?int
+    {
+        // No lookup of the list itself: an unknown handle simply counts 0,
+        // and the report page has a query budget (CampaignReportQueryCountTest).
+        if (! $campaign->listHandle) {
+            return null;
+        }
+
+        $query = Subscription::query()->forList($campaign->listHandle)->subscribed();
+
+        if ($campaign->segmentHandle === null) {
+            // A series child without its circle goes to nobody (fail closed).
+            return $campaign->series !== null ? 0 : $query->count();
+        }
+
+        $root = LeadHub::getFacadeRoot();
+
+        if (! $root || ! method_exists($root, 'segmentMemberIds')) {
+            return null;
+        }
+
+        try {
+            $ids = LeadHub::segmentMemberIds($campaign->segmentHandle);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $ids === [] ? 0 : $query->whereIn('contact_uuid', $ids)->count();
     }
 
     /** The signed-in user's address, for "send a test to me". */
@@ -822,6 +882,9 @@ class CampaignController extends Controller
                     'name' => $template->name,
                     'edit_url' => cp_route('marketing.campaigns.edit', $template->handle),
                 ] : null,
+                // Read-only on the child's editor: the sender it will really
+                // go out as, the same answer as on its approval page.
+                'sender' => $this->resolvedSender($campaign),
             ];
         }
 
@@ -1209,6 +1272,17 @@ class CampaignController extends Controller
         } elseif ($request->boolean('series') || $saved?->isSeries()) {
             $campaign->status = Campaign::STATUS_SERIES;
             $campaign->meta = $saved ? $saved->meta : [];
+
+            // A template that has produced children previews against a real
+            // term — the one picked, the first one by default — rather than
+            // the invented sample. Only its own children: the handle comes
+            // from the browser.
+            $previewChild = (string) $request->input('preview_child', '');
+            $child = $previewChild !== '' ? $this->campaigns->find($previewChild) : null;
+
+            if ($child && $child->series === $campaign->handle && ! empty($child->meta['event'])) {
+                $campaign->meta = ['event' => $child->meta['event']] + $campaign->meta;
+            }
         }
 
         try {
@@ -1240,6 +1314,15 @@ class CampaignController extends Controller
         $list = $campaign->listHandle ? $this->lists->find($campaign->listHandle) : null;
 
         abort_unless($list, 422, __('marketing::campaigns.errors.no_list'));
+
+        // A template previews against its first real term, as in the editor.
+        if ($campaign->isSeries()) {
+            $first = app(SeriesSync::class)->childrenOf($campaign)->first();
+
+            if ($first && ! empty($first->meta['event'])) {
+                $campaign->meta = ['event' => $first->meta['event']] + $campaign->meta;
+            }
+        }
 
         $rendered = $renderer->render($campaign, $list, $this->previewReader($list));
 
