@@ -55,6 +55,15 @@ return [
     'send_at' => 'Send time',
     'send_now' => 'Immediately on approval',
     'preview' => 'Preview',
+    'preheader' => 'Preheader',
+    'approval_note' => 'Without approval this mail does not go out. Once approved it goes out on :at.',
+    'approval_note_now' => 'Without approval this mail does not go out. Once approved it goes out immediately.',
+    'test_send' => 'Send a test to me',
+    'test_send_to' => 'To :email, with this term\'s details.',
+    'review' => 'Review',
+    'audience_hint' => 'Contacts in the radius',
+    'edit_awaiting' => 'This campaign is awaiting approval. You can still change its text, subject and preheader here; list and segment belong to the series. The nightly sync leaves your changes in place.',
+    'sender_refused' => 'No sender: :reason',
 
     'errors' => [
         'only_drafts' => 'Only a draft can become a template.',

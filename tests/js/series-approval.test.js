@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import CampaignsShow from '../../resources/js/pages/Campaigns/Show.vue';
 import CampaignsIndex from '../../resources/js/pages/Campaigns/Index.vue';
+import { router } from '@statamic/cms/inertia';
 import { captureRouter, press, reject, summary } from './helpers.js';
 
 /**
@@ -82,6 +83,24 @@ describe('approving a series child', () => {
         expect(summary(wrapper).text()).toContain('The term has started.');
     });
 
+    it('sends a test of this child to the editor', () => {
+        const wrapper = mount(CampaignsShow, {
+            props: showProps('awaiting_approval', { ...APPROVAL, test_url: '/test', test_email: 'ich@example.com' }),
+        });
+
+        press(wrapper, 'marketing::series.test_send');
+
+        expect(calls.map((call) => [call.verb, call.url])).toEqual([['post', '/test']]);
+        expect(router.post.mock.calls[0][1]).toEqual({ email: 'ich@example.com' });
+    });
+
+    it('says, before the button, that nothing goes out without it', () => {
+        const wrapper = mount(CampaignsShow, { props: showProps('awaiting_approval') });
+
+        expect(wrapper.find('[data-marketing-approval-note]').text()).toContain('marketing::series.approval_note');
+        expect(wrapper.find('[data-marketing-approval-row="preheader"]').exists()).toBe(true);
+    });
+
     it('offers withdraw, not approve, once it is scheduled', () => {
         const wrapper = mount(CampaignsShow, { props: showProps('scheduled') });
 
@@ -130,5 +149,22 @@ describe('the campaign tabs', () => {
 
         expect(listing().vm.$attrs.items.map((row) => row.handle)).toEqual(['b']);
         expect(window.location.search).toContain('status=awaiting_approval');
+    });
+
+    it('queues the waiting tab by send time, immediate ones first', async () => {
+        const waiting = [
+            { id: 'late', handle: 'late', status: 'awaiting_approval', scheduled_at: '2099-02-01T10:00:00Z' },
+            { id: 'now', handle: 'now', status: 'awaiting_approval', scheduled_at: null },
+            { id: 'soon', handle: 'soon', status: 'awaiting_approval', scheduled_at: '2099-01-01T10:00:00Z' },
+        ];
+        const wrapper = mount(CampaignsIndex, { props: { campaigns: waiting, columns: [], createUrl: '/c', canManage: true, tabs } });
+
+        wrapper.findComponent({ name: 'Tabs' }).vm.$emit('update:modelValue', 'awaiting_approval');
+        await wrapper.vm.$nextTick();
+
+        const listing = wrapper.findComponent({ name: 'Listing' });
+
+        expect(listing.vm.$attrs.items.map((row) => row.handle)).toEqual(['now', 'soon', 'late']);
+        expect(listing.vm.$attrs.sortable).toBe(false);
     });
 });

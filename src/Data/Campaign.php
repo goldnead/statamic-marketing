@@ -166,8 +166,11 @@ class Campaign
     public function isEditable(): bool
     {
         // A series template is edited like any campaign but never sent, so it
-        // is editable without being sendable.
-        return $this->isSendable() || $this->isSeries();
+        // is editable without being sendable. A waiting series child is too:
+        // looking at it before the release is the moment somebody notices
+        // the sentence they want to change. Its list and segment stay locked
+        // (CampaignController::update), and the sync leaves its text alone.
+        return $this->isSendable() || $this->isSeries() || $this->status === self::STATUS_AWAITING_APPROVAL;
     }
 
     public static function fromArray(array $data): self

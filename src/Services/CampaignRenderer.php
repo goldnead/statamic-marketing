@@ -312,6 +312,26 @@ class CampaignRenderer
     }
 
     /**
+     * Subject and preheader as a reader will see them, without rendering the
+     * mail around them — for a listing row or a summary, where the whole
+     * layout would be paid for and thrown away.
+     *
+     * Same variables as {@see render()}, so `{{ event:city }}` resolves from
+     * the child's own term; no subscriber, so personal variables are empty.
+     *
+     * @return array{subject: string, preheader: string}
+     */
+    public function headline(Campaign $campaign, MailingList $list): array
+    {
+        $variables = $this->variables($campaign, $list, null);
+
+        return [
+            'subject' => $this->parse($campaign->subject, $variables),
+            'preheader' => $this->parse((string) $campaign->preheader, $variables),
+        ];
+    }
+
+    /**
      * @param  string|null  $subjectTemplate  the subject this particular
      *                                        recipient is getting, which for an
      *                                        A/B campaign is not necessarily

@@ -6,6 +6,7 @@ import {
     Tabs, TabList, TabTrigger,
 } from '@statamic/cms/ui';
 import { campaignStatusColor } from '../../support/campaignStatus.js';
+import { relativeTime } from '../../support/relativeTime.js';
 
 const props = defineProps([
     'campaigns',    // [{ id, handle, name, subject, list, status, status_label, series,
@@ -42,9 +43,27 @@ watch(activeTab, (tab) => {
     window.history.replaceState(window.history.state, '', url.toString());
 });
 
-const visibleCampaigns = computed(() => activeTab.value === 'all'
-    ? props.campaigns
-    : props.campaigns.filter((campaign) => campaign.status === activeTab.value));
+const isAwaitingTab = computed(() => activeTab.value === 'awaiting_approval');
+
+// The waiting tab is a queue: soonest send first, and "immediately on
+// approval" (no time) before everything, because it is the most urgent. The
+// listing's own sorting is switched off there so this order holds.
+const visibleCampaigns = computed(() => {
+    if (activeTab.value === 'all') return props.campaigns;
+
+    const rows = props.campaigns.filter((campaign) => campaign.status === activeTab.value);
+
+    if (! isAwaitingTab.value) return rows;
+
+    return [...rows].sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
+});
+
+// A waiting row goes to its approval page, not to the editor: reviewing is
+// what the row is waiting for.
+function rowUrl(row) {
+    if (row.status === 'awaiting_approval') return row.show_url;
+    return row.editable && props.canManage ? row.edit_url : row.show_url;
+}
 
 function childrenLabel(count) {
     if (! count) return __('marketing::campaigns.series_children_none');
@@ -118,11 +137,12 @@ function destroy() {
             :items="visibleCampaigns"
             :columns="columns"
             :allow-presets="false"
+            :sortable="!isAwaitingTab"
             preferences-prefix="marketing.campaigns"
             @refreshing="reloadPage"
         >
             <template #cell-name="{ row }">
-                <Link :href="row.editable && canManage ? row.edit_url : row.show_url" class="font-medium hover:underline">
+                <Link :href="rowUrl(row)" class="font-medium hover:underline">
                     {{ row.name }}
                 </Link>
                 <!-- What a series row is, in one line under its name: a
@@ -139,7 +159,11 @@ function destroy() {
             </template>
 
             <template #cell-scheduled_at="{ row }">
-                <span v-if="row.scheduled_at" class="text-xs text-gray-500 dark:text-gray-400">{{ formatDate(row.scheduled_at) }}</span>
+                <span v-if="row.scheduled_at" class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ formatDate(row.scheduled_at) }}<template v-if="row.status === 'awaiting_approval' || row.status === 'scheduled'">
+                        <span class="block" data-marketing-relative-send>{{ relativeTime(row.scheduled_at) }}</span>
+                    </template>
+                </span>
                 <span v-else-if="row.status === 'awaiting_approval'" class="text-xs text-gray-500 dark:text-gray-400">{{ __('marketing::campaigns.send_on_approval') }}</span>
                 <span v-else class="text-2xs text-gray-400">—</span>
             </template>
@@ -154,11 +178,30 @@ function destroy() {
             </template>
 
             <template #cell-status="{ row }">
-                <Badge :color="campaignStatusColor(row.status)" :text="row.status_label || row.status" pill />
+                <div class="flex flex-wrap items-center gap-2">
+                    <Badge :color="campaignStatusColor(row.status)" :text="row.status_label || row.status" pill />
+                    <!-- The one thing a waiting row asks for, in reach
+                         without opening the row menu. -->
+                    <Button
+                        v-if="row.status === 'awaiting_approval'"
+                        :href="row.show_url"
+                        :text="__('marketing::series.review')"
+                        size="xs"
+                        data-marketing-review
+                    />
+                </div>
             </template>
 
             <template #cell-recipients="{ row }">
-                <span v-if="row.recipients != null">{{ row.recipients }}</span>
+                <span v-if="row.recipients > 0">{{ row.recipients }}</span>
+                <!-- Not sent yet: the circle around the venue it will go to. -->
+                <span
+                    v-else-if="row.audience != null"
+                    class="text-gray-500 dark:text-gray-400"
+                    :title="__('marketing::series.audience_hint')"
+                    data-marketing-audience
+                >{{ row.audience }}</span>
+                <span v-else-if="row.recipients != null">{{ row.recipients }}</span>
                 <span v-else class="text-2xs text-gray-400">—</span>
             </template>
 

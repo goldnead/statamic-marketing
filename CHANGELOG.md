@@ -72,6 +72,29 @@ Neue Validierung beim Speichern: `series_enabled`, `series.radius_km` (1–1000)
 `series.days_before` (0–365), `series.send_time` (`H:i`), `series.event_ids`, `series.country`
 (zwei Buchstaben). Fehlt `series_enabled` im Request, bleibt die Serie wie sie ist.
 
+### Changed: Kampagnenserie im CP, zweite Runde
+
+- **Eine wartende Kampagne ist bearbeitbar** (Text, Betreff, Preheader; Liste und Segment bleiben
+  gesperrt). Speichern lässt sie auf „Wartet auf Freigabe"; der Abgleich zieht weiter nur
+  Termin-Momentaufnahme, Versandzeit und Segmentregel nach und lässt den Text stehen. Der Editor
+  zeigt dann keinen Versand-Block, sondern den Weg zur Freigabe, und zählt das eigene
+  Umkreis-Segment live statt LeadHubs noch leerer Mitgliedschaft.
+- **Freigabe-Seite:** Zeile „Preheader" (mit eingesetzten Platzhaltern), der Absender, der wirklich
+  verwendet wird (Marken-Absender aus `settings.mail` vor dem der Kampagne, dieselbe Reihenfolge wie
+  `CampaignMail`, neu als `CampaignMail::senderUnder()`; eine verweigernde Marke steht als Warnung
+  da), „Testmail an mich senden" (dieselbe Route und dasselbe Recht wie im Editor, mit den Angaben
+  dieses Termins), Desktop/Handy-Umschalter an der Vorschau und der Satz „Ohne Freigabe geht diese
+  Mail nicht raus" mit Versandzeit.
+- **Liste:** Betreffzeilen von Kindern mit eingesetztem Termin (`CampaignRenderer::headline()`),
+  Kontakte im Umkreis als Empfängerzahl wartender und geplanter Kinder (fünf Minuten gecacht),
+  relative Zeit unter dem Versand („in 12 Tagen"), ein sichtbarer Knopf „Prüfen" an wartenden
+  Zeilen, und der Reiter „Wartet auf Freigabe" nach nächstem Versand sortiert (sofortige zuerst).
+  Der Name einer wartenden Kampagne führt zur Freigabe.
+- **Brotkrumen:** Kampagnen-, Sequenz-, Listen- und Layout-Seiten heißen „Marketing / Kampagnen"
+  usw. statt „Marketing / Übersicht" — der Übersichts-Eintrag beanspruchte bisher jede Adresse
+  unter `marketing/`.
+- Die Vorschau begrüßt eine Beispielperson („Hallo Alex,") statt „Hallo ,".
+
 ## 2.25.1 — 2026-09-25
 
 ### Fixed

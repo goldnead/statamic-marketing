@@ -9,8 +9,12 @@ use Goldnead\Marketing\Contracts\MailClass;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Series\SeriesSync;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\CampaignReport;
@@ -22,6 +26,7 @@ use Goldnead\Marketing\Support\HandleOwnership;
 use Goldnead\Marketing\Support\SendSnapshot;
 use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -61,7 +66,11 @@ class CampaignController extends Controller
         $childCounts = $all->filter(fn (Campaign $campaign): bool => $campaign->series !== null)
             ->countBy(fn (Campaign $campaign): string => (string) $campaign->series);
 
-        $rows = $all->map(function (Campaign $campaign) use ($stats, $childCounts) {
+        // Each list once, for the subject lines of series children below.
+        $lists = $this->lists->all()->keyBy('handle');
+        $renderer = app(CampaignRenderer::class);
+
+        $rows = $all->map(function (Campaign $campaign) use ($stats, $childCounts, $lists, $renderer) {
             // A template and a waiting child have no delivery to count yet.
             $campaignStats = in_array($campaign->status, [
                 Campaign::STATUS_DRAFT, Campaign::STATUS_SERIES, Campaign::STATUS_AWAITING_APPROVAL,
@@ -69,11 +78,21 @@ class CampaignController extends Controller
 
             $event = (array) ($campaign->meta['event'] ?? []);
 
+            // A series child before its send: the subject as its readers will
+            // see it (its own term filled in), and the circle around the
+            // venue as the audience — there is no delivery to count yet.
+            $isWaitingChild = $campaign->series !== null && in_array($campaign->status, [
+                Campaign::STATUS_AWAITING_APPROVAL, Campaign::STATUS_SCHEDULED,
+            ], true);
+
             return [
                 'id' => $campaign->handle,
                 'handle' => $campaign->handle,
                 'name' => $campaign->name,
-                'subject' => $campaign->subject,
+                'subject' => $campaign->series !== null && $event !== []
+                    ? $this->renderedSubject($renderer, $campaign, $lists->get((string) $campaign->listHandle))
+                    : $campaign->subject,
+                'audience' => $isWaitingChild ? $this->cachedSegmentMemberCount($campaign->segmentHandle) : null,
                 'list' => $campaign->listHandle,
                 'status' => $campaign->status,
                 'status_label' => $this->statusLabel($campaign->status),
@@ -296,13 +315,13 @@ class CampaignController extends Controller
         }
 
         $list = $campaign->listHandle ? $this->lists->find($campaign->listHandle) : null;
-        $subject = $campaign->subject;
+        $headline = ['subject' => $campaign->subject, 'preheader' => (string) $campaign->preheader];
 
         if ($list) {
             try {
-                $subject = app(CampaignRenderer::class)->render($campaign, $list)->subject;
+                $headline = app(CampaignRenderer::class)->headline($campaign, $list);
             } catch (\Throwable) {
-                // The raw subject, braces and all, is still the right answer
+                // The raw lines, braces and all, are still the right answer
                 // to "what is this about" — better than an empty line.
             }
         }
@@ -314,10 +333,18 @@ class CampaignController extends Controller
         $template = $this->campaigns->find($campaign->series);
         $event = (array) ($campaign->meta['event'] ?? []);
 
+        // Who it will really go out as: the brand in context (the one whose
+        // campaign is open, as for a test send), through the same resolver
+        // the send asks, in the same order CampaignMail applies.
+        $sender = CampaignMail::senderUnder($campaign, app(SenderIdentityResolver::class)->resolve(null));
+        $canSend = $this->userCan($request, 'send marketing campaigns');
+
         return [
-            'subject' => $subject,
-            'from_name' => $campaign->fromName ?: config('marketing.from.name') ?: config('mail.from.name'),
-            'from_email' => $campaign->fromEmail ?: config('marketing.from.email') ?: config('mail.from.address'),
+            'subject' => $headline['subject'],
+            'preheader' => $headline['preheader'] !== '' ? $headline['preheader'] : null,
+            'from_name' => $sender['name'],
+            'from_email' => $sender['address'],
+            'sender_refusal' => $sender['refusal'],
             'list' => $list?->name,
             'segment' => $segment['label'] ?? $campaign->segmentHandle,
             'recipients' => $this->segmentMemberCount($campaign->segmentHandle),
@@ -330,8 +357,101 @@ class CampaignController extends Controller
             'preview_url' => $list ? cp_route('marketing.campaigns.preview', $campaign->handle) : null,
             'approve_url' => cp_route('marketing.campaigns.approve', $campaign->handle),
             'withdraw_url' => cp_route('marketing.campaigns.withdraw', $campaign->handle),
-            'can_send' => $this->userCan($request, 'send marketing campaigns'),
+            // The editor's own test send, with this child's term in it.
+            'test_url' => $canSend ? cp_route('marketing.campaigns.test', $campaign->handle) : null,
+            'test_email' => $canSend ? $this->currentUserEmail($request) : null,
+            'can_send' => $canSend,
         ];
+    }
+
+    /**
+     * A reader for the preview, so `Hallo {{ first_name }},` reads like a
+     * greeting and not like a broken template. Unsaved, with the same inert
+     * token the test send uses: its unsubscribe link leads nowhere, which is
+     * the point.
+     */
+    protected function previewReader(MailingList $list): Subscription
+    {
+        $subscription = new Subscription([
+            'list_handle' => $list->handle,
+            'email' => 'vorschau@example.com',
+            'first_name' => (string) __('marketing::campaigns.preview_first_name'),
+        ]);
+        $subscription->token = 'test-preview';
+
+        return $subscription;
+    }
+
+    /** The signed-in user's address, for "send a test to me". */
+    protected function currentUserEmail(Request $request): ?string
+    {
+        $user = $request->user();
+        $email = $user ? (method_exists($user, 'email') ? $user->email() : ($user->email ?? null)) : null;
+
+        return is_string($email) && $email !== '' ? $email : null;
+    }
+
+    /**
+     * The segment options, with a series child's own circle counted live.
+     *
+     * The figure the picker shows is LeadHub's materialised membership, and a
+     * geo segment the sync just wrote has none yet — the editor of a child
+     * read "0 contacts match" on a segment the send would reach four people
+     * with. The send asks live, so for this one segment the screen does too.
+     *
+     * @return array<int, array{value: string, label: string, members_count: int}>
+     */
+    protected function segmentOptionsFor(Campaign $campaign): array
+    {
+        $options = $this->segmentOptions();
+
+        if ($campaign->series === null || $campaign->segmentHandle === null) {
+            return $options;
+        }
+
+        $live = $this->segmentMemberCount($campaign->segmentHandle);
+
+        return array_map(fn (array $option): array => $option['value'] === $campaign->segmentHandle && $live !== null
+            ? ['members_count' => $live] + $option
+            : $option, $options);
+    }
+
+    /**
+     * A child's subject with its term filled in, or the raw subject when it
+     * cannot be rendered (no list, half-written Antlers) — the raw line is
+     * still the right answer to "what is this about".
+     */
+    protected function renderedSubject(CampaignRenderer $renderer, Campaign $campaign, mixed $list): string
+    {
+        if (! $list instanceof MailingList) {
+            return $campaign->subject;
+        }
+
+        try {
+            return $renderer->headline($campaign, $list)['subject'];
+        } catch (\Throwable) {
+            return $campaign->subject;
+        }
+    }
+
+    /**
+     * {@see segmentMemberCount()} for screens that show many segments at once
+     * — the listing, the template's children. Five minutes is old enough to
+     * spare the geo query on every page load and young enough that the
+     * figure is the one the editor expects; the approval page itself asks
+     * live, because that is the number somebody acts on.
+     */
+    protected function cachedSegmentMemberCount(?string $handle): ?int
+    {
+        if ($handle === null) {
+            return null;
+        }
+
+        return Cache::remember(
+            'marketing.series.segment-count.'.$handle,
+            now()->addMinutes(5),
+            fn (): ?int => $this->segmentMemberCount($handle),
+        );
     }
 
     /**
@@ -661,7 +781,7 @@ class CampaignController extends Controller
             'livePreviewUrl' => cp_route('marketing.campaigns.live-preview'),
             'showUrl' => cp_route('marketing.campaigns.show', $handle),
             'lists' => $this->listOptions(),
-            'segments' => $this->segmentOptions(),
+            'segments' => $this->segmentOptionsFor($campaign),
             'layouts' => $this->layoutOptions(),
             'readyMades' => $this->readyMadeOptions(),
             'mailClasses' => $this->mailClassOptions(),
@@ -736,7 +856,7 @@ class CampaignController extends Controller
                 'scheduled_at' => $child->scheduledAt?->toIso8601String(),
                 'status' => $child->status,
                 'status_label' => $this->statusLabel($child->status),
-                'recipients' => $this->segmentMemberCount($child->segmentHandle),
+                'recipients' => $this->cachedSegmentMemberCount($child->segmentHandle),
                 'show_url' => cp_route('marketing.campaigns.show', $child->handle),
             ])->values()->all(),
         ];
@@ -1092,7 +1212,7 @@ class CampaignController extends Controller
         }
 
         try {
-            $rendered = $renderer->render($campaign, $list);
+            $rendered = $renderer->render($campaign, $list, $this->previewReader($list));
         } catch (\Throwable $e) {
             // Halb getippte Antlers ist der Normalzustand einer Kampagne, an
             // der jemand schreibt. Die Meldung geht zurueck, die Seite behaelt
@@ -1121,7 +1241,7 @@ class CampaignController extends Controller
 
         abort_unless($list, 422, __('marketing::campaigns.errors.no_list'));
 
-        $rendered = $renderer->render($campaign, $list);
+        $rendered = $renderer->render($campaign, $list, $this->previewReader($list));
 
         return response($rendered->html)->withHeaders([
             'Content-Type' => 'text/html; charset=utf-8',

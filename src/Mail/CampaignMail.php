@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Mail;
 
 use Goldnead\BrandContext\Sending\SaidRecently;
+use Goldnead\BrandContext\Sending\SenderIdentity;
 use Goldnead\Marketing\Contracts\PostalLineResolver;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Support\DeliveryHeaders;
@@ -75,6 +76,42 @@ class CampaignMail extends Mailable
     }
 
     /**
+     * The sender a campaign names for itself, falling back to the package
+     * and then the application default — what applies when the brand
+     * declares nothing.
+     *
+     * @return array{address: string|null, name: string|null}
+     */
+    public static function campaignSender(Campaign $campaign): array
+    {
+        return [
+            'address' => $campaign->fromEmail ?: config('marketing.from.email') ?: config('mail.from.address'),
+            'name' => $campaign->fromName ?: config('marketing.from.name') ?: config('mail.from.name'),
+        ];
+    }
+
+    /**
+     * Who this campaign will go out as under a given brand identity, without
+     * sending anything — the same order {@see decideSender()} applies once
+     * `BrandMailer` has put the brand's address on the message: the brand's
+     * address wins, otherwise the campaign's own.
+     *
+     * @return array{address: string|null, name: string|null, refusal: string|null}
+     */
+    public static function senderUnder(Campaign $campaign, SenderIdentity $identity): array
+    {
+        if (! $identity->maySend()) {
+            return ['address' => null, 'name' => null, 'refusal' => $identity->refusal];
+        }
+
+        if ($identity->fromAddress !== null) {
+            return ['address' => $identity->fromAddress, 'name' => $identity->fromName, 'refusal' => null];
+        }
+
+        return self::campaignSender($campaign) + ['refusal' => null];
+    }
+
+    /**
      * Who this campaign goes out as — and why the brand outranks the campaign.
      *
      * `BrandMailer` has already put the brand's address on the message by the
@@ -106,14 +143,8 @@ class CampaignMail extends Mailable
     protected function decideSender(): void
     {
         if (empty($this->from)) {
-            $this->from(
-                $this->campaign->fromEmail
-                    ?: config('marketing.from.email')
-                    ?: config('mail.from.address'),
-                $this->campaign->fromName
-                    ?: config('marketing.from.name')
-                    ?: config('mail.from.name'),
-            );
+            $own = self::campaignSender($this->campaign);
+            $this->from($own['address'], $own['name']);
 
             return;
         }

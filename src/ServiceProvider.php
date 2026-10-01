@@ -43,6 +43,7 @@ use Goldnead\Marketing\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Statamic\CP\Navigation\NavItem;
 use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Permission;
 use Statamic\Providers\AddonServiceProvider;
@@ -488,6 +489,26 @@ class ServiceProvider extends AddonServiceProvider
         return $this;
     }
 
+    /**
+     * Keep the dashboard item from claiming every marketing screen.
+     *
+     * Its URL is the parent of all the others, so the pattern Statamic
+     * derives from it (`marketing(/(.*)?|$)`) matched `marketing/campaigns/x`
+     * too, and being the first child it won: a campaign's breadcrumb read
+     * "Marketing / Übersicht" instead of "Marketing / Kampagnen". Statamic 6
+     * has no public setter for the pattern (v3–v5 had `active()`), so the
+     * protected `$active` is set from inside the class scope — the property
+     * `url()` itself fills, and which isActive() reads.
+     */
+    protected function onlyItsOwnUrl(NavItem $item): NavItem
+    {
+        \Closure::bind(function (): void {
+            $this->active = 'marketing$';
+        }, $item, NavItem::class)();
+
+        return $item;
+    }
+
     protected function registerNavigation(): self
     {
         Nav::extend(function ($nav) {
@@ -497,8 +518,10 @@ class ServiceProvider extends AddonServiceProvider
                 ->route('marketing.dashboard')
                 ->can('view marketing')
                 ->children([
-                    $nav->item(__('marketing::nav.dashboard'))
-                        ->route('marketing.dashboard'),
+                    $this->onlyItsOwnUrl(
+                        $nav->item(__('marketing::nav.dashboard'))
+                            ->route('marketing.dashboard')
+                    ),
                     $nav->item(__('marketing::nav.campaigns'))
                         ->route('marketing.campaigns.index'),
                     $nav->item(__('marketing::nav.sequences'))

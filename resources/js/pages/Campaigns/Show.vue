@@ -5,7 +5,7 @@ import {
     Header, Button, Badge, Card, Heading, Subheading, Listing, Panel, Alert, Switch, Field, Text,
     Select, Tabs, TabList, TabTrigger, TabContent,
     Table, TableColumns, TableColumn, TableRows, TableRow, TableCell,
-    CommandPaletteItem, ConfirmationModal,
+    CommandPaletteItem, ConfirmationModal, ToggleGroup, ToggleItem,
 } from '@statamic/cms/ui';
 import BarChart from '../../components/BarChart.vue';
 import { campaignStatusColor } from '../../support/campaignStatus.js';
@@ -73,7 +73,14 @@ const approvalRows = computed(() => {
 
     return [
         { key: 'subject', label: __('marketing::series.subject'), value: a.subject || '—' },
-        { key: 'sender', label: __('marketing::series.sender'), value: sender || '—' },
+        { key: 'preheader', label: __('marketing::series.preheader'), value: a.preheader || '—' },
+        {
+            key: 'sender',
+            label: __('marketing::series.sender'),
+            value: sender || '—',
+            // The brand refuses to send at all: said here, before the button.
+            warning: a.sender_refusal ? __('marketing::series.sender_refused', { reason: a.sender_refusal }) : null,
+        },
         {
             key: 'audience',
             label: __('marketing::series.audience'),
@@ -101,6 +108,33 @@ function approve() {
         onFinish: () => { busy.value = false; },
     });
 }
+
+// The sentence under the heading: what happens without a click, and with one.
+const approvalSubheading = computed(() => {
+    if (! isAwaiting.value) return __('marketing::series.scheduled_subheading');
+
+    return sendsNow.value
+        ? __('marketing::series.approval_note_now')
+        : __('marketing::series.approval_note', { at: formatDate(props.approval?.scheduled_at) });
+});
+
+// Test send: this child, rendered with its own term, to the editor. The
+// same endpoint and permission as the editor's test send.
+const testing = ref(false);
+
+function sendTest() {
+    if (! props.approval?.test_url || ! props.approval?.test_email) return;
+    testing.value = true;
+    router.post(props.approval.test_url, { email: props.approval.test_email }, {
+        preserveScroll: true,
+        onError: (errors) => { formErrors.value = errors || {}; },
+        onSuccess: () => { formErrors.value = {}; },
+        onFinish: () => { testing.value = false; },
+    });
+}
+
+// Device of the preview, the same two choices the editor offers.
+const previewWidth = ref('desktop');
 
 function withdraw() {
     busy.value = true;
@@ -530,6 +564,14 @@ const subline = computed(() => {
                 class="lg:col-span-2"
             >
                 <Card>
+                    <Text
+                        v-if="isAwaiting"
+                        size="sm"
+                        variant="strong"
+                        class="mb-4 block"
+                        data-marketing-approval-note
+                    >{{ approvalSubheading }}</Text>
+
                     <dl class="divide-y divide-gray-200 text-sm dark:divide-gray-700">
                         <div
                             v-for="row in approvalRows"
@@ -541,9 +583,29 @@ const subline = computed(() => {
                             <dd class="col-span-2 min-w-0 break-words text-gray-900 dark:text-gray-100">
                                 {{ row.value }}
                                 <span v-if="row.note" class="block text-xs text-gray-500 dark:text-gray-400">{{ row.note }}</span>
+                                <span v-if="row.warning" class="block text-xs text-red-600 dark:text-red-400">{{ row.warning }}</span>
                             </dd>
                         </div>
                     </dl>
+
+                    <!-- A test of exactly this mail — this term's city, date
+                         and link — to the editor's own inbox. -->
+                    <div
+                        v-if="approval.test_url && approval.test_email"
+                        class="mt-4 flex flex-wrap items-center gap-3 border-t border-content-border pt-4"
+                        data-marketing-approval-test
+                    >
+                        <Button
+                            :text="__('marketing::series.test_send')"
+                            icon="mail"
+                            size="sm"
+                            :loading="testing"
+                            data-marketing-approval-test-send
+                            @click="sendTest"
+                        />
+                        <Text size="xs" variant="subtle">{{ __('marketing::series.test_send_to', { email: approval.test_email }) }}</Text>
+                    </div>
+
                     <p v-if="approval.template" class="mt-4 text-xs text-gray-500 dark:text-gray-400">
                         {{ __('marketing::series.part_of', { name: approval.template.name }) }}
                         <a :href="approval.template.edit_url" class="hover:underline">{{ __('marketing::series.open_template') }} →</a>
@@ -552,17 +614,34 @@ const subline = computed(() => {
             </Panel>
 
             <Panel v-if="approval.preview_url" :heading="__('marketing::series.preview')" class="lg:col-span-3">
+                <template #header-actions>
+                    <ToggleGroup
+                        :model-value="previewWidth"
+                        size="sm"
+                        :aria-label="__('marketing::campaigns.preview_device')"
+                        data-marketing-approval-preview-device
+                        @update:model-value="(value) => { if (value) previewWidth = value; }"
+                    >
+                        <ToggleItem value="desktop" :label="__('marketing::campaigns.preview_desktop')" />
+                        <ToggleItem value="mobile" :label="__('marketing::campaigns.preview_mobile')" />
+                    </ToggleGroup>
+                </template>
                 <Card>
                     <!-- Same sandbox as the editor's preview: HTML a CP user
                          wrote, from a CP route, in an opaque origin with
                          scripts off. The route sends the matching CSP. -->
-                    <iframe
-                        :src="approval.preview_url"
-                        sandbox=""
-                        :title="__('marketing::series.preview')"
-                        class="marketing-email-canvas h-[36rem] w-full rounded border border-content-border"
-                        data-marketing-approval-preview
-                    ></iframe>
+                    <div
+                        class="mx-auto transition-[max-width]"
+                        :class="previewWidth === 'mobile' ? 'max-w-[390px]' : 'max-w-full'"
+                    >
+                        <iframe
+                            :src="approval.preview_url"
+                            sandbox=""
+                            :title="__('marketing::series.preview')"
+                            class="marketing-email-canvas h-[36rem] w-full rounded border border-content-border"
+                            data-marketing-approval-preview
+                        ></iframe>
+                    </div>
                 </Card>
             </Panel>
         </div>

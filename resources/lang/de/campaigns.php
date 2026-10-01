@@ -136,6 +136,7 @@ return [
     'schedule' => 'Planen',
     'sender' => 'Absender',
     'send_at' => 'Versand',
+    'preview_first_name' => 'Alex',
     'statuses' => [
         'draft' => 'Entwurf',
         'scheduled' => 'Geplant',

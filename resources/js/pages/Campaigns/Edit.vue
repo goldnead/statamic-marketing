@@ -528,9 +528,19 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
         <Alert v-if="isSeriesChild && series.template && isEditable" variant="default" class="mb-4" data-marketing-series-child>
             <div>
                 <p>{{ __('marketing::series.part_of', { name: series.template.name }) }}</p>
-                <Link :href="series.template.edit_url" class="font-medium hover:underline">
-                    {{ __('marketing::series.open_template') }} →
-                </Link>
+                <p v-if="campaign.status === 'awaiting_approval'" class="mt-1" data-marketing-edit-awaiting>
+                    {{ __('marketing::series.edit_awaiting') }}
+                </p>
+                <div class="mt-1 flex flex-wrap gap-x-4">
+                    <Link
+                        v-if="campaign.status === 'awaiting_approval'"
+                        :href="showUrl"
+                        class="font-medium hover:underline"
+                    >{{ __('marketing::series.awaiting_link') }} →</Link>
+                    <Link :href="series.template.edit_url" class="font-medium hover:underline">
+                        {{ __('marketing::series.open_template') }} →
+                    </Link>
+                </div>
             </div>
         </Alert>
 
@@ -964,8 +974,13 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                     </Panel>
 
                     <!-- Schedule / send -->
-                    <!-- Not on a template: it never sends itself, its children do. -->
-                    <Panel v-if="updateUrl && canSend && campaign.status !== 'series'" :heading="__('Delivery')">
+                    <!-- Not on a template: it never sends itself, its children
+                         do. Not on a waiting child either: it goes out through
+                         its approval, which has its own page. -->
+                    <Panel
+                        v-if="updateUrl && canSend && campaign.status !== 'series' && campaign.status !== 'awaiting_approval'"
+                        :heading="__('Delivery')"
+                    >
                         <Card>
                             <div class="space-y-4">
                                 <div v-if="campaign.status === 'scheduled'" class="space-y-2">

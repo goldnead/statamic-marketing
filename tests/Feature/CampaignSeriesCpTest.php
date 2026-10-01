@@ -1,14 +1,18 @@
 <?php
 
 use Carbon\CarbonImmutable;
+use Goldnead\BrandContext\Sending\SenderIdentity;
 use Goldnead\Events\Models\Event;
 use Goldnead\Events\Models\Occurrence;
 use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Leadhub\Models\PostalCode;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
+use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Mail\CampaignMail;
+use Goldnead\Marketing\Series\SeriesSync;
 use Illuminate\Support\Facades\Mail;
 use Statamic\Facades\User;
 
@@ -308,6 +312,136 @@ it('rendert die Vorschau einer gerade eingeschalteten Vorlage mit dem Beispielte
         'list_handle' => 'newsletter',
         'series' => true,
     ])->json('data.html'))->toContain('Wir spielen in Ulm.');
+});
+
+// --- Runde 2 -------------------------------------------------------------
+
+it('zeigt in der Liste den Betreff eines Kindes mit seiner Stadt und den Umkreis als Zielgruppe', function (): void {
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+    Contact::create(['email' => 'nah@example.com', 'status' => 'qualified', 'postal_code' => '89075', 'country' => 'DE']);
+
+    $rows = collect(cpProps('marketing.campaigns.index')['campaigns'])->keyBy('handle');
+
+    expect($rows['konzertmail-'.$occurrence->uuid]['subject'])->toBe('Konzert in Ulm')
+        ->and($rows['konzertmail-'.$occurrence->uuid]['audience'])->toBe(1)
+        ->and($rows['konzertmail']['subject'])->toBe('Konzert in {{ event:city }}')
+        ->and($rows['konzertmail']['audience'])->toBeNull();
+});
+
+it('lässt eine wartende Kampagne bearbeiten, ohne sie freizugeben', function (): void {
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+    $handle = 'konzertmail-'.$occurrence->uuid;
+    $segmentBefore = app(CampaignRepository::class)->find($handle)->segmentHandle;
+
+    Contact::create(['email' => 'nah@example.com', 'status' => 'qualified', 'postal_code' => '89075', 'country' => 'DE']);
+    $props = cpProps('marketing.campaigns.edit', $handle);
+
+    // Live, not LeadHub's materialised 0 for a segment the sync just wrote.
+    expect($props['editable'])->toBeTrue()
+        ->and(collect($props['segments'])->firstWhere('value', $segmentBefore)['members_count'])->toBe(1);
+
+    $this->patch(cp_route('marketing.campaigns.update', $handle), cpSeriesPatch([
+        'subject' => 'Nur Ulm: {{ event:city }} wird laut',
+        'preheader' => 'Von Hand',
+        'content' => '<p>Handgeschrieben für Ulm.</p>',
+        'list' => 'anderswo',
+        'segment' => null,
+    ]))->assertSessionHasNoErrors();
+
+    $child = app(CampaignRepository::class)->find($handle);
+
+    expect($child->status)->toBe(Campaign::STATUS_AWAITING_APPROVAL)
+        ->and($child->subject)->toBe('Nur Ulm: {{ event:city }} wird laut')
+        ->and($child->listHandle)->toBe('newsletter')
+        ->and($child->segmentHandle)->toBe($segmentBefore);
+});
+
+it('lässt die Handarbeit an einem Kind stehen, wenn der Abgleich danach läuft', function (): void {
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+    $handle = 'konzertmail-'.$occurrence->uuid;
+
+    $this->patch(cp_route('marketing.campaigns.update', $handle), cpSeriesPatch([
+        'subject' => 'Von Hand',
+        'preheader' => 'Auch von Hand',
+        'content' => '<p>Handgeschrieben.</p>',
+    ]))->assertSessionHasNoErrors();
+
+    // Der Termin zieht um, die Vorlage wird gespeichert, der Nachtlauf läuft.
+    $occurrence->update(['venue_name' => 'Ulmer Zelt', 'starts_at' => CarbonImmutable::now()->addDays(31)->setTime(20, 0)->utc()]);
+    $this->patch(cp_route('marketing.campaigns.update', 'konzertmail'), cpSeriesPatch(['subject' => 'Neu aus der Vorlage']));
+    app(SeriesSync::class)->syncAll();
+
+    $child = app(CampaignRepository::class)->find($handle);
+
+    expect($child->subject)->toBe('Von Hand')
+        ->and($child->preheader)->toBe('Auch von Hand')
+        ->and($child->content)->toContain('Handgeschrieben.')
+        ->and($child->meta['event']['venue'])->toBe('Ulmer Zelt')
+        ->and($child->status)->toBe(Campaign::STATUS_AWAITING_APPROVAL);
+});
+
+it('zeigt auf der Freigabe den Preheader und den Absender, den die Marke wirklich nimmt', function (): void {
+    app()->instance(SenderIdentityResolver::class, new class implements SenderIdentityResolver
+    {
+        public function resolve(?int $brandId): SenderIdentity
+        {
+            return SenderIdentity::of(null, 'tour@halbmond.test', 'Kollektiv Halbmond');
+        }
+    });
+
+    cpSeriesCampaign();
+    $template = app(CampaignRepository::class)->find('konzertmail');
+    $template->preheader = 'Im {{ event:venue }}';
+    $template->fromEmail = 'ignoriert@example.com';
+    app(CampaignRepository::class)->save($template);
+
+    $occurrence = cpSeriesOccurrence();
+    $approval = cpProps('marketing.campaigns.show', 'konzertmail-'.$occurrence->uuid)['approval'];
+
+    expect($approval['preheader'])->toBe('Im Roxy')
+        ->and($approval['from_email'])->toBe('tour@halbmond.test')
+        ->and($approval['from_name'])->toBe('Kollektiv Halbmond')
+        ->and($approval['sender_refusal'])->toBeNull()
+        ->and($approval['test_url'])->toBe(cp_route('marketing.campaigns.test', 'konzertmail-'.$occurrence->uuid))
+        ->and($approval['test_email'])->toBe('serie@example.com');
+});
+
+it('nimmt ohne Marken-Absender den der Kampagne, wie der Versand', function (): void {
+    cpSeriesCampaign();
+    $template = app(CampaignRepository::class)->find('konzertmail');
+    $template->fromEmail = 'band@example.com';
+    $template->fromName = 'Die Band';
+    app(CampaignRepository::class)->save($template);
+
+    $occurrence = cpSeriesOccurrence();
+    $approval = cpProps('marketing.campaigns.show', 'konzertmail-'.$occurrence->uuid)['approval'];
+
+    expect($approval['from_email'])->toBe('band@example.com')
+        ->and($approval['from_name'])->toBe('Die Band');
+});
+
+it('schickt die Testmail eines Kindes mit seinem eigenen Termin', function (): void {
+    cpSeriesCampaign();
+    $occurrence = cpSeriesOccurrence();
+
+    $this->post(cp_route('marketing.campaigns.test', 'konzertmail-'.$occurrence->uuid), ['email' => 'serie@example.com'])
+        ->assertSessionHasNoErrors();
+
+    Mail::assertSent(CampaignMail::class, fn (CampaignMail $mail): bool => str_contains($mail->rendered->subject, 'Konzert in Ulm'));
+});
+
+it('begrüßt in der Vorschau eine Beispielperson mit Namen', function (): void {
+    cpSeriesCampaign(Campaign::STATUS_DRAFT);
+
+    expect($this->postJson(cp_route('marketing.campaigns.live-preview'), [
+        'handle' => 'konzertmail',
+        'name' => 'Konzert',
+        'content' => '<p>Hallo {{ first_name }},</p>',
+        'list_handle' => 'newsletter',
+    ])->json('data.html'))->toContain('Hallo Alex,');
 });
 
 it('rendert die Vorschau eines Kindes mit seiner eigenen Stadt', function (): void {

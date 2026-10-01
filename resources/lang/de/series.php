@@ -55,6 +55,15 @@ return [
     'send_at' => 'Versand',
     'send_now' => 'Sofort nach Freigabe',
     'preview' => 'Vorschau',
+    'preheader' => 'Preheader',
+    'approval_note' => 'Ohne Freigabe geht diese Mail nicht raus. Freigegeben geht sie am :at raus.',
+    'approval_note_now' => 'Ohne Freigabe geht diese Mail nicht raus. Freigegeben geht sie sofort raus.',
+    'test_send' => 'Testmail an mich senden',
+    'test_send_to' => 'An :email, mit den Angaben dieses Termins.',
+    'review' => 'Prüfen',
+    'audience_hint' => 'Kontakte im Umkreis',
+    'edit_awaiting' => 'Diese Kampagne wartet auf Freigabe. Text, Betreff und Preheader kannst du hier noch ändern; Liste und Segment gehören zur Serie. Der nächtliche Abgleich lässt deine Änderungen stehen.',
+    'sender_refused' => 'Kein Absender: :reason',
 
     'errors' => [
         'only_drafts' => 'Nur ein Entwurf kann zur Vorlage werden.',
