@@ -6,10 +6,13 @@ use Carbon\CarbonImmutable;
 use Goldnead\Events\Facades\Events as EventsFacade;
 use Goldnead\Events\Models\Occurrence;
 use Goldnead\Leadhub\Contracts\Repositories\SegmentRepository;
+use Goldnead\Leadhub\Models\PostalCode;
+use Goldnead\Leadhub\Models\Segment;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -44,12 +47,39 @@ class SeriesSync
         'send_time' => '10:00',
         'event_ids' => [],
         'country' => 'DE',
+        // What the send time hangs on: the concert (N days before it) or the
+        // start of the presale (N days after it).
+        'anchor' => self::ANCHOR_CONCERT,
+        'days_after_presale' => 0,
+        // "Weitere Konzerte": later terms near this one, shown in the mail.
+        // Display only — the audience stays the circle around the main term.
+        'more_enabled' => true,
+        'more_radius_km' => 100,
+        'more_limit' => 3,
     ];
 
-    /** @var array{created: int, updated: int, removed: int, skipped_no_postal_code: int} */
+    public const ANCHOR_CONCERT = 'concert';
+
+    public const ANCHOR_PRESALE = 'presale';
+
+    /** @var array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int} */
     public const EMPTY_RESULT = [
-        'created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0,
+        'created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0,
     ];
+
+    /** The German weekday names `{{ event:weekday }}` renders, Monday first. */
+    protected const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+    /**
+     * The upcoming, not cancelled terms of one sync run, loaded once and
+     * shared by every "more events" lookup in it. Null outside a run.
+     *
+     * @var Collection<int, Occurrence>|null
+     */
+    protected ?Collection $upcoming = null;
+
+    /** Does the installed LeadHub know `managed_by`? Asked once per instance. */
+    protected ?bool $managedBySupported = null;
 
     /**
      * Memoised {@see self::available()}. See SequenceSync for why the check is
@@ -93,13 +123,15 @@ class SeriesSync
      * A cancelled term takes its unsent children and their segments with it; a
      * scheduled one is brought in line for every template that wants its event.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
      */
     public function syncOccurrence(Occurrence $occurrence): array
     {
         if (! static::available()) {
             return self::EMPTY_RESULT;
         }
+
+        $this->upcoming = null;
 
         if ($occurrence->isCancelled()) {
             $result = self::EMPTY_RESULT;
@@ -121,7 +153,7 @@ class SeriesSync
      * Every template against every term, plus the cleanup: children whose
      * template or term is gone.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
      */
     public function syncAll(): array
     {
@@ -146,7 +178,7 @@ class SeriesSync
      * One template against every upcoming term. Public because saving a
      * template in the CP wants exactly this and nothing else.
      *
-     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int}
+     * @return array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}
      */
     public function syncTemplate(Campaign $template): array
     {
@@ -155,6 +187,7 @@ class SeriesSync
         }
 
         $result = self::EMPTY_RESULT;
+        $this->upcoming = null;
 
         // Include cancelled dates: they are exactly the ones whose children
         // have to go. Deleted rows are the cleanup's half of the job.
@@ -196,13 +229,24 @@ class SeriesSync
             return 'skipped_no_postal_code';
         }
 
+        $settings = $this->settings($template);
+
+        // A presale series needs a presale date to hang the send on. A term
+        // without one is counted like one without a postal code; a waiting
+        // child whose presale date was taken away goes, because its send time
+        // no longer has a basis.
+        if ($settings['anchor'] === self::ANCHOR_PRESALE && $this->presaleStart($occurrence) === null) {
+            $this->removeChild($this->childHandle($template, $occurrence));
+
+            return 'skipped_no_presale';
+        }
+
         $child = $this->campaigns->find($this->childHandle($template, $occurrence));
 
         if ($child && in_array($child->status, [Campaign::STATUS_SENDING, Campaign::STATUS_SENT], true)) {
             return 'untouched';
         }
 
-        $settings = $this->settings($template);
         $segmentHandle = $this->ensureSegment($template, $occurrence, $settings);
 
         if (! $child) {
@@ -222,7 +266,7 @@ class SeriesSync
             return 'untouched';
         }
 
-        return $this->pullChildEven($child, $occurrence, $settings, $segmentHandle) ? 'updated' : 'untouched';
+        return $this->pullChildEven($template, $child, $occurrence, $settings, $segmentHandle) ? 'updated' : 'untouched';
     }
 
     /**
@@ -254,7 +298,7 @@ class SeriesSync
             abShare: $template->abShare,
             series: $template->handle,
             sourceKey: 'occurrence:'.$occurrence->uuid,
-            meta: ['event' => $this->eventMeta($occurrence, $settings)],
+            meta: $this->childMeta($template, $occurrence, $settings),
         );
     }
 
@@ -266,10 +310,10 @@ class SeriesSync
      * Returns whether anything moved, so a sync that finds everything already
      * in place counts nothing and writes nothing (not even an updated_at).
      */
-    protected function pullChildEven(Campaign $child, Occurrence $occurrence, array $settings, string $segmentHandle): bool
+    protected function pullChildEven(Campaign $template, Campaign $child, Occurrence $occurrence, array $settings, string $segmentHandle): bool
     {
         $sendAt = $this->sendAt($occurrence, $settings);
-        $eventMeta = $this->eventMeta($occurrence, $settings);
+        $meta = $this->childMeta($template, $occurrence, $settings);
 
         // An approved child whose calculated time has passed (approve() sent
         // it "now") keeps what the approval set; only a waiting child follows
@@ -280,13 +324,14 @@ class SeriesSync
             || (($child->scheduledAt === null) === ($sendAt === null)
                 && ($sendAt === null || $child->scheduledAt->equalTo($sendAt)));
 
-        if (($child->meta['event'] ?? null) === $eventMeta
+        if (($child->meta['event'] ?? null) === $meta['event']
+            && array_values((array) ($child->meta['more_events'] ?? [])) === $meta['more_events']
             && $child->segmentHandle === $segmentHandle
             && $scheduledEven) {
             return false;
         }
 
-        $child->meta = ['event' => $eventMeta];
+        $child->meta = $meta;
         $child->segmentHandle = $segmentHandle;
 
         if (! $keepApproval) {
@@ -305,15 +350,141 @@ class SeriesSync
      */
     protected function sendAt(Occurrence $occurrence, array $settings): ?CarbonImmutable
     {
-        $send = $occurrence->localStart()
-            ->subDays((int) $settings['days_before'])
-            ->setTimeFromTimeString((string) $settings['send_time']);
+        if ($settings['anchor'] === self::ANCHOR_PRESALE) {
+            $presale = $this->presaleStart($occurrence);
+
+            if ($presale === null) {
+                return null;
+            }
+
+            // The presale day (+ N days) at the send time — but never before
+            // the box office opens: "Der Vorverkauf hat gestartet" sent at
+            // ten for a presale that opens at noon would be a lie for two
+            // hours.
+            $local = $presale->setTimezone($occurrence->localStart()->getTimezone());
+            $send = $local->addDays((int) $settings['days_after_presale'])
+                ->setTimeFromTimeString((string) $settings['send_time']);
+
+            if ($send->lessThan($local)) {
+                $send = $local;
+            }
+        } else {
+            $send = $occurrence->localStart()
+                ->subDays((int) $settings['days_before'])
+                ->setTimeFromTimeString((string) $settings['send_time']);
+        }
 
         if ($send->lessThanOrEqualTo(CarbonImmutable::now())) {
             return null;
         }
 
         return $send->utc();
+    }
+
+    /**
+     * The term's presale start, or null — also on a statamic-events without
+     * the column (before 2.7), where the attribute simply is not there.
+     */
+    protected function presaleStart(Occurrence $occurrence): ?CarbonImmutable
+    {
+        $value = $occurrence->getAttribute('presale_starts_at');
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return $value instanceof \DateTimeInterface
+            ? CarbonImmutable::instance($value)
+            : CarbonImmutable::parse((string) $value, 'UTC');
+    }
+
+    /**
+     * `meta` of a child: its own term, and the later terms nearby.
+     *
+     * @return array{event: array<string, string>, more_events: list<array<string, string>>}
+     */
+    protected function childMeta(Campaign $template, Occurrence $occurrence, array $settings): array
+    {
+        return [
+            'event' => $this->eventMeta($occurrence, $settings),
+            'more_events' => $this->moreEvents($template, $occurrence, $settings),
+        ];
+    }
+
+    /**
+     * "Weitere Konzerte in deiner Nähe": later, not cancelled, publicly
+     * readable terms the template wants, whose venue is at most
+     * `more_radius_km` from this one, soonest first, at most `more_limit`.
+     *
+     * Display only — who receives the mail is still the circle around the
+     * main term. The distance is LeadHub's own (`PostalCode::distanceKm`)
+     * between the venues' coordinates, from the term where it carries them
+     * and from the postal code register where it does not. A venue that has
+     * neither cannot be placed and is left out rather than guessed.
+     *
+     * @return list<array<string, string>>
+     */
+    protected function moreEvents(Campaign $template, Occurrence $occurrence, array $settings): array
+    {
+        if (! $settings['more_enabled'] || $settings['more_limit'] < 1) {
+            return [];
+        }
+
+        $origin = $this->coordinates($occurrence, $settings);
+
+        if ($origin === null) {
+            return [];
+        }
+
+        $this->upcoming ??= EventsFacade::occurrences(['upcoming' => true, 'include_cancelled' => false]);
+
+        return $this->upcoming
+            ->filter(function (Occurrence $other) use ($occurrence, $template, $settings, $origin): bool {
+                if ($other->uuid === $occurrence->uuid
+                    || $other->isCancelled()
+                    || ! $other->starts_at->greaterThan($occurrence->starts_at)
+                    || ! $other->event?->isPubliclyReadable()
+                    || ! $this->wantsEvent($template, $other)) {
+                    return false;
+                }
+
+                $point = $this->coordinates($other, $settings);
+
+                return $point !== null
+                    && PostalCode::distanceKm($origin[0], $origin[1], $point[0], $point[1]) <= $settings['more_radius_km'];
+            })
+            ->sortBy(fn (Occurrence $other): int => $other->starts_at->getTimestamp())
+            ->take($settings['more_limit'])
+            ->map(fn (Occurrence $other): array => $this->eventMeta($other, $settings))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Latitude and longitude of a venue: the term's own when it has them,
+     * the postal code's centre otherwise.
+     *
+     * @return array{0: float, 1: float}|null
+     */
+    protected function coordinates(Occurrence $occurrence, array $settings): ?array
+    {
+        $lat = $occurrence->getAttribute('venue_latitude');
+        $lng = $occurrence->getAttribute('venue_longitude');
+
+        if (is_numeric($lat) && is_numeric($lng)) {
+            return [(float) $lat, (float) $lng];
+        }
+
+        if (blank($occurrence->venue_postal_code)) {
+            return null;
+        }
+
+        $code = PostalCode::lookup(
+            (string) $occurrence->venue_postal_code,
+            (string) ($occurrence->venue_country ?: $settings['country']),
+        );
+
+        return $code ? [(float) $code->getAttribute('latitude'), (float) $code->getAttribute('longitude')] : null;
     }
 
     /**
@@ -326,21 +497,31 @@ class SeriesSync
     protected function eventMeta(Occurrence $occurrence, array $settings): array
     {
         $local = $occurrence->localStart();
+        $presale = $this->presaleStart($occurrence)?->setTimezone($local->getTimezone());
 
         return [
             'title' => (string) $occurrence->event?->title,
             'city' => (string) $occurrence->venue_city,
             'venue' => (string) $occurrence->venue_name,
+            'street' => (string) $occurrence->getAttribute('venue_address'),
             'postal_code' => (string) $occurrence->venue_postal_code,
             'country' => (string) ($occurrence->venue_country ?: $settings['country']),
             'starts_at' => $local->toIso8601String(),
             'date' => $local->format('d.m.Y'),
+            // As the ANDERS mails write it: "Samstag, den 17.10.26 um 20 Uhr".
+            // German on purpose and not through the translator: this is what
+            // the mail says, whatever language the Control Panel speaks.
+            'weekday' => self::WEEKDAYS[(int) $local->format('N') - 1],
+            'date_short' => $local->format('d.m.y'),
             'time' => $local->format('H:i'),
+            'time_label' => $local->format('i') === '00' ? $local->format('G').' Uhr' : $local->format('G:i').' Uhr',
             'tickets_url' => (string) $occurrence->tickets_url,
             // The link of the term. statamic-events has no public detail URL,
             // so this is the online URL where there is one and empty where
             // there is none — a made-up route would be worse than a blank.
             'url' => (string) $occurrence->online_url,
+            'presale_starts_at' => $presale?->toIso8601String() ?? '',
+            'presale_date' => $presale?->format('d.m.Y') ?? '',
         ];
     }
 
@@ -363,18 +544,22 @@ class SeriesSync
                 'country' => (string) ($occurrence->venue_country ?: $settings['country']),
             ]],
         ];
+        // A concert series and a presale series around the same date are two
+        // segments; the name says which one a LeadHub user is looking at.
         $name = sprintf(
-            'Konzert: %s %s (%d km)',
+            '%s: %s %s (%d km)',
+            $settings['anchor'] === self::ANCHOR_PRESALE ? 'Vorverkauf' : 'Konzert',
             $occurrence->venue_city,
             $occurrence->venue_postal_code,
             (int) $settings['radius_km'],
         );
 
         $existing = $this->segments->findByHandle($handle);
+        $managedBy = $this->managedBy($template);
 
         if ($existing === null) {
             try {
-                $this->segments->create(['name' => $name, 'handle' => $handle, 'rules' => $rules]);
+                $this->segments->create(['name' => $name, 'handle' => $handle, 'rules' => $rules] + $managedBy);
 
                 return $handle;
             } catch (Throwable $e) {
@@ -393,11 +578,46 @@ class SeriesSync
         // still matches the old circle is the wrong circle. Read through
         // getAttribute: the sibling's model declares the cast, not the
         // property, and the shape lives here rather than in a baseline entry.
-        if ((array) $existing->getAttribute('rules') != $rules) {
-            $this->segments->update($existing, ['name' => $name, 'rules' => $rules]);
+        $managedEven = $managedBy === []
+            || $existing->getAttribute('managed_by') == $managedBy['managed_by'];
+
+        if ((array) $existing->getAttribute('rules') != $rules
+            || (string) $existing->getAttribute('name') !== $name
+            || ! $managedEven) {
+            $this->segments->update($existing, ['name' => $name, 'rules' => $rules] + $managedBy);
         }
 
         return $handle;
+    }
+
+    /**
+     * The `managed_by` mark LeadHub (2.15+) shows on a series segment and
+     * locks its rule with — or nothing, on a LeadHub that does not know the
+     * field, so the create/update carries no key its table lacks. A missing
+     * mark costs a badge; a failed sync would cost the mail.
+     *
+     * @return array{managed_by?: array{source: string, label: string, url: string|null}}
+     */
+    protected function managedBy(Campaign $template): array
+    {
+        // Answered by the installed LeadHub, not by the one PHPStan reads:
+        // against 2.15 this is always true, against 2.14 always false.
+        // @phpstan-ignore function.alreadyNarrowedType
+        $this->managedBySupported ??= method_exists(Segment::class, 'managedBy')
+            && (config('leadhub.storage.driver') !== 'eloquent'
+                || Schema::hasColumn('leadhub_segments', 'managed_by'));
+
+        if (! $this->managedBySupported) {
+            return [];
+        }
+
+        return ['managed_by' => [
+            'source' => 'statamic-marketing',
+            'label' => 'Serie „'.$template->name.'“',
+            'url' => Route::has('statamic.cp.marketing.campaigns.show')
+                ? cp_route('marketing.campaigns.show', $template->handle)
+                : null,
+        ]];
     }
 
     /**
@@ -407,7 +627,7 @@ class SeriesSync
      *
      * @param  Collection<int, Campaign>  $templates
      * @param  Collection<int, Campaign>  $all
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int}  $result
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $result
      */
     protected function cleanUpOrphans(Collection $templates, Collection $all, array &$result): void
     {
@@ -530,7 +750,7 @@ class SeriesSync
      * The template's series settings, normalised against the defaults: a key
      * the editor never filled answers with its Vorgabe, not with null.
      *
-     * @return array{radius_km: int, days_before: int, send_time: string, event_ids: list<string>, country: string}
+     * @return array{radius_km: int, days_before: int, send_time: string, event_ids: list<string>, country: string, anchor: string, days_after_presale: int, more_enabled: bool, more_radius_km: int, more_limit: int}
      */
     protected function settings(Campaign $template): array
     {
@@ -542,6 +762,11 @@ class SeriesSync
             'send_time' => (string) ($stored['send_time'] ?? self::DEFAULT_SETTINGS['send_time']),
             'event_ids' => array_values((array) ($stored['event_ids'] ?? [])),
             'country' => (string) ($stored['country'] ?? self::DEFAULT_SETTINGS['country']),
+            'anchor' => ($stored['anchor'] ?? null) === self::ANCHOR_PRESALE ? self::ANCHOR_PRESALE : self::ANCHOR_CONCERT,
+            'days_after_presale' => max(0, (int) ($stored['days_after_presale'] ?? self::DEFAULT_SETTINGS['days_after_presale'])),
+            'more_enabled' => (bool) ($stored['more_enabled'] ?? self::DEFAULT_SETTINGS['more_enabled']),
+            'more_radius_km' => max(1, (int) ($stored['more_radius_km'] ?? self::DEFAULT_SETTINGS['more_radius_km'])),
+            'more_limit' => max(0, (int) ($stored['more_limit'] ?? self::DEFAULT_SETTINGS['more_limit'])),
         ];
     }
 
@@ -582,7 +807,7 @@ class SeriesSync
      * The template's settings as the sync reads them — what the CP form
      * shows, so the screen and the sync cannot disagree about a default.
      *
-     * @return array{radius_km: int, days_before: int, send_time: string, event_ids: list<string>, country: string}
+     * @return array{radius_km: int, days_before: int, send_time: string, event_ids: list<string>, country: string, anchor: string, days_after_presale: int, more_enabled: bool, more_radius_km: int, more_limit: int}
      */
     public function settingsFor(Campaign $template): array
     {
@@ -621,6 +846,32 @@ class SeriesSync
                 && $this->wantsEvent($template, $occurrence)
                 && blank($occurrence->venue_postal_code))
             ->count();
+    }
+
+    /**
+     * How many upcoming terms a presale template would want but cannot time,
+     * because they carry no presale date (or the installed statamic-events
+     * has no such field yet). Zero for a concert-anchored template.
+     */
+    public function missingPresale(Campaign $template): int
+    {
+        if (! static::available() || ! $template->isSeries()
+            || $this->settings($template)['anchor'] !== self::ANCHOR_PRESALE) {
+            return 0;
+        }
+
+        return EventsFacade::occurrences(['upcoming' => true, 'include_cancelled' => false])
+            ->filter(fn (Occurrence $occurrence): bool => (bool) $occurrence->event?->isPubliclyReadable()
+                && $this->wantsEvent($template, $occurrence)
+                && ! blank($occurrence->venue_postal_code)
+                && $this->presaleStart($occurrence) === null)
+            ->count();
+    }
+
+    /** Does the installed statamic-events carry a presale date at all? */
+    public static function presaleSupported(): bool
+    {
+        return static::available() && Schema::hasColumn('event_occurrences', 'presale_starts_at');
     }
 
     /**
@@ -685,8 +936,8 @@ class SeriesSync
     }
 
     /**
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int}  $result
-     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int}  $partial
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $result
+     * @param  array{created: int, updated: int, removed: int, skipped_no_postal_code: int, skipped_no_presale: int}  $partial
      */
     protected function merge(array &$result, array $partial): void
     {

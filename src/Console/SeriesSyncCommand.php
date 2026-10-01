@@ -37,6 +37,7 @@ class SeriesSyncCommand extends Command
                 'updated' => $result['updated'],
                 'removed' => $result['removed'],
                 'skipped' => $result['skipped_no_postal_code'],
+                'presale' => $result['skipped_no_presale'],
             ]));
 
             return self::SUCCESS;

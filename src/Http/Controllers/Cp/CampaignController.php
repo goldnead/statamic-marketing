@@ -3,6 +3,7 @@
 namespace Goldnead\Marketing\Http\Controllers\Cp;
 
 use Carbon\CarbonImmutable;
+use Goldnead\Leadhub\Contracts\Repositories\SegmentRepository;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\MailClass;
@@ -354,6 +355,7 @@ class CampaignController extends Controller
             'sender_refusal' => $sender['refusal'],
             'list' => $list?->name,
             'segment' => $segment['label'] ?? $campaign->segmentHandle,
+            'segment_url' => $this->segmentUrl($campaign->segmentHandle),
             'recipients' => $this->segmentMemberCount($campaign->segmentHandle),
             // The circle intersected with the list's subscribers: who it
             // goes to, as opposed to who lives nearby.
@@ -474,6 +476,26 @@ class CampaignController extends Controller
         return array_map(fn (array $option): array => $option['value'] === $campaign->segmentHandle && $live !== null
             ? ['members_count' => $live] + $option
             : $option, $options);
+    }
+
+    /**
+     * Where a LeadHub segment can be looked at, or null — no handle, no such
+     * segment, or a LeadHub without the route. The circle a series child
+     * goes to is a LeadHub segment; this is the way from the campaign to it.
+     */
+    protected function segmentUrl(?string $handle): ?string
+    {
+        if ($handle === null || ! Route::has('statamic.cp.leadhub.segments.edit')) {
+            return null;
+        }
+
+        try {
+            $segment = app(SegmentRepository::class)->findByHandle($handle);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $segment ? cp_route('leadhub.segments.edit', $segment->getAttribute('uuid') ?? $segment->getKey()) : null;
     }
 
     /**
@@ -900,6 +922,10 @@ class CampaignController extends Controller
             'settings' => $sync->settingsFor($campaign),
             'events' => $available ? $sync->eventOptions() : [],
             'skipped_no_postal_code' => $sync->missingPostalCodes($campaign),
+            'skipped_no_presale' => $sync->missingPresale($campaign),
+            // statamic-events 2.7+ carries the presale date; before that a
+            // presale series has nothing to hang on, and the editor says so.
+            'presale_supported' => SeriesSync::presaleSupported(),
             'columns' => collect([
                 Column::make('city')->label(__('marketing::series.city')),
                 Column::make('term')->label(__('marketing::series.term')),
@@ -920,6 +946,7 @@ class CampaignController extends Controller
                 'status' => $child->status,
                 'status_label' => $this->statusLabel($child->status),
                 'recipients' => $this->cachedSegmentMemberCount($child->segmentHandle),
+                'segment_url' => $this->segmentUrl($child->segmentHandle),
                 'show_url' => cp_route('marketing.campaigns.show', $child->handle),
             ])->values()->all(),
         ];
@@ -976,6 +1003,7 @@ class CampaignController extends Controller
                 'updated' => $result['updated'],
                 'removed' => $result['removed'],
                 'skipped' => $result['skipped_no_postal_code'],
+                'presale' => $result['skipped_no_presale'],
             ]));
         }
 
@@ -1004,6 +1032,11 @@ class CampaignController extends Controller
             'series.event_ids' => ['nullable', 'array'],
             'series.event_ids.*' => ['string'],
             'series.country' => ['nullable', 'string', 'size:2', 'alpha'],
+            'series.anchor' => ['nullable', Rule::in([SeriesSync::ANCHOR_CONCERT, SeriesSync::ANCHOR_PRESALE])],
+            'series.days_after_presale' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'series.more_enabled' => ['nullable', 'boolean'],
+            'series.more_radius_km' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'series.more_limit' => ['nullable', 'integer', 'min:0', 'max:10'],
         ]);
 
         $enabled = (bool) $data['series_enabled'];
@@ -1056,6 +1089,19 @@ class CampaignController extends Controller
             'send_time' => (string) ($settings['send_time'] ?? SeriesSync::DEFAULT_SETTINGS['send_time']),
             'event_ids' => array_values(array_map('strval', (array) ($settings['event_ids'] ?? []))),
             'country' => strtoupper((string) ($settings['country'] ?? SeriesSync::DEFAULT_SETTINGS['country'])),
+            'anchor' => (string) ($settings['anchor'] ?? $stored['anchor'] ?? SeriesSync::DEFAULT_SETTINGS['anchor']),
+            'days_after_presale' => isset($settings['days_after_presale'])
+                ? (int) $settings['days_after_presale']
+                : (int) ($stored['days_after_presale'] ?? SeriesSync::DEFAULT_SETTINGS['days_after_presale']),
+            'more_enabled' => array_key_exists('more_enabled', $settings) && $settings['more_enabled'] !== null
+                ? (bool) $settings['more_enabled']
+                : (bool) ($stored['more_enabled'] ?? SeriesSync::DEFAULT_SETTINGS['more_enabled']),
+            'more_radius_km' => isset($settings['more_radius_km'])
+                ? (int) $settings['more_radius_km']
+                : (int) ($stored['more_radius_km'] ?? SeriesSync::DEFAULT_SETTINGS['more_radius_km']),
+            'more_limit' => isset($settings['more_limit'])
+                ? (int) $settings['more_limit']
+                : (int) ($stored['more_limit'] ?? SeriesSync::DEFAULT_SETTINGS['more_limit']),
             'preview_event' => $stored['preview_event'] ?? null,
         ], fn ($value): bool => $value !== null);
 
@@ -1281,7 +1327,10 @@ class CampaignController extends Controller
             $child = $previewChild !== '' ? $this->campaigns->find($previewChild) : null;
 
             if ($child && $child->series === $campaign->handle && ! empty($child->meta['event'])) {
-                $campaign->meta = ['event' => $child->meta['event']] + $campaign->meta;
+                $campaign->meta = [
+                    'event' => $child->meta['event'],
+                    'more_events' => $child->meta['more_events'] ?? [],
+                ] + $campaign->meta;
             }
         }
 
@@ -1320,7 +1369,10 @@ class CampaignController extends Controller
             $first = app(SeriesSync::class)->childrenOf($campaign)->first();
 
             if ($first && ! empty($first->meta['event'])) {
-                $campaign->meta = ['event' => $first->meta['event']] + $campaign->meta;
+                $campaign->meta = [
+                    'event' => $first->meta['event'],
+                    'more_events' => $first->meta['more_events'] ?? [],
+                ] + $campaign->meta;
             }
         }
 

@@ -2,7 +2,7 @@
 
 return [
     'not_installed' => 'The events addon is not installed.',
-    'summary' => ':created campaign(s) created, :updated updated, :removed removed, :skipped skipped without a postal code.',
+    'summary' => ':created campaign(s) created, :updated updated, :removed removed, :skipped skipped without a postal code and :presale without a presale date.',
 
     // Editor: "Series for terms"
     'heading' => 'Series for terms',
@@ -65,6 +65,23 @@ return [
     'edit_awaiting' => 'This campaign is awaiting approval. You can still change its text, subject and preheader here; list and segment belong to the series. The nightly sync leaves your changes in place.',
     'sender_refused' => 'No sender: :reason',
     'preview_for' => 'Preview for',
+    'open_segment' => 'Open segment in LeadHub',
+    'presale_since' => 'Presale from :date',
+    'anchor' => 'Send time follows',
+    'anchor_concert' => 'Concert',
+    'anchor_presale' => 'Presale start',
+    'anchor_help' => 'Concert: this many days before the date. Presale start: on the day the presale opens (or a few days after), never before it opens.',
+    'anchor_presale_unsupported' => 'The installed events addon has no presale date yet (statamic-events 2.7 and later). Until then every date is skipped.',
+    'days_after_presale' => 'Days after presale start',
+    'days_after_presale_help' => '0 means on the day the presale starts.',
+    'more_enabled' => 'Show more concerts',
+    'more_enabled_help' => 'Later dates near the concert, as a list in the mail. The mail still only goes to the radius around the concert.',
+    'more_radius_km' => 'Radius for more concerts (km)',
+    'more_limit' => 'At most this many',
+    'placeholders_more' => 'More concerts as a list:',
+    'blocks_hint' => 'Without placeholders: build the layout from blocks; "Event box" and "More dates" fill themselves per date.',
+    'skipped_presale_one' => '1 date without a presale date is skipped.',
+    'skipped_presale_many' => ':count dates without a presale date are skipped.',
     'preview_sample' => 'Sample term',
     'sender_readonly' => 'This is who the campaign goes out as. The sender comes from the brand; change it in the template or on the brand.',
     'reply_to' => 'Reply-to',

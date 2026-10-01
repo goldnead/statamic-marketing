@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Added: VVK-Serie, weitere Termine, Terminkasten-Bausteine
+
+- **VVK-Serie.** Neue Serien-Einstellung `anchor`: `concert` (wie bisher, `days_before`) oder
+  `presale` mit `days_after_presale` (Vorgabe 0): Versand am Tag des Vorverkaufsstarts (+ N) um
+  `send_time`, nie vor dem Beginn des Vorverkaufs. Termine ohne Vorverkaufsdatum werden
+  übersprungen und als `skipped_no_presale` gezählt (im Editor wie „ohne PLZ"); läuft der
+  Vorverkauf schon und kommt das Konzert noch, geht die Mail sofort nach Freigabe. Braucht
+  `presale_starts_at` aus statamic-events 2.7; davor wird jeder Termin einer VVK-Serie übersprungen
+  und der Editor sagt es. Das Segment heißt dann „Vorverkauf: <Stadt> <PLZ> (<km> km)".
+- **Momentaufnahme erweitert** (`meta['event']`): `weekday` („Samstag"), `date_short` („17.10.26"),
+  `time_label` („20 Uhr" / „20:30 Uhr"), `street`, `presale_starts_at`, `presale_date`, in der
+  Zeitzone des Termins.
+- **Weitere Termine** (`meta['more_events']`, Einstellungen `more_enabled`, `more_radius_km` 100,
+  `more_limit` 3): spätere, nicht abgesagte Termine derselben Auswahl, deren Ort höchstens so weit
+  vom Ort dieses Termins liegt — Abstand über LeadHubs `PostalCode::distanceKm()` zwischen den
+  Koordinaten des Termins oder seiner PLZ. Nur Anzeige; die Zielgruppe bleibt der Umkreis des
+  Haupttermins. Die Termin-Listener gleichen deshalb jetzt alle Serien ab statt nur den einen
+  Termin, und hören auch auf `OccurrencePresaleChanged` (statamic-events 2.7).
+- **Bausteine „Terminkasten" und „Weitere Termine"** für Block-Layouts, nach den ANDERS-Mails:
+  Tag in Worten, Ort in der Akzentfarbe, Straße, „PLZ Stadt", Knopf „Tickets buchen" (Beschriftung
+  einstellbar), bzw. eine Zeile je weiterem Termin mit Link. Farben aus dem Layout-Theme, je Baustein
+  überschreibbar (Hintergrund, Akzent, Knopf). Ohne Termin bzw. ohne weitere Termine entfällt der
+  Baustein ganz. Tabellen, Inline-Styles, Knopf als `bgcolor`-Tabelle wie der Knopf-Baustein,
+  Spalten unter 620 px untereinander. Die Layout-Vorschau zeigt sie mit Beispielterminen;
+  `{{ more_events }}…{{ /more_events }}` und die Felder darin gelten nicht als unbekannte Variablen.
+- **Segmente von der Serie verwaltet:** SeriesSync setzt `managed_by` (statamic-leadhub 2.15) beim
+  Anlegen und beim Abgleich — `Serie „<Vorlagenname>"` mit Link auf die Vorlage. Auf älterem
+  LeadHub entfällt das Feld still, der Abgleich läuft weiter.
+- Die Zielgruppe auf der Freigabe-Seite und die Empfängerzahl in der Kinderliste der Vorlage
+  verlinken auf das Segment in LeadHub. Die Freigabe zeigt beim Termin „Vorverkauf ab …".
+- `SeriesSync::EMPTY_RESULT` und der Sync-Rückgabewert tragen zusätzlich `skipped_no_presale`.
+
 ### Added: Kampagnenserie aus Terminen (Backend)
 
 Für jeden kommenden Termin aus `statamic-events` entsteht aus einer Vorlage-Kampagne automatisch eine

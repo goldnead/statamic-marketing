@@ -48,6 +48,12 @@ class LayoutBlocks
 
     public const SET_FOOTER = 'footer';
 
+    /** The concert box of a series mail: date, venue, address, ticket button. */
+    public const SET_EVENT_BOX = 'event_box';
+
+    /** "Weitere Konzerte in deiner Nähe": the later terms nearby, as lines. */
+    public const SET_MORE_EVENTS = 'more_events';
+
     /**
      * Das Ein-Feld-Blueprint, aus dem die Publish-Form gezeichnet wird.
      *
@@ -170,6 +176,47 @@ class LayoutBlocks
                 'fields' => [],
             ],
 
+            // The two series blocks. Filled from the term of the mail
+            // (`event`, `more_events`); in a mail that has no term they
+            // render nothing at all, so a layout can carry them for every
+            // campaign without leaving an empty box in the ordinary ones.
+            self::SET_EVENT_BOX => [
+                'display' => __('marketing::templates.block_event_box'),
+                'instructions' => __('marketing::templates.block_event_box_instructions'),
+                'icon' => 'calendar',
+                'fields' => [
+                    self::field('button_label', [
+                        'type' => 'text',
+                        'display' => __('marketing::templates.block_field_button_label'),
+                        'placeholder' => __('marketing::templates.event_box_button_default'),
+                        'width' => 50,
+                    ]),
+                    self::field('background', self::colorField(__('marketing::templates.block_field_background'))),
+                    self::field('accent', self::colorField(__('marketing::templates.block_field_accent'))),
+                    self::field('button_color', self::colorField(__('marketing::templates.block_field_button_color'))),
+                ],
+            ],
+
+            self::SET_MORE_EVENTS => [
+                'display' => __('marketing::templates.block_more_events'),
+                'instructions' => __('marketing::templates.block_more_events_instructions'),
+                'icon' => 'calendar-date',
+                'fields' => [
+                    self::field('heading', [
+                        'type' => 'text',
+                        'display' => __('marketing::templates.block_field_heading'),
+                        'placeholder' => __('marketing::templates.more_events_heading_default'),
+                    ]),
+                    self::field('link_label', [
+                        'type' => 'text',
+                        'display' => __('marketing::templates.block_field_link_label'),
+                        'placeholder' => __('marketing::templates.more_events_link_default'),
+                        'width' => 50,
+                    ]),
+                    self::field('accent', self::colorField(__('marketing::templates.block_field_accent'))),
+                ],
+            ],
+
             self::SET_FOOTER => [
                 'display' => __('marketing::templates.block_footer'),
                 'instructions' => __('marketing::templates.block_footer_instructions'),
@@ -226,6 +273,24 @@ class LayoutBlocks
             'max_files' => 1,
             'mode' => 'list',
             'restrict' => false,
+        ];
+    }
+
+    /**
+     * An optional colour. Empty means the layout's own colour from
+     * {@see BlockLayoutCompiler::THEME}, which is the point: a box takes the
+     * theme unless somebody gives it the brand's pink on purpose.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function colorField(string $display): array
+    {
+        return [
+            'type' => 'color',
+            'display' => $display,
+            'instructions' => __('marketing::templates.block_field_color_instructions'),
+            'allow_any' => true,
+            'width' => 50,
         ];
     }
 

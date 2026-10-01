@@ -155,7 +155,7 @@ it('ist idempotent: ein zweiter Lauf ändert nichts und zählt nichts', function
 
     $result = app(SeriesSync::class)->syncAll();
 
-    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0]);
+    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0]);
 });
 
 it('zieht Versandzeit und Momentaufnahme bei Verschiebung nach', function (): void {
@@ -485,7 +485,7 @@ it('legt je Vorlage ein eigenes Segment an, auch bei verschiedenem Radius', func
     $a = $this->segments->findByHandle(seriesSegmentHandle('konzertmail', $occurrence));
     $b = $this->segments->findByHandle(seriesSegmentHandle('konzertmail-weit', $occurrence));
 
-    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0])
+    expect($result)->toBe(['created' => 0, 'updated' => 0, 'removed' => 0, 'skipped_no_postal_code' => 0, 'skipped_no_presale' => 0])
         ->and($a)->not->toBeNull()
         ->and($b)->not->toBeNull()
         ->and($a->getAttribute('rules')['conditions'][0]['value'])->toBe(50)
@@ -536,7 +536,9 @@ it('lässt die Aktion der Termine-Erweiterung nie an einer Exception scheitern',
 
     app()->instance(SeriesSync::class, new class(app(CampaignRepository::class), app(SegmentRepository::class)) extends SeriesSync
     {
-        public function syncOccurrence(Occurrence $occurrence): array
+        // The listener syncs everything since "Weitere Konzerte" (a term
+        // changes its neighbours' mails), so that is what has to throw.
+        public function syncAll(): array
         {
             throw new RuntimeException('LeadHub kaputt');
         }

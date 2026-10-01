@@ -45,11 +45,16 @@ class TemplatePreview
     public function variables(): array
     {
         return $this->renderer->archiveVariables(
+            // As a series template, so the sample term and the sample "more
+            // events" are there: a layout with a Terminkasten is built for
+            // series mails, and a preview where the box vanishes cannot show
+            // what it is being built for.
             new Campaign(
                 handle: 'beispiel-kampagne',
                 name: __('marketing::templates.sample_campaign'),
                 subject: __('marketing::templates.sample_subject'),
                 preheader: __('marketing::templates.sample_preheader'),
+                status: Campaign::STATUS_SERIES,
             ),
             new MailingList(
                 handle: 'beispiel-verteiler',
@@ -71,6 +76,19 @@ class TemplatePreview
         $names = ['content'];
 
         foreach ($this->variables() as $key => $value) {
+            // A list of rows (`{{ more_events }}…{{ /more_events }}`): inside
+            // the loop its fields are written bare (`{{ city }}`), so those
+            // are known names too, not typos.
+            if (is_array($value) && array_is_list($value)) {
+                $names[] = $key;
+
+                foreach (is_array($value[0] ?? null) ? array_keys($value[0]) : [] as $sub) {
+                    $names[] = (string) $sub;
+                }
+
+                continue;
+            }
+
             if (is_array($value)) {
                 foreach (array_keys($value) as $sub) {
                     $names[] = $key.'.'.$sub;
@@ -82,6 +100,7 @@ class TemplatePreview
             $names[] = $key;
         }
 
+        $names = array_values(array_unique($names));
         sort($names);
 
         return $names;

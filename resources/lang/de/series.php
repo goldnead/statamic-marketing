@@ -2,7 +2,7 @@
 
 return [
     'not_installed' => 'Termine-Addon nicht installiert.',
-    'summary' => ':created Kampagne(n) angelegt, :updated aktualisiert, :removed entfernt, :skipped ohne Postleitzahl übersprungen.',
+    'summary' => ':created Kampagne(n) angelegt, :updated aktualisiert, :removed entfernt, :skipped ohne Postleitzahl und :presale ohne Vorverkaufsdatum übersprungen.',
 
     // Editor: „Als Serie für Termine"
     'heading' => 'Als Serie für Termine',
@@ -65,6 +65,23 @@ return [
     'edit_awaiting' => 'Diese Kampagne wartet auf Freigabe. Text, Betreff und Preheader kannst du hier noch ändern; Liste und Segment gehören zur Serie. Der nächtliche Abgleich lässt deine Änderungen stehen.',
     'sender_refused' => 'Kein Absender: :reason',
     'preview_for' => 'Vorschau für',
+    'open_segment' => 'Segment in LeadHub öffnen',
+    'presale_since' => 'Vorverkauf ab :date',
+    'anchor' => 'Versand richtet sich nach',
+    'anchor_concert' => 'Konzert',
+    'anchor_presale' => 'Vorverkaufsstart',
+    'anchor_help' => 'Konzert: so viele Tage vor dem Termin. Vorverkaufsstart: am Tag, an dem der Vorverkauf beginnt (oder ein paar Tage danach), nie vor seinem Beginn.',
+    'anchor_presale_unsupported' => 'Das installierte Termine-Addon kennt noch kein Vorverkaufsdatum (ab statamic-events 2.7). Bis dahin wird jeder Termin übersprungen.',
+    'days_after_presale' => 'Tage nach Vorverkaufsstart',
+    'days_after_presale_help' => '0 heißt am Tag des Vorverkaufsstarts.',
+    'more_enabled' => 'Weitere Konzerte zeigen',
+    'more_enabled_help' => 'Spätere Termine in der Nähe des Konzerts, als Liste in der Mail. Die Mail geht trotzdem nur an den Umkreis des Konzerts.',
+    'more_radius_km' => 'Umkreis für weitere Konzerte (km)',
+    'more_limit' => 'Höchstens so viele',
+    'placeholders_more' => 'Weitere Konzerte als Liste:',
+    'blocks_hint' => 'Ohne Platzhalter geht es mit einem Layout aus Bausteinen: „Terminkasten" und „Weitere Termine" füllen sich je Termin selbst.',
+    'skipped_presale_one' => '1 Termin ohne Vorverkaufsdatum wird übersprungen.',
+    'skipped_presale_many' => ':count Termine ohne Vorverkaufsdatum werden übersprungen.',
     'preview_sample' => 'Beispieltermin',
     'sender_readonly' => 'So geht diese Kampagne raus. Der Absender kommt von der Marke; ändern lässt er sich in der Vorlage oder bei der Marke.',
     'reply_to' => 'Antwort an',

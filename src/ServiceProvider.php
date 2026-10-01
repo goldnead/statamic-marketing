@@ -4,6 +4,7 @@ namespace Goldnead\Marketing;
 
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\Events\Events\OccurrenceCancelled;
+use Goldnead\Events\Events\OccurrencePresaleChanged;
 use Goldnead\Events\Events\OccurrenceRescheduled;
 use Goldnead\Events\Events\OccurrenceScheduled;
 use Goldnead\Leadhub\Facades\LeadHub;
@@ -320,15 +321,16 @@ class ServiceProvider extends AddonServiceProvider
             return $this;
         }
 
-        // One closure for all three: added, moved and cancelled each mean
-        // "bring this term's campaigns in line", which is exactly the one
-        // question syncOccurrence() answers.
-        $listener = function (OccurrenceScheduled|OccurrenceRescheduled|OccurrenceCancelled $event): void {
+        // One closure for all of them, and it syncs everything rather than
+        // this one term: a child's "Weitere Konzerte" lists the later terms
+        // near it, so a term added, moved, cancelled or given a presale date
+        // changes the mails of its neighbours too, not only its own.
+        $listener = function (object $event): void {
             // The sync runs inside the events addon's own create/cancel
             // action; whatever goes wrong here (LeadHub down, a handle race)
             // must never break that action. The night run catches up.
             try {
-                app(SeriesSync::class)->syncOccurrence($event->occurrence);
+                app(SeriesSync::class)->syncAll();
             } catch (Throwable $e) {
                 report($e);
             }
@@ -337,6 +339,11 @@ class ServiceProvider extends AddonServiceProvider
         Event::listen(OccurrenceScheduled::class, $listener);
         Event::listen(OccurrenceRescheduled::class, $listener);
         Event::listen(OccurrenceCancelled::class, $listener);
+
+        // statamic-events 2.7+: the presale date of a term moved.
+        if (class_exists(OccurrencePresaleChanged::class)) {
+            Event::listen(OccurrencePresaleChanged::class, $listener);
+        }
 
         return $this;
     }

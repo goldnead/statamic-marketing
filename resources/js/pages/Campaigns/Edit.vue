@@ -215,6 +215,14 @@ const seriesDaysBefore = ref(props.series?.settings?.days_before ?? 7);
 const seriesSendTime = ref(props.series?.settings?.send_time ?? '10:00');
 const seriesEventIds = ref([...(props.series?.settings?.event_ids ?? [])]);
 const seriesCountry = ref(props.series?.settings?.country ?? 'DE');
+// What the send hangs on: the concert (N days before) or the presale start
+// (N days after). And the "Weitere Konzerte" list: on/off, how far, how many.
+const seriesAnchor = ref(props.series?.settings?.anchor ?? 'concert');
+const seriesDaysAfterPresale = ref(props.series?.settings?.days_after_presale ?? 0);
+const seriesMoreEnabled = ref(props.series?.settings?.more_enabled ?? true);
+const seriesMoreRadius = ref(props.series?.settings?.more_radius_km ?? 100);
+const seriesMoreLimit = ref(props.series?.settings?.more_limit ?? 3);
+const presaleSupported = computed(() => props.series?.presale_supported !== false);
 
 const seriesChildren = computed(() => props.series?.children ?? []);
 const seriesCanToggle = computed(() => !! props.series?.can_toggle);
@@ -249,9 +257,17 @@ const seriesSkippedText = computed(() => seriesSkipped.value === 1
     ? __('marketing::series.skipped_one')
     : __('marketing::series.skipped_many', { count: seriesSkipped.value }));
 
+const seriesSkippedPresale = computed(() => props.series?.skipped_no_presale ?? 0);
+const seriesSkippedPresaleText = computed(() => seriesSkippedPresale.value === 1
+    ? __('marketing::series.skipped_presale_one')
+    : __('marketing::series.skipped_presale_many', { count: seriesSkippedPresale.value }));
+
 // Kept in script, like `antlersHint`, so the template compiler never sees the braces.
-const seriesPlaceholders = ['city', 'venue', 'date', 'time', 'tickets_url']
-    .map((key) => `{{ event:${key} }}`);
+const seriesPlaceholders = [
+    'city', 'venue', 'street', 'postal_code', 'weekday', 'date', 'date_short', 'time', 'time_label',
+    'tickets_url', 'presale_date',
+].map((key) => `{{ event:${key} }}`);
+const moreEventsPlaceholder = '{{ more_events }}{{ date_short }} {{ city }} {{ venue }}{{ /more_events }}';
 
 function seriesPayloadFields() {
     if (! seriesSection.value || ! seriesAvailable.value) return {};
@@ -264,6 +280,11 @@ function seriesPayloadFields() {
             send_time: seriesSendTime.value || null,
             event_ids: seriesEventIds.value,
             country: (seriesCountry.value || '').toUpperCase() || null,
+            anchor: seriesAnchor.value,
+            days_after_presale: seriesDaysAfterPresale.value === '' ? null : Number(seriesDaysAfterPresale.value),
+            more_enabled: !! seriesMoreEnabled.value,
+            more_radius_km: Number(seriesMoreRadius.value) || null,
+            more_limit: seriesMoreLimit.value === '' ? null : Number(seriesMoreLimit.value),
         } : null,
     };
 }
@@ -309,7 +330,8 @@ const fieldKeys = [
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
     'series_enabled', 'series.radius_km', 'series.days_before', 'series.send_time',
-    'series.event_ids', 'series.country',
+    'series.event_ids', 'series.country', 'series.anchor', 'series.days_after_presale',
+    'series.more_enabled', 'series.more_radius_km', 'series.more_limit',
 ];
 
 // Which of those keys actually has a field on screen right now. The handle
@@ -703,6 +725,28 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                 </Field>
 
                                 <template v-if="seriesEnabled">
+                                    <!-- What the send hangs on. A concert mail goes N days
+                                         before the date, a presale mail N days after the
+                                         box office opens. -->
+                                    <Field
+                                        :label="__('marketing::series.anchor')"
+                                        :instructions="seriesAnchor === 'presale' && !presaleSupported
+                                            ? __('marketing::series.anchor_presale_unsupported')
+                                            : __('marketing::series.anchor_help')"
+                                        :error="formErrors['series.anchor']"
+                                    >
+                                        <ToggleGroup
+                                            :model-value="seriesAnchor"
+                                            size="sm"
+                                            :aria-label="__('marketing::series.anchor')"
+                                            data-marketing-series-anchor
+                                            @update:model-value="(value) => { if (value) seriesAnchor = value; }"
+                                        >
+                                            <ToggleItem value="concert" :label="__('marketing::series.anchor_concert')" />
+                                            <ToggleItem value="presale" :label="__('marketing::series.anchor_presale')" />
+                                        </ToggleGroup>
+                                    </Field>
+
                                     <div class="grid gap-4 sm:grid-cols-2">
                                         <Field
                                             :label="__('marketing::series.radius_km')"
@@ -713,6 +757,16 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                         </Field>
 
                                         <Field
+                                            v-if="seriesAnchor === 'presale'"
+                                            :label="__('marketing::series.days_after_presale')"
+                                            :instructions="__('marketing::series.days_after_presale_help')"
+                                            :error="formErrors['series.days_after_presale']"
+                                        >
+                                            <Input v-model="seriesDaysAfterPresale" type="number" min="0" max="365" data-marketing-series-days-after-presale />
+                                        </Field>
+
+                                        <Field
+                                            v-else
                                             :label="__('marketing::series.days_before')"
                                             :instructions="__('marketing::series.days_before_help')"
                                             :error="formErrors['series.days_before']"
@@ -753,11 +807,44 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                         />
                                     </Field>
 
-                                    <div class="text-xs text-gray-500 dark:text-gray-400" data-marketing-series-placeholders>
-                                        {{ __('marketing::series.placeholders') }}
-                                        <span class="inline-flex flex-wrap gap-1.5 align-middle">
-                                            <code v-for="placeholder in seriesPlaceholders" :key="placeholder" v-text="placeholder"></code>
-                                        </span>
+                                    <!-- "Weitere Konzerte": later dates near this one, shown
+                                         in the mail. Display only, the audience stays the
+                                         circle around the main date. -->
+                                    <Field
+                                        :label="__('marketing::series.more_enabled')"
+                                        :instructions="__('marketing::series.more_enabled_help')"
+                                        :error="formErrors['series.more_enabled']"
+                                    >
+                                        <Switch v-model="seriesMoreEnabled" data-marketing-series-more />
+                                    </Field>
+
+                                    <div v-if="seriesMoreEnabled" class="grid gap-4 sm:grid-cols-2">
+                                        <Field
+                                            :label="__('marketing::series.more_radius_km')"
+                                            :error="formErrors['series.more_radius_km']"
+                                        >
+                                            <Input v-model="seriesMoreRadius" type="number" min="1" max="1000" data-marketing-series-more-radius />
+                                        </Field>
+                                        <Field
+                                            :label="__('marketing::series.more_limit')"
+                                            :error="formErrors['series.more_limit']"
+                                        >
+                                            <Input v-model="seriesMoreLimit" type="number" min="0" max="10" data-marketing-series-more-limit />
+                                        </Field>
+                                    </div>
+
+                                    <div class="space-y-1.5 text-xs text-gray-500 dark:text-gray-400" data-marketing-series-placeholders>
+                                        <p>
+                                            {{ __('marketing::series.placeholders') }}
+                                            <span class="inline-flex flex-wrap gap-1.5 align-middle">
+                                                <code v-for="placeholder in seriesPlaceholders" :key="placeholder" v-text="placeholder"></code>
+                                            </span>
+                                        </p>
+                                        <p>
+                                            {{ __('marketing::series.placeholders_more') }}
+                                            <code v-text="moreEventsPlaceholder"></code>
+                                        </p>
+                                        <p>{{ __('marketing::series.blocks_hint') }}</p>
                                     </div>
                                 </template>
                             </div>
@@ -772,6 +859,9 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                     >
                         <Alert v-if="seriesSkipped > 0" variant="warning" class="mb-3" data-marketing-series-skipped>
                             {{ seriesSkippedText }}
+                        </Alert>
+                        <Alert v-if="seriesSkippedPresale > 0" variant="warning" class="mb-3" data-marketing-series-skipped-presale>
+                            {{ seriesSkippedPresaleText }}
                         </Alert>
 
                         <Listing
@@ -799,10 +889,24 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                 <Badge :color="campaignStatusColor(row.status)" :text="row.status_label" pill />
                             </template>
                             <template #cell-recipients="{ row }">
-                                <span v-if="row.recipients != null" class="tabular-nums">{{ row.recipients }}</span>
+                                <!-- The number is the LeadHub segment; the link goes there. -->
+                                <a
+                                    v-if="row.recipients != null && row.segment_url"
+                                    :href="row.segment_url"
+                                    class="tabular-nums underline decoration-gray-300 underline-offset-2 hover:decoration-current dark:decoration-gray-600"
+                                    :title="__('marketing::series.open_segment')"
+                                    data-marketing-series-segment-link
+                                >{{ row.recipients }}</a>
+                                <span v-else-if="row.recipients != null" class="tabular-nums">{{ row.recipients }}</span>
                                 <span v-else class="text-2xs text-gray-400">—</span>
                             </template>
                             <template #prepended-row-actions="{ row }">
+                                <DropdownItem
+                                    v-if="row.segment_url"
+                                    :text="__('marketing::series.open_segment')"
+                                    icon="users"
+                                    :href="row.segment_url"
+                                />
                                 <DropdownItem :text="__('marketing::campaigns.review')" icon="checkmark" :href="row.show_url" />
                             </template>
                         </Listing>

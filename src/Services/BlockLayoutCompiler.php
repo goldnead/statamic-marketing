@@ -59,6 +59,8 @@ class BlockLayoutCompiler
         'muted' => '#71717a',
         'accent' => '#2563eb',
         'rule' => '#e4e4e7',
+        // The quiet surface a concert box sits on, set off from the page.
+        'soft' => '#f4f4f5',
         'button_background' => '#18181b',
         'button_text' => '#ffffff',
         'font' => "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
@@ -141,8 +143,118 @@ class BlockLayoutCompiler
             LayoutBlocks::SET_SPACER => $this->spacer($block),
             LayoutBlocks::SET_CONTENT => $this->content(),
             LayoutBlocks::SET_FOOTER => $this->footer($block),
+            LayoutBlocks::SET_EVENT_BOX => $this->eventBox($block),
+            LayoutBlocks::SET_MORE_EVENTS => $this->moreEvents($block),
             default => '',
         };
+    }
+
+    /**
+     * The concert box, after the ANDERS mails: on a quiet surface, left the
+     * day in words ("Samstag, den 17.10.26 um 20 Uhr"), the venue in the
+     * accent colour, street and "PLZ Stadt"; right the ticket button.
+     *
+     * Compiled to Antlers, not to values: the layout is one HTML string for
+     * every mail, and each child fills `event` with its own term at send
+     * time. `{{ if event:date }}` around the whole row — a campaign without a
+     * term (every ordinary one) gets no box rather than an empty one, and a
+     * term without a ticket link gets no button rather than a dead one.
+     * Every value goes through `| sanitize`: a venue called "Kultur & Co"
+     * must not become markup.
+     *
+     * Two cells side by side, stacked under 620px by the `m-stack` rule in
+     * {@see self::document()}. The button is the button block's own shape
+     * (a one-cell table carrying `bgcolor`), the one Outlook draws.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    protected function eventBox(array $block): string
+    {
+        $t = self::THEME;
+        $background = $this->color($block['background'] ?? null) ?? $t['soft'];
+        $accent = $this->color($block['accent'] ?? null) ?? $t['accent'];
+        $buttonColor = $this->color($block['button_color'] ?? null) ?? $t['button_background'];
+        $label = trim((string) ($block['button_label'] ?? '')) ?: (string) __('marketing::templates.event_box_button_default');
+
+        $when = $this->text_((string) __('marketing::templates.event_box_when', [
+            'weekday' => '%%WEEKDAY%%', 'date' => '%%DATE%%', 'time' => '%%TIME%%',
+        ]));
+        $when = str_replace(
+            ['%%WEEKDAY%%', '%%DATE%%', '%%TIME%%'],
+            ['{{ event:weekday }}', '{{ event:date_short }}', '{{ event:time_label }}'],
+            $when,
+        );
+
+        $button = sprintf(
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%%" style="border-collapse:separate;">'
+                .'<tr><td class="m-btn" align="center" bgcolor="%s" style="background-color:%s;border-radius:%s;">'
+                .'<a href="{{ event:tickets_url | sanitize }}" style="display:block;padding:14px 20px;font-family:%s;font-size:15px;line-height:20px;font-weight:600;color:%s;text-decoration:none;text-align:center;border-radius:%s;">%s</a>'
+                .'</td></tr></table>',
+            $buttonColor,
+            $buttonColor,
+            $t['radius'],
+            $t['font'],
+            $t['button_text'],
+            $t['radius'],
+            $this->text_($label),
+        );
+
+        return '{{ if event:date }}'
+            .sprintf('<tr><td class="m-cell m-box" bgcolor="%s" style="background-color:%s;padding:28px 32px;">', $background, $background)
+            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+            .sprintf('<td class="m-stack" valign="middle" style="font-family:%s;color:%s;">', $t['font'], $t['text'])
+            .sprintf('<h2 class="m-accent" style="margin:0 0 10px 0;font-family:%s;font-size:22px;line-height:28px;font-weight:700;color:%s;">%s</h2>', $t['font'], $accent, $when)
+            .sprintf('<h3 class="m-accent" style="margin:0 0 8px 0;font-family:%s;font-size:17px;line-height:22px;font-weight:700;color:%s;">{{ event:venue | sanitize }}</h3>', $t['font'], $accent)
+            .sprintf('<p style="margin:0;font-family:%s;font-size:15px;line-height:24px;color:%s;">', $t['font'], $t['text'])
+            .'{{ if event:street }}{{ event:street | sanitize }}<br>{{ /if }}{{ event:postal_code | sanitize }} {{ event:city | sanitize }}</p>'
+            .'</td>'
+            .'{{ if event:tickets_url }}'
+            .'<td class="m-stack m-stack-gap" valign="middle" width="210" style="width:210px;padding-left:24px;">'.$button.'</td>'
+            .'{{ /if }}'
+            .'</tr></table></td></tr>'
+            .'{{ /if }}';
+    }
+
+    /**
+     * "Weitere Konzerte in deiner Nähe": one line per later term nearby —
+     * day and time in the accent colour, city and venue under it, a
+     * "Tickets" link on the right. No terms, no block: `{{ if more_events }}`
+     * around the whole row, so a heading never stands over nothing.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    protected function moreEvents(array $block): string
+    {
+        $t = self::THEME;
+        $accent = $this->color($block['accent'] ?? null) ?? $t['accent'];
+        $heading = trim((string) ($block['heading'] ?? '')) ?: (string) __('marketing::templates.more_events_heading_default');
+        $link = trim((string) ($block['link_label'] ?? '')) ?: (string) __('marketing::templates.more_events_link_default');
+
+        $line = sprintf('<td style="padding:12px 0;border-top:1px solid %s;font-family:%s;font-size:15px;line-height:22px;color:%s;">', $t['rule'], $t['font'], $t['text'])
+            .sprintf('<strong class="m-accent" style="color:%s;">{{ weekday }}, {{ date_short }} · {{ time_label }}</strong><br>', $accent)
+            .'{{ city | sanitize }}, {{ venue | sanitize }}</td>'
+            .sprintf('<td align="right" valign="middle" style="padding:12px 0 12px 16px;border-top:1px solid %s;font-family:%s;font-size:15px;line-height:22px;white-space:nowrap;">', $t['rule'], $t['font'])
+            .sprintf('{{ if tickets_url }}<a href="{{ tickets_url | sanitize }}" class="m-accent" style="color:%s;font-weight:600;text-decoration:underline;">%s</a>{{ /if }}</td>', $accent, $this->text_($link));
+
+        return '{{ if more_events }}'
+            .sprintf('<tr><td class="m-cell" style="padding:24px 32px 8px 32px;font-family:%s;color:%s;">', $t['font'], $t['text'])
+            .sprintf('<h2 style="margin:0 0 8px 0;font-family:%s;font-size:20px;line-height:26px;font-weight:700;color:%s;">%s</h2>', $t['font'], $t['text'], $this->text_($heading))
+            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            .'{{ more_events }}<tr>'.$line.'</tr>{{ /more_events }}'
+            .'</table></td></tr>'
+            .'{{ /if }}';
+    }
+
+    /** A `#rgb`/`#rrggbb` colour, or null for "use the theme". */
+    protected function color(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $value) ? strtolower($value) : null;
     }
 
     /**
@@ -536,6 +648,8 @@ class BlockLayoutCompiler
 @media only screen and (max-width: 620px) {
     .m-shell { width: 100% !important; }
     .m-shell td.m-cell { padding-left: 20px !important; padding-right: 20px !important; }
+    .m-shell td.m-stack { display: block !important; width: 100% !important; }
+    .m-shell td.m-stack-gap { padding-left: 0 !important; padding-top: 16px !important; }
 }
 @media (prefers-color-scheme: dark) {
     .m-page, .m-page td { background-color: #18181b !important; }
@@ -546,6 +660,8 @@ class BlockLayoutCompiler
     .m-shell td.m-btn a { color: #18181b !important; }
     .m-shell td.m-rule { background-color: #3f3f46 !important; }
     .m-shell td.m-foot { border-top-color: #3f3f46 !important; }
+    .m-shell td.m-box { background-color: #3f3f46 !important; }
+    .m-shell .m-accent, .m-shell h3 { color: #fafafa !important; }
 }
 </style>
 </head>

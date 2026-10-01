@@ -71,9 +71,11 @@ const approvalRows = computed(() => {
     const term = a.event
         ? [a.event.title, a.event.venue, a.event.city].filter(Boolean).join(' · ')
         : '—';
-    const termWhen = a.event?.date
-        ? __('marketing::series.term_value', { date: a.event.date, time: a.event.time || '' })
-        : null;
+    const termWhen = [
+        a.event?.date ? __('marketing::series.term_value', { date: a.event.date, time: a.event.time || '' }) : null,
+        // A presale mail is about the box office opening, so it says when.
+        a.event?.presale_date ? __('marketing::series.presale_since', { date: a.event.presale_date }) : null,
+    ].filter(Boolean).join(' · ') || null;
 
     return [
         { key: 'subject', label: __('marketing::series.subject'), value: a.subject || '—' },
@@ -89,6 +91,8 @@ const approvalRows = computed(() => {
             key: 'audience',
             label: __('marketing::series.audience'),
             value: audience,
+            // The circle is a LeadHub segment; this is the way to look at it.
+            href: a.segment_url || null,
             note: [
                 a.recipients == null ? null : (a.recipients === 1
                     ? __('marketing::series.recipients_count_one')
@@ -590,7 +594,13 @@ const subline = computed(() => {
                         >
                             <dt class="text-gray-500 dark:text-gray-400">{{ row.label }}</dt>
                             <dd class="col-span-2 min-w-0 break-words text-gray-900 dark:text-gray-100">
-                                {{ row.value }}
+                                <a
+                                    v-if="row.href"
+                                    :href="row.href"
+                                    class="underline decoration-gray-300 underline-offset-2 hover:decoration-current dark:decoration-gray-600"
+                                    data-marketing-approval-segment-link
+                                >{{ row.value }}</a>
+                                <template v-else>{{ row.value }}</template>
                                 <span v-if="row.note" class="block text-xs text-gray-500 dark:text-gray-400">{{ row.note }}</span>
                                 <span v-if="row.warning" class="block text-xs text-red-600 dark:text-red-400">{{ row.warning }}</span>
                             </dd>

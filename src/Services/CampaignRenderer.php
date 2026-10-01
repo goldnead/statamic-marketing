@@ -388,6 +388,7 @@ class CampaignRenderer
                 'name' => $list->name,
             ],
             'event' => $this->eventVariables($campaign),
+            'more_events' => $this->moreEventsVariables($campaign),
         ]);
     }
 
@@ -428,17 +429,64 @@ class CampaignRenderer
         // nicht der heutige Nachmittag.
         $start = CarbonImmutable::now()->addDays(14)->setTime(19, 0);
 
+        return self::sampleEvent($start, 'Ulm', 'Beispielhalle', '89077');
+    }
+
+    /**
+     * The later terms nearby a series mail lists (`{{ more_events }}`): the
+     * child's own snapshot, two sample terms on a template that has no
+     * children yet (so the block can be seen while it is being built), and
+     * nothing on an ordinary campaign.
+     *
+     * @return list<array<string, string>>
+     */
+    protected function moreEventsVariables(Campaign $campaign): array
+    {
+        if (array_key_exists('event', $campaign->meta)) {
+            return array_values((array) ($campaign->meta['more_events'] ?? []));
+        }
+
+        if (! $campaign->isSeries()) {
+            return [];
+        }
+
+        $start = CarbonImmutable::now()->addDays(14)->setTime(19, 0);
+
+        return [
+            self::sampleEvent($start->addDays(9)->setTime(20, 0), 'Neu-Ulm', 'Beispielsaal', '89231'),
+            self::sampleEvent($start->addDays(23)->setTime(20, 30), 'Heidenheim', 'Beispielkirche', '89522'),
+        ];
+    }
+
+    /**
+     * One sample term in the shape SeriesSync writes, so a template renders
+     * every `{{ event:… }}` field it may use.
+     *
+     * @return array<string, string>
+     */
+    protected static function sampleEvent(CarbonImmutable $start, string $city, string $venue, string $postalCode): array
+    {
+        $weekdays = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
         return [
             'title' => 'Beispielkonzert',
-            'city' => 'Ulm',
-            'venue' => 'Beispielhalle',
-            'postal_code' => '89077',
+            'city' => $city,
+            'venue' => $venue,
+            'street' => 'Beispielstraße 1',
+            'postal_code' => $postalCode,
             'country' => 'DE',
             'starts_at' => $start->toIso8601String(),
             'date' => $start->format('d.m.Y'),
-            'time' => '19:00',
-            'tickets_url' => '',
+            'weekday' => $weekdays[(int) $start->format('N') - 1],
+            'date_short' => $start->format('d.m.y'),
+            'time' => $start->format('H:i'),
+            'time_label' => $start->format('i') === '00' ? $start->format('G').' Uhr' : $start->format('G:i').' Uhr',
+            // A sample link, so the ticket button and links are there to be
+            // seen while the layout is built. Real terms bring their own.
+            'tickets_url' => 'https://example.com/tickets',
             'url' => '',
+            'presale_starts_at' => '',
+            'presale_date' => '',
         ];
     }
 
