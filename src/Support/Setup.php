@@ -103,15 +103,18 @@ final class Setup
      */
     protected static function existingTables(): array
     {
-        return array_values(array_map(
+        // `array_map` keeps the keys of a list, and `getTables()` documents a
+        // list with a `name` on every row, so neither a re-index nor a
+        // fallback for a missing `name` is needed.
+        return array_map(
             static function (array $table): string {
-                $name = (string) ($table['name'] ?? '');
+                $name = $table['name'];
 
                 return str_contains($name, '.')
                     ? substr($name, strrpos($name, '.') + 1)
                     : $name;
             },
             Schema::getTables()
-        ));
+        );
     }
 }
