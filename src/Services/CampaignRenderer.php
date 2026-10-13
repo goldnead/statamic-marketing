@@ -263,7 +263,7 @@ class CampaignRenderer
             return $html;
         }
 
-        $hidden = '<div style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;opacity:0;">'
+        $hidden = '<div style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;opacity:0;">'
             .htmlspecialchars($preheader, ENT_QUOTES, 'UTF-8', false).'</div>';
 
         $count = 0;
