@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.26.1 — 2026-10-13
 
 ### Fixed: the text part of a template send carries the mail, not only the footer
 
