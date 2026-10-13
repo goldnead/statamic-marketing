@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.26.2 — 2026-10-13
 
 ### Fixed: the hidden preheader no longer carries a tiny invisible font
 
