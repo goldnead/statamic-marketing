@@ -40,6 +40,7 @@ if (! class_exists(EmailTemplateData::class)) {
                 title: $title,
                 subject: (string) ($data['subject'] ?? ''),
                 body: (string) ($data['body'] ?? $data['html'] ?? ''),
+                plainText: isset($data['plain_text']) ? (string) $data['plain_text'] : null,
                 source: (string) ($data['source'] ?? 'entry'),
             );
         }

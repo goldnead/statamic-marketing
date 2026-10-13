@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed: the text part of a template send carries the mail, not only the footer
+
+A template send (`marketing.send_email` with a template) has no campaign content, and the
+text/plain part was made from that empty content: it held the unsubscribe line and the postal
+address and nothing else. SpamAssassin flags that as `MPART_ALT_DIFF` (0.7 points) because the
+HTML and text alternatives say different things. The text part now comes from the template's own
+plain text when the email-templates entry has one, otherwise from the rendered template HTML
+(head, style and hidden preheader removed, links written as `text (url)`).
+
 ## 2.26.0 — 2026-10-01
 
 ### Fixed: Kampagnenserie, Runde 5
