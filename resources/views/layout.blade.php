@@ -17,6 +17,12 @@
         .confirm { margin: 24px 0 0; }
         .confirm .btn { display: inline-block; padding: 12px 28px; border: 0; border-radius: 8px; background: #18181b; color: #fff; font-size: 15px; font-family: inherit; cursor: pointer; }
 
+        /* The optional sentence under a rating. Left-aligned like a form, the
+           card's centring is for a single sentence. */
+        .field { display: grid; gap: 8px; margin: 24px 0 0; text-align: left; }
+        .field span { font-size: 14px; font-weight: 600; color: #18181b; }
+        .field textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid #d4d4d8; border-radius: 8px; resize: vertical; }
+
         /* Preference centre. Left-aligned: the card's centred text is right for
            a single sentence and wrong for a list of choices. */
         .prefs { text-align: left; margin-top: 28px; }

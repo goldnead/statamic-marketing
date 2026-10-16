@@ -8,8 +8,10 @@ use Goldnead\Marketing\Contracts\Repositories\EmailTemplateRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\EmailTemplate;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Http\Controllers\RatingController;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Rating;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\LayoutBlocks;
 use Goldnead\Marketing\Support\PreferenceLink;
@@ -139,6 +141,8 @@ class CampaignRenderer
             ? $this->archiveVariables($campaign, $list, $subjectTemplate)
             : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
 
+        $variables += $this->ratingVariables($subscription, $message);
+
         // Vor allem anderen: Statamics interne Verweise in echte Adressen.
         // Bard speichert ein im CP eingefuegtes Bild als
         // `statamic://asset::…`, und das geht sonst woertlich in die Mail —
@@ -178,6 +182,40 @@ class CampaignRenderer
             unsubscribeUrl: $variables['unsubscribe_url'],
             oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
+    }
+
+    /**
+     * `{{ rating_good_url }}`, `{{ rating_ok_url }}` und `{{ rating_bad_url }}`:
+     * die Ein-Klick-Bewertung fuer den Mailfuss.
+     *
+     * Drei Faelle, und nur der erste schreibt je eine Stimme:
+     *  - **Eine Zustellung:** signierte Links auf diese Zustellung.
+     *  - **Ein Testversand** (Abonnement mit dem Token `test-preview`, keine
+     *    Zustellung): signierte Links, die dieselben Seiten zeigen und nichts
+     *    speichern. Ein toter Link prueft nicht, ob die Seite stimmt, ein
+     *    funktionierender wuerde die Auswertung der echten Ausgabe verfaelschen.
+     *  - **Alles andere** (Vorschau im CP, Webarchiv): `#`, wie beim
+     *    Abmelde-Link ohne Abonnement.
+     *
+     * @return array<string, string>
+     */
+    protected function ratingVariables(?Subscription $subscription, ?Message $message): array
+    {
+        $uuid = match (true) {
+            $message !== null => $message->uuid,
+            $subscription?->token === RatingController::PREVIEW => RatingController::PREVIEW,
+            default => null,
+        };
+
+        $variables = [];
+
+        foreach (Rating::CHOICES as $choice) {
+            $variables['rating_'.$choice.'_url'] = $uuid === null || ! Route::has('marketing.rate')
+                ? '#'
+                : URL::signedRoute('marketing.rate', ['uuid' => $uuid, 'choice' => $choice]);
+        }
+
+        return $variables;
     }
 
     /**
@@ -931,6 +969,18 @@ class CampaignRenderer
          */
         if (str_contains($url, '/unsubscribe/') || str_contains($url, '/confirm/')) {
             return true;
+        }
+
+        // Die Bewertung ist schon signiert und zaehlt selbst. Durch den
+        // Klick-Zaehler geleitet waere jede Stimme zugleich ein Klick auf eine
+        // Adresse, die niemand je als Link gemeint hat, und die zweite Signatur
+        // wuerde die erste nur verpacken.
+        if (Route::has('marketing.rate')) {
+            $prefix = strstr(route('marketing.rate', ['uuid' => 'U', 'choice' => Rating::GOOD], true), 'U/'.Rating::GOOD, true);
+
+            if (is_string($prefix) && str_starts_with($url, $prefix)) {
+                return true;
+            }
         }
 
         foreach ($selfService as $prefix) {

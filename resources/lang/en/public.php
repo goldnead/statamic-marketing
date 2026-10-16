@@ -43,6 +43,22 @@ return [
     'unsubscribed_manage_link' => 'Manage your email preferences',
 
     /*
+     * The one-click rating from the mail footer. The choice is already saved
+     * when this page appears; the field is optional.
+     */
+    'rating_choice_good' => 'Good',
+    'rating_choice_ok' => 'Okay',
+    'rating_choice_bad' => 'Poor',
+    'rating_title' => 'Thank you.',
+    'rating_body' => 'Your rating: ":choice". It is saved.',
+    'rating_reason_label' => 'Care to say why?',
+    'rating_optional' => 'This is optional. You can simply close the page.',
+    'rating_send' => 'Send',
+    'rating_preview_note' => 'Preview from a test mail: nothing is saved.',
+    'rating_thanks_title' => 'Received.',
+    'rating_thanks_body' => 'Thank you for your words.',
+
+    /*
      * The web archive. `archive_neutral_name` stands in for {{ first_name }}
      * and {{ name }} on a page that has no recipient — override it in
      * `marketing.archive.neutral_name` where the newsletter's own voice needs

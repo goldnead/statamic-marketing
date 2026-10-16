@@ -20,6 +20,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Models\Rating;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\CampaignStats;
@@ -306,6 +307,25 @@ it('lists who unsubscribed through this campaign', function (): void {
     expect($rows)->toHaveCount(1)
         ->and($rows[0]['email'])->toBe('maria@example.com')
         ->and($rows[0]['unsubscribed_at'])->not->toBeNull();
+});
+
+it('lists the ratings of an issue with the reason, and counts every level', function (): void {
+    $gut = ($this->recipient)('maria@example.com');
+    $schlecht = ($this->recipient)('jan@example.com');
+
+    Rating::create([
+        'message_id' => $gut->id, 'campaign_handle' => 'brief', 'choice' => 'good',
+    ]);
+    Rating::create([
+        'message_id' => $schlecht->id, 'campaign_handle' => 'brief', 'choice' => 'bad', 'reason' => 'Zu lang.',
+    ]);
+
+    $props = reportProps(openReport(['tab' => 'ratings']));
+
+    expect($props['rows'])->toHaveCount(2)
+        ->and(collect($props['rows'])->firstWhere('email', 'jan@example.com')['reason'])->toBe('Zu lang.')
+        ->and(collect($props['ratingSummary'])->pluck('count', 'choice')->all())
+        ->toBe(['good' => 1, 'ok' => 0, 'bad' => 1]);
 });
 
 it('shows the reason a delivery failed, which the schema has held all along', function (): void {
