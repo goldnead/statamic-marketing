@@ -50,7 +50,7 @@ return [
     'rating_choice_ok' => 'Okay',
     'rating_choice_bad' => 'Poor',
     'rating_title' => 'Thank you.',
-    'rating_body' => 'Your rating: ":choice". It is saved.',
+    'rating_body' => 'Your rating: “:choice”. It is saved.',
     'rating_reason_label' => 'Care to say why?',
     'rating_optional' => 'This is optional. You can simply close the page.',
     'rating_send' => 'Send',
