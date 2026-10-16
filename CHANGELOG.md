@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased
+## 2.26.2 — 2026-10-13
+
+### Fixed: the hidden preheader no longer carries a tiny invisible font
+
+The preheader the renderer injects into layouts without their own `{{ preheader }}` (and the one
+in the block layouts) was styled `font-size:1px;line-height:1px`, the block layouts also with the
+page colour as text colour. That is the combination SpamAssassin's `FONT_INVIS_MSGID` (2.5 points)
+looks for. The three properties are gone; `display:none`, `max-height:0`, `overflow:hidden`,
+`mso-hide:all` and `opacity:0` still hide the snippet, and inbox clients still read it as the
+preview text. Same change as email-templates 2.8.1.
+
+## 2.26.1 — 2026-10-13
+
+### Fixed: the text part of a template send carries the mail, not only the footer
+
+A template send (`marketing.send_email` with a template) has no campaign content, and the
+text/plain part was made from that empty content: it held the unsubscribe line and the postal
+address and nothing else. SpamAssassin flags that as `MPART_ALT_DIFF` (0.7 points) because the
+HTML and text alternatives say different things. The text part now comes from the template's own
+plain text when the email-templates entry has one, otherwise from the rendered template HTML
+(head, style and hidden preheader removed, links written as `text (url)`).
 
 ### Added: Ein-Klick-Bewertung einer Ausgabe
 

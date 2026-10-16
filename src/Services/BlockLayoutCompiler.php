@@ -788,7 +788,7 @@ class BlockLayoutCompiler
 </style>
 </head>
 <body style="margin:0;padding:0;width:100%;background-color:{$t['page_background']};-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-<div class="m-preheader" style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{$t['page_background']};opacity:0;">{{ preheader }}</div>
+<div class="m-preheader" style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;opacity:0;">{{ preheader }}</div>
 <table role="presentation" class="m-page" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$t['page_background']};">
 {{ if preheader || web_url }}
 <tr><td align="center" style="padding:16px 12px 0 12px;">

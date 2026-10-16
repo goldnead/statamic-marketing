@@ -158,6 +158,7 @@ class CampaignRenderer
         $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 
         $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
+        $text = $this->textPart($content, $html, $campaign->templateHandle, $variables);
         $html = $this->ensurePreheader($html, $templateHtml, (string) $variables['preheader']);
 
         $html = $this->ensureSelfServiceFooter($html, $variables, $subscription);
@@ -178,7 +179,7 @@ class CampaignRenderer
         return new RenderedMail(
             subject: $subject,
             html: $html,
-            text: $this->toText($content),
+            text: $text,
             unsubscribeUrl: $variables['unsubscribe_url'],
             oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
@@ -300,7 +301,7 @@ class CampaignRenderer
             return $html;
         }
 
-        $hidden = '<div style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;opacity:0;">'
+        $hidden = '<div style="display:none;max-height:0;max-width:0;overflow:hidden;mso-hide:all;opacity:0;">'
             .htmlspecialchars($preheader, ENT_QUOTES, 'UTF-8', false).'</div>';
 
         $count = 0;
@@ -432,6 +433,27 @@ class CampaignRenderer
         }
 
         return $this->templates->find($handle)?->html;
+    }
+
+    /**
+     * The plain text written on a managed email-templates entry, or null when
+     * the entry has none (or the slug resolves to something else).
+     */
+    protected function findTemplatePlainText(?string $handle): ?string
+    {
+        if ($handle === null || $handle === '' || ! static::emailTemplatesInstalled()) {
+            return null;
+        }
+
+        $resolved = EmailTemplates::resolve($handle);
+
+        if ($resolved === null || ($resolved->source ?? 'entry') !== 'entry') {
+            return null;
+        }
+
+        $plain = trim((string) ($resolved->plainText ?? ''));
+
+        return $plain === '' ? null : $plain;
     }
 
     /**
@@ -1022,6 +1044,53 @@ class CampaignRenderer
      *    itself, and that is the one-click URL the `List-Unsubscribe` header
      *    already uses.
      */
+    /**
+     * The text alternative for the whole mail.
+     *
+     * A campaign has content of its own and the text is made from it. A
+     * template send has none (`content` is empty, the template IS the mail),
+     * and the text part used to be the unsubscribe line and the postal address
+     * alone. The two alternatives then said different things, which is
+     * SpamAssassin's MPART_ALT_DIFF. For that case the text comes from the
+     * template's own plain text when it has one, else from its rendered HTML.
+     *
+     * @param  array<string, mixed>  $variables
+     */
+    protected function textPart(string $content, string $renderedHtml, ?string $templateHandle, array $variables): string
+    {
+        $text = $this->toText($content);
+
+        if ($text !== '') {
+            return $text;
+        }
+
+        $plain = $this->findTemplatePlainText($templateHandle);
+
+        if ($plain !== null) {
+            return trim($this->parse($plain, $variables));
+        }
+
+        $text = $this->toText($this->withoutDocumentNoise($renderedHtml));
+
+        // Template markup is indented and line-broken for humans; keep the
+        // paragraphs, drop the runs of blank space between them.
+        $text = (string) preg_replace('~[ \t]*\n[ \t]*~', "\n", $text);
+
+        return trim((string) preg_replace('~\n{3,}~', "\n\n", $text));
+    }
+
+    /**
+     * A whole HTML document reduced to what a reader sees: no head, style or
+     * script blocks (`strip_tags()` would keep their text) and no hidden
+     * preheader snippet.
+     */
+    protected function withoutDocumentNoise(string $html): string
+    {
+        $html = (string) preg_replace('~<(head|style|script|title)\b[^>]*>.*?</\1>~is', '', $html);
+
+        return (string) preg_replace('~<div\b[^>]*display\s*:\s*none[^>]*>.*?</div>~is', '', $html);
+    }
+
     protected function toText(string $contentHtml): string
     {
         $text = $this->keepLinkTargets($contentHtml);
