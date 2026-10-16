@@ -28,6 +28,7 @@ const props = defineProps([
     'statuses',      // [{ value, label }] for the delivery filter
     'filters',       // { status }
     'urlBreakdown',  // clicks tab: [{ url, clicks, people }]
+    'ratingSummary', // ratings tab: [{ choice, label, count }], one entry per level
     'exportUrl',     // person tabs, `manage marketing campaigns` only
     'editUrl',       // string
     'editable',      // bool
@@ -916,6 +917,15 @@ const subline = computed(() => {
                         />
                     </div>
 
+                    <!-- How the issue was rated: one tile per level, counted
+                         over the whole campaign and not over this page. -->
+                    <div v-if="ratingSummary && ratingSummary.length" class="grid grid-cols-3 gap-3 mb-4" data-marketing-rating-summary>
+                        <Card v-for="level in ratingSummary" :key="level.choice">
+                            <Subheading :text="level.label" />
+                            <Heading :text="String(level.count)" size="2xl" />
+                        </Card>
+                    </div>
+
                     <!-- Rows are paginated server-side (custom pager below), so
                          the Listing's client-side search/sort would only cover
                          the current page and mislead — disable the built-in
@@ -972,6 +982,22 @@ const subline = computed(() => {
 
                         <template #cell-unsubscribed_at="{ row }">
                             <span class="text-xs text-gray-500">{{ formatDate(row.unsubscribed_at) }}</span>
+                        </template>
+
+                        <template #cell-choice="{ row }">
+                            <Badge
+                                :color="row.choice === 'good' ? 'green' : row.choice === 'bad' ? 'red' : 'default'"
+                                :text="row.choice_label"
+                            />
+                        </template>
+
+                        <template #cell-reason="{ row }">
+                            <span v-if="row.reason" class="text-xs whitespace-pre-line">{{ row.reason }}</span>
+                            <span v-else class="text-2xs text-gray-400">—</span>
+                        </template>
+
+                        <template #cell-rated_at="{ row }">
+                            <span class="text-xs text-gray-500">{{ formatDate(row.rated_at) }}</span>
                         </template>
 
                         <template #cell-opens="{ row }">

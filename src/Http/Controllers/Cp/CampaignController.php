@@ -604,6 +604,7 @@ class CampaignController extends Controller
             'columns' => [],
             'pagination' => null,
             'urlBreakdown' => null,
+            'ratingSummary' => null,
             'exportUrl' => null,
         ];
     }
@@ -644,6 +645,9 @@ class CampaignController extends Controller
             ],
             'urlBreakdown' => $tab === CampaignReport::TAB_CLICKS
                 ? $report->urlBreakdown($campaign->handle)
+                : null,
+            'ratingSummary' => $tab === CampaignReport::TAB_RATINGS
+                ? $report->ratingSummary($campaign->handle)
                 : null,
             // Offered only to somebody who could already have exported it by
             // hand. Reading a report is `view marketing`; taking a file of

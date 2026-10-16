@@ -45,6 +45,22 @@ return [
     'unsubscribed_manage_link' => 'E-Mail-Einstellungen verwalten',
 
     /*
+     * Die Ein-Klick-Bewertung aus dem Mailfuss. Die Wahl ist schon gespeichert,
+     * wenn diese Seite erscheint; das Feld ist freiwillig.
+     */
+    'rating_choice_good' => 'Gut',
+    'rating_choice_ok' => 'In Ordnung',
+    'rating_choice_bad' => 'Schlecht',
+    'rating_title' => 'Danke dir.',
+    'rating_body' => 'Deine Bewertung: „:choice“. Sie ist gespeichert.',
+    'rating_reason_label' => 'Magst du sagen, warum?',
+    'rating_optional' => 'Das ist freiwillig. Du kannst die Seite auch einfach schließen.',
+    'rating_send' => 'Senden',
+    'rating_preview_note' => 'Vorschau aus einer Testmail: Es wird nichts gespeichert.',
+    'rating_thanks_title' => 'Angekommen.',
+    'rating_thanks_body' => 'Danke für deine Worte.',
+
+    /*
      * Das Webarchiv. `archive_neutral_name` steht für {{ first_name }} und
      * {{ name }} auf einer Seite, die keine Empfängerin hat — über
      * `marketing.archive.neutral_name` überschreibbar, wenn der Newsletter ein

@@ -7,6 +7,7 @@ use Carbon\CarbonInterface;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Models\Rating;
 use Goldnead\Marketing\Support\ContactLinks;
 use Goldnead\Marketing\Support\TimeBucket;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,6 +49,8 @@ class CampaignReport
 
     public const TAB_UNSUBSCRIBES = 'unsubscribes';
 
+    public const TAB_RATINGS = 'ratings';
+
     /** @var list<string> */
     public const TABS = [
         self::TAB_OVERVIEW,
@@ -55,6 +58,7 @@ class CampaignReport
         self::TAB_OPENS,
         self::TAB_CLICKS,
         self::TAB_UNSUBSCRIBES,
+        self::TAB_RATINGS,
     ];
 
     /** The rest of the addon paginates at 50. A report is not the place to differ. */
@@ -193,6 +197,12 @@ class CampaignReport
                 'unsubscribed_at' => __('marketing::campaigns.report.unsubscribed_at'),
             ],
 
+            self::TAB_RATINGS => $person + [
+                'choice' => __('marketing::campaigns.report.rating_choice'),
+                'reason' => __('marketing::campaigns.report.rating_reason'),
+                'rated_at' => __('marketing::campaigns.report.rated_at'),
+            ],
+
             default => [],
         };
     }
@@ -256,6 +266,42 @@ class CampaignReport
         return $this->eventQuery($handle, MessageEvent::TYPE_UNSUBSCRIBE);
     }
 
+    /**
+     * Die Bewertungen, juengste zuerst. Eine Zeile je Zustellung: wer seine
+     * Wahl geaendert hat, steht mit der letzten da.
+     *
+     * @return Builder<Rating>
+     */
+    public function ratingsQuery(string $handle): Builder
+    {
+        return Rating::query()
+            ->forCampaign($handle)
+            ->with('message.subscription')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id');
+    }
+
+    /**
+     * Wie viele je Stufe, in der Reihenfolge der Mail. Alle drei stehen immer
+     * da, auch mit einer Null: eine fehlende Stufe sieht aus wie ein Fehler.
+     *
+     * @return list<array{choice: string, label: string, count: int}>
+     */
+    public function ratingSummary(string $handle): array
+    {
+        $counts = Rating::query()
+            ->forCampaign($handle)
+            ->selectRaw('choice, count(*) as total')
+            ->groupBy('choice')
+            ->pluck('total', 'choice');
+
+        return array_map(fn (string $choice) => [
+            'choice' => $choice,
+            'label' => (string) __('marketing::public.rating_choice_'.$choice),
+            'count' => (int) ($counts[$choice] ?? 0),
+        ], Rating::CHOICES);
+    }
+
     /** @return Builder<MessageEvent> */
     protected function eventQuery(string $handle, string $type): Builder
     {
@@ -285,6 +331,7 @@ class CampaignReport
             self::TAB_OPENS => $this->opensQuery($handle),
             self::TAB_CLICKS => $this->clicksQuery($handle),
             self::TAB_UNSUBSCRIBES => $this->unsubscribesQuery($handle),
+            self::TAB_RATINGS => $this->ratingsQuery($handle),
             default => throw new InvalidArgumentException("[{$tab}] is not a tab with rows."),
         };
     }
@@ -300,6 +347,7 @@ class CampaignReport
             self::TAB_OPENS => $this->openRows($models),
             self::TAB_CLICKS => $this->clickRows($models),
             self::TAB_UNSUBSCRIBES => $this->unsubscribeRows($models),
+            self::TAB_RATINGS => $this->ratingRows($models),
             default => [],
         };
     }
@@ -378,6 +426,33 @@ class CampaignReport
         return $this->eventRows($events, fn (MessageEvent $event) => [
             'unsubscribed_at' => $this->iso($event->created_at),
         ]);
+    }
+
+    /**
+     * @param  EloquentCollection<int, Rating>|Collection<int, Rating>  $ratings
+     * @return list<array<string, mixed>>
+     */
+    public function ratingRows($ratings): array
+    {
+        $ratings = collect($ratings);
+        $links = $this->contacts->forEmails(
+            $ratings->map(fn (Rating $rating) => $rating->message?->email)->all()
+        );
+
+        return $ratings->map(function (Rating $rating) use ($links) {
+            $email = (string) ($rating->message->email ?? '');
+
+            return [
+                'id' => (string) $rating->id,
+                'email' => $email,
+                'name' => $rating->message ? $this->nameOf($rating->message) : null,
+                'choice' => $rating->choice,
+                'choice_label' => (string) __('marketing::public.rating_choice_'.$rating->choice),
+                'reason' => $rating->reason,
+                'rated_at' => $this->iso($rating->updated_at),
+                'contact_url' => $this->contacts->urlFor($email, $links),
+            ];
+        })->values()->all();
     }
 
     /**

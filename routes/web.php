@@ -3,12 +3,14 @@
 use Goldnead\BrandContext\Http\Middleware\SetBrandFromRouteValue;
 use Goldnead\Marketing\Http\Controllers\ArchiveController;
 use Goldnead\Marketing\Http\Controllers\ConfirmController;
+use Goldnead\Marketing\Http\Controllers\RatingController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
 use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
 use Goldnead\Marketing\Http\Middleware\ValidateTrackingSignature;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Rating;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -95,6 +97,35 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
             PreventRequestForgery::class,
             ValidateCsrfToken::class,
             'App\Http\Middleware\VerifyCsrfToken',
+        ]);
+
+    /*
+     * Ein-Klick-Bewertung der Ausgabe (Gut / In Ordnung / Schlecht), aus dem
+     * Mailfuss. Zwei Routen, und die Trennung ist der Sinn: der GET zaehlt die
+     * Wahl sofort und zeigt die Danke-Seite, der POST nimmt den freiwilligen
+     * Satz dazu entgegen. Beide sind signiert wie der Klick-Zaehler, also mit
+     * derselben Nachsicht gegenueber Zusatzparametern eines Versanddienstes
+     * (`ValidateTrackingSignature`); die Wahl und die Zustellung stehen im
+     * signierten Pfad und lassen sich nicht austauschen. Die Marke kommt wie
+     * beim Klick aus der Zustellung. Der POST laeuft mit CSRF: er kommt nur aus
+     * der Seite, die der GET gerade ausgeliefert hat.
+     */
+    // `marketingChoice`, nicht `choice`: Parameternamen gelten anwendungsweit
+    // (siehe `{marketingCampaign}` unten), und das Wort ist eines, das ein
+    // Geschwister-Addon selbst binden koennte.
+    Route::get('/feedback/{uuid}/{marketingChoice}', [RatingController::class, 'show'])
+        ->name('marketing.rate')
+        ->where('marketingChoice', implode('|', Rating::CHOICES))
+        ->middleware([
+            ValidateTrackingSignature::class,
+            $brandFrom(Message::class, 'uuid', 'uuid'),
+        ]);
+
+    Route::post('/feedback/{uuid}', [RatingController::class, 'reason'])
+        ->name('marketing.rate.reason')
+        ->middleware([
+            ValidateTrackingSignature::class,
+            $brandFrom(Message::class, 'uuid', 'uuid'),
         ]);
 
     Route::get('/o/{uuid}.gif', [TrackingController::class, 'open'])
