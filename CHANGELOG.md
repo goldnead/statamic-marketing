@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.27.0 — 2026-10-16
+
+### Added: Ein-Klick-Bewertung einer Ausgabe
+
+- **Drei Variablen für den Mailfuß:** `{{ rating_good_url }}`, `{{ rating_ok_url }}`,
+  `{{ rating_bad_url }}` (Gut, In Ordnung, Schlecht). Signierte Links auf `!/marketing/feedback/{zustellung}/{stufe}`,
+  im Versand je Zustellung, im Testversand eine Vorschau ohne Speichern, sonst `#`. Sie laufen nicht durch den
+  Klick-Zähler, sondern zählen selbst.
+- **Der Klick zählt sofort.** Eine Stimme je Zustellung (Tabelle `marketing_ratings`), die letzte Wahl gilt.
+  Die Danke-Seite (`marketing::rating`, im Layout der Site überschreibbar wie alle öffentlichen Seiten)
+  bietet ein freiwilliges Feld „Magst du sagen, warum?“; der Satz hängt an derselben Stimme und überlebt eine
+  spätere Änderung der Wahl. Bekannte Link-Scanner (`MachineOpen`) sehen die Seite, schreiben aber keine Stimme.
+- **Auswertung im CP:** neuer Reiter „Bewertungen“ im Kampagnenbericht mit Zahl je Stufe, Liste samt
+  Begründungen und CSV-Export.
+- Migration `2026_10_16_000001_create_marketing_ratings_table`: nur Marke, Zustellung, Kampagne, Wahl, Text, Zeit.
+
 ## 2.26.2 — 2026-10-13
 
 ### Fixed: the hidden preheader no longer carries a tiny invisible font
@@ -21,20 +37,6 @@ address and nothing else. SpamAssassin flags that as `MPART_ALT_DIFF` (0.7 point
 HTML and text alternatives say different things. The text part now comes from the template's own
 plain text when the email-templates entry has one, otherwise from the rendered template HTML
 (head, style and hidden preheader removed, links written as `text (url)`).
-
-### Added: Ein-Klick-Bewertung einer Ausgabe
-
-- **Drei Variablen für den Mailfuß:** `{{ rating_good_url }}`, `{{ rating_ok_url }}`,
-  `{{ rating_bad_url }}` (Gut, In Ordnung, Schlecht). Signierte Links auf `!/marketing/feedback/{zustellung}/{stufe}`,
-  im Versand je Zustellung, im Testversand eine Vorschau ohne Speichern, sonst `#`. Sie laufen nicht durch den
-  Klick-Zähler, sondern zählen selbst.
-- **Der Klick zählt sofort.** Eine Stimme je Zustellung (Tabelle `marketing_ratings`), die letzte Wahl gilt.
-  Die Danke-Seite (`marketing::rating`, im Layout der Site überschreibbar wie alle öffentlichen Seiten)
-  bietet ein freiwilliges Feld „Magst du sagen, warum?“; der Satz hängt an derselben Stimme und überlebt eine
-  spätere Änderung der Wahl. Bekannte Link-Scanner (`MachineOpen`) sehen die Seite, schreiben aber keine Stimme.
-- **Auswertung im CP:** neuer Reiter „Bewertungen“ im Kampagnenbericht mit Zahl je Stufe, Liste samt
-  Begründungen und CSV-Export.
-- Migration `2026_10_16_000001_create_marketing_ratings_table`: nur Marke, Zustellung, Kampagne, Wahl, Text, Zeit.
 
 ## 2.26.0 — 2026-10-01
 
