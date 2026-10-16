@@ -52,7 +52,7 @@ return [
     'rating_choice_ok' => 'In Ordnung',
     'rating_choice_bad' => 'Schlecht',
     'rating_title' => 'Danke dir.',
-    'rating_body' => 'Deine Bewertung: ":choice". Sie ist gespeichert.',
+    'rating_body' => 'Deine Bewertung: „:choice“. Sie ist gespeichert.',
     'rating_reason_label' => 'Magst du sagen, warum?',
     'rating_optional' => 'Das ist freiwillig. Du kannst die Seite auch einfach schließen.',
     'rating_send' => 'Senden',
