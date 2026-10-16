@@ -212,7 +212,7 @@ class CampaignRenderer
         foreach (Rating::CHOICES as $choice) {
             $variables['rating_'.$choice.'_url'] = $uuid === null || ! Route::has('marketing.rate')
                 ? '#'
-                : URL::signedRoute('marketing.rate', ['uuid' => $uuid, 'choice' => $choice]);
+                : URL::signedRoute('marketing.rate', ['uuid' => $uuid, 'marketingChoice' => $choice]);
         }
 
         return $variables;
@@ -976,7 +976,7 @@ class CampaignRenderer
         // Adresse, die niemand je als Link gemeint hat, und die zweite Signatur
         // wuerde die erste nur verpacken.
         if (Route::has('marketing.rate')) {
-            $prefix = strstr(route('marketing.rate', ['uuid' => 'U', 'choice' => Rating::GOOD], true), 'U/'.Rating::GOOD, true);
+            $prefix = strstr(route('marketing.rate', ['uuid' => 'U', 'marketingChoice' => Rating::GOOD], true), 'U/'.Rating::GOOD, true);
 
             if (is_string($prefix) && str_starts_with($url, $prefix)) {
                 return true;

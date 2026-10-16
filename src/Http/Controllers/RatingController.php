@@ -38,8 +38,10 @@ class RatingController extends Controller
 {
     public const PREVIEW = 'test-preview';
 
-    public function show(Request $request, string $uuid, string $choice)
+    public function show(Request $request, string $uuid, string $marketingChoice)
     {
+        $choice = $marketingChoice;
+
         abort_unless(in_array($choice, Rating::CHOICES, true), 404);
 
         if ($uuid === self::PREVIEW) {

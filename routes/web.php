@@ -110,9 +110,12 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
      * beim Klick aus der Zustellung. Der POST laeuft mit CSRF: er kommt nur aus
      * der Seite, die der GET gerade ausgeliefert hat.
      */
-    Route::get('/feedback/{uuid}/{choice}', [RatingController::class, 'show'])
+    // `marketingChoice`, nicht `choice`: Parameternamen gelten anwendungsweit
+    // (siehe `{marketingCampaign}` unten), und das Wort ist eines, das ein
+    // Geschwister-Addon selbst binden koennte.
+    Route::get('/feedback/{uuid}/{marketingChoice}', [RatingController::class, 'show'])
         ->name('marketing.rate')
-        ->where('choice', implode('|', Rating::CHOICES))
+        ->where('marketingChoice', implode('|', Rating::CHOICES))
         ->middleware([
             ValidateTrackingSignature::class,
             $brandFrom(Message::class, 'uuid', 'uuid'),

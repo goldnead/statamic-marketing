@@ -47,7 +47,7 @@ function ratingLink(string $choice, ?string $uuid = null): string
 {
     return URL::signedRoute('marketing.rate', [
         'uuid' => $uuid ?? test()->message->uuid,
-        'choice' => $choice,
+        'marketingChoice' => $choice,
     ]);
 }
 
@@ -136,7 +136,7 @@ it('weist einen manipulierten Link ab und schreibt nichts', function (): void {
     $this->get(str_replace($this->message->uuid, $other->uuid, ratingLink('good')))->assertForbidden();
 
     // Ohne Signatur.
-    $this->get(route('marketing.rate', ['uuid' => $this->message->uuid, 'choice' => 'good']))->assertForbidden();
+    $this->get(route('marketing.rate', ['uuid' => $this->message->uuid, 'marketingChoice' => 'good']))->assertForbidden();
 
     expect(Rating::query()->count())->toBe(0);
 });
