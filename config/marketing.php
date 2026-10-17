@@ -406,6 +406,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Lettermint event webhook
+    |--------------------------------------------------------------------------
+    |
+    | POST {routes.prefix}/webhooks/lettermint receives bounces, spam
+    | complaints and unsubscribes from Lettermint. Every delivery is signed
+    | (HMAC-SHA256); `webhook_secret` is the webhook's signing secret from the
+    | Lettermint dashboard, `whsec_` prefix included. Empty keeps the route
+    | closed (404). `tolerance` is the clock difference in seconds that still
+    | passes.
+    |
+    */
+
+    'lettermint' => [
+        'webhook_secret' => env('MARKETING_LETTERMINT_WEBHOOK_SECRET', ''),
+        'tolerance' => 300,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Frequency cap
     |--------------------------------------------------------------------------
     |

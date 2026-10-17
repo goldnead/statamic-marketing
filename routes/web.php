@@ -3,6 +3,7 @@
 use Goldnead\BrandContext\Http\Middleware\SetBrandFromRouteValue;
 use Goldnead\Marketing\Http\Controllers\ArchiveController;
 use Goldnead\Marketing\Http\Controllers\ConfirmController;
+use Goldnead\Marketing\Http\Controllers\LettermintWebhookController;
 use Goldnead\Marketing\Http\Controllers\RatingController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
@@ -126,6 +127,16 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->middleware([
             ValidateTrackingSignature::class,
             $brandFrom(Message::class, 'uuid', 'uuid'),
+        ]);
+
+    // Lettermint's event webhook. Machine to machine: no session, no CSRF
+    // token, and the HMAC signature is the only authentication.
+    Route::post('/webhooks/lettermint', LettermintWebhookController::class)
+        ->name('marketing.webhooks.lettermint')
+        ->withoutMiddleware([
+            PreventRequestForgery::class,
+            ValidateCsrfToken::class,
+            'App\Http\Middleware\VerifyCsrfToken',
         ]);
 
     Route::get('/o/{uuid}.gif', [TrackingController::class, 'open'])

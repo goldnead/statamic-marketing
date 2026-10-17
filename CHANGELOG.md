@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.29.0 — 2026-10-17
+
+### Added: Lettermint als Quelle für Bounces, Beschwerden und Abmeldungen
+
+- Neue Route `POST {prefix}/webhooks/lettermint` (Standard `!/marketing/webhooks/lettermint`). Sie prüft die
+  HMAC-SHA256-Signatur (`X-Lettermint-Signature`, `t=…,v1=…`, `X-Lettermint-Delivery` muss `t` entsprechen,
+  300 Sekunden Toleranz) und reicht das Ereignis an den bestehenden `EspEventProcessor` weiter. Ungültige
+  Signatur: 401, ohne Seiteneffekt. Ohne Secret bleibt die Route zu (404).
+- Abgebildet werden `message.hard_bounced` (Kontakt gesperrt), `message.soft_bounced` (nur Protokoll, keine
+  Sperre), `message.spam_complaint`, `message.unsubscribed` und `suppression.added` für Adressen mit Grund
+  `hard_bounce`, `spam_complaint` oder `unsubscribe`. Alles andere wird quittiert und ignoriert.
+- Wiederholte Zustellungen derselben Ereignis-ID werden nur einmal verarbeitet.
+- Neuer Schlüssel `marketing.lettermint.webhook_secret` aus `MARKETING_LETTERMINT_WEBHOOK_SECRET`
+  (das `whsec_…` aus dem Lettermint-Dashboard, mit Präfix).
+
 ## 2.28.0 — 2026-10-17
 
 ### Added: Kopfzeilen aus der Umgebung
