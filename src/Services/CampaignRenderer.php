@@ -51,8 +51,9 @@ class CampaignRenderer
         ?Subscription $subscription = null,
         ?Message $message = null,
         ?string $sequenceUuid = null,
+        array $extraVariables = [],
     ): RenderedMail {
-        return $this->build($campaign, $list, $subscription, $message, archive: false, sequenceUuid: $sequenceUuid);
+        return $this->build($campaign, $list, $subscription, $message, archive: false, sequenceUuid: $sequenceUuid, extraVariables: $extraVariables);
     }
 
     /**
@@ -131,6 +132,7 @@ class CampaignRenderer
         ?Message $message,
         bool $archive,
         ?string $sequenceUuid = null,
+        array $extraVariables = [],
     ): RenderedMail {
         // Resolved before anything is parsed, because the subject is also a
         // template variable — a body that prints `{{ subject }}` must show the
@@ -142,6 +144,19 @@ class CampaignRenderer
             : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
 
         $variables += $this->ratingVariables($subscription, $message);
+
+        /*
+         * Last, and through `+=`: whatever the renderer already knows wins.
+         *
+         * Antlers prints a variable as it finds it. The values come out of an
+         * automation run (a product title, a name typed into a form), so in the
+         * HTML they are escaped here. The subject and the plain-text part are
+         * not HTML and get the same values as they are; `$plainVariables` is
+         * that second set.
+         */
+        $added = array_diff_key($this->extraVariables($extraVariables), $variables);
+        $variables += array_map(fn (string $value): string => e($value), $added);
+        $plainVariables = array_merge($variables, $added);
 
         // Vor allem anderen: Statamics interne Verweise in echte Adressen.
         // Bard speichert ein im CP eingefuegtes Bild als
@@ -158,7 +173,7 @@ class CampaignRenderer
         $templateHtml = $this->resolveTemplateHtml($campaign->templateHandle);
 
         $html = $this->parse($templateHtml, array_merge($variables, ['content' => $content]));
-        $text = $this->textPart($content, $html, $campaign->templateHandle, $variables);
+        $text = $this->textPart($content, $html, $campaign->templateHandle, $plainVariables);
         $html = $this->ensurePreheader($html, $templateHtml, (string) $variables['preheader']);
 
         $html = $this->ensureSelfServiceFooter($html, $variables, $subscription);
@@ -174,7 +189,7 @@ class CampaignRenderer
             }
         }
 
-        $subject = $this->parse($subjectTemplate, $variables);
+        $subject = $this->parse($subjectTemplate, array_merge($variables, $added));
 
         return new RenderedMail(
             subject: $subject,
@@ -183,6 +198,39 @@ class CampaignRenderer
             unsubscribeUrl: $variables['unsubscribe_url'],
             oneClickUnsubscribeUrl: $variables['one_click_unsubscribe_url'],
         );
+    }
+
+    /**
+     * The variables a caller adds to one send, cleaned up.
+     *
+     * Only names Antlers can print as a plain variable and only text: a value
+     * that is an array or an object has no single way to appear in a mail, and
+     * guessing one would put `Array` into somebody's inbox. The caller of a
+     * template send is an automation node whose values come out of a run, so
+     * nothing here is trusted to be tidy.
+     *
+     * `content` is reserved on top of the built-in names: it is set after
+     * these are merged, and a variable that silently loses to it would be a
+     * puzzle for whoever wrote it.
+     *
+     * @param  array<mixed>  $extra
+     * @return array<string, string>
+     */
+    protected function extraVariables(array $extra): array
+    {
+        $clean = [];
+
+        foreach ($extra as $name => $value) {
+            if (! is_string($name) || preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name) !== 1 || $name === 'content') {
+                continue;
+            }
+
+            if (is_scalar($value) || $value === null) {
+                $clean[$name] = (string) $value;
+            }
+        }
+
+        return $clean;
     }
 
     /**

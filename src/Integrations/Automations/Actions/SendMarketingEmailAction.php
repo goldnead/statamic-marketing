@@ -14,6 +14,7 @@ use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\SendMode;
 use Goldnead\Marketing\Sending\SingleSend;
 use Goldnead\Marketing\Sending\SingleSendResult;
+use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Contracts\AutomationAction;
 use Goldnead\StatamicAutomations\Services\SequenceOptOut;
@@ -204,6 +205,14 @@ class SendMarketingEmailAction implements AutomationAction
                 'required' => false,
                 'default' => MailClass::Marketing->value,
                 'help' => "Template mode only: what the frequency cap makes of this mail. `marketing` is capped, `transactional`, `digest` and `reminder` are exempt. Campaign mode takes the campaign's own classification and ignores this field.",
+            ],
+            [
+                'handle' => 'variables',
+                'label' => 'Variables',
+                'type' => 'key_value',
+                'required' => false,
+                'tokenable' => true,
+                'help' => 'Template mode only. Name → value pairs that become further variables in the template and the subject, e.g. freebie_title → {{ nodes.lookup.product_title }}, printed as {{ freebie_title }}. Values resolve against the run like the subject and are plain text: in the mail body they are HTML-escaped. They never replace a built-in variable (email, first_name, unsubscribe_url …).',
             ],
         ];
     }
@@ -400,6 +409,7 @@ class SendMarketingEmailAction implements AutomationAction
                 'list' => $list->handle,
                 'to' => $email,
                 'mail_class' => $mode->mailClass->value,
+                'variables' => $this->extraVariables($config),
             ]);
         }
 
@@ -417,6 +427,7 @@ class SendMarketingEmailAction implements AutomationAction
                 $subscription,
                 $mode->mailClass,
                 sequenceUuid: $this->sequenceUuid($context),
+                variables: $this->extraVariables($config),
             ),
             $context,
             $email,
@@ -424,6 +435,46 @@ class SendMarketingEmailAction implements AutomationAction
             ['template' => $mode->template],
             $mode->template,
         );
+    }
+
+    /**
+     * The `variables` pairs of the node, as a flat name → text map.
+     *
+     * A `key_value` field arrives as a map, as a list of `{key, value}` pairs
+     * or as a JSON string depending on who saved the node. By the time it gets
+     * here the engine has resolved the tokens in the values, the same way it
+     * did for `subject`. What the renderer does with the names is its business
+     * ({@see CampaignRenderer::extraVariables()}).
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    protected function extraVariables(array $config): array
+    {
+        $raw = $config['variables'] ?? [];
+
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+
+        if (! is_array($raw)) {
+            return [];
+        }
+
+        if ($raw !== [] && array_is_list($raw)) {
+            $pairs = [];
+
+            foreach ($raw as $pair) {
+                if (is_array($pair) && isset($pair['key']) && is_string($pair['key'])) {
+                    $pairs[trim($pair['key'])] = $pair['value'] ?? null;
+                }
+            }
+
+            $raw = $pairs;
+        }
+
+        return $raw;
     }
 
     protected function isDryRun(AutomationContext $context): bool

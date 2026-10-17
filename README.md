@@ -684,6 +684,8 @@ refused with a message naming the brand that holds it.
 | `delivery.mail_headers` | `[]` | Per-message headers asking the provider not to rewrite links |
 | `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
+| `tag_links` | `[]` | Named links that tag the reader who clicks them (see [Tag links](#tag-links-a-click-that-tags-the-reader)) |
+| `day_gate.timezone` | `Europe/Berlin` (`MARKETING_DAY_GATE_TIMEZONE`) | The calendar day the `newsletter_day_gate` node draws |
 | `frequency_cap.enabled` | `false` | Off until you turn it on — updating the package changes no send |
 | `frequency_cap.max` / `.window_hours` | `3` / `168` | Three marketing mails per seven days |
 | `frequency_cap.defer.*` | `1440` min, `3` tries | How long a capped message waits, and how often, before it is discarded and logged |
@@ -777,6 +779,49 @@ Subscribe the webhook to `message.hard_bounced`, `message.soft_bounced`,
 `message.spam_complaint`, `message.unsubscribed` and `suppression.added`. A hard bounce,
 a complaint and an unsubscribe end the subscription exactly as the other providers'
 feedback does (including the LeadHub opt-out); a soft bounce is only recorded.
+
+### Tag links: a click that tags the reader
+
+A link in a mail that puts a tag on whoever clicks it ("yes, send me the freebie").
+Define it once in `config/marketing.php`:
+
+```php
+'tag_links' => [
+    'wants-freebie' => [
+        'tags' => ['interest:freebie'],
+        'redirect' => '/freebie/danke',   // a path gets the app URL; https://… stays
+        'list' => 'newsletter',           // optional; default: the list the mail is sent from
+    ],
+],
+```
+
+and use it in a campaign or an email template:
+
+```antlers
+<a href="{{ marketing_tag_link:wants-freebie }}">Yes, send it</a>
+```
+
+The URL is signed and names the subscription (`?s=<uuid>`), never the address. Opening
+it shows a page and changes nothing, because mail scanners open every link; the page
+sends the tags itself with a POST, or on the "Continue" button for readers without
+JavaScript, and then redirects to the configured target. Tags go to the LeadHub contact
+(created if missing); setting them twice changes nothing. The click counter may wrap the
+link like any other. In the Control Panel preview, and for an unknown key, the tag
+prints `#`. The page is `marketing::tag-link` and extends `marketing::layout`.
+
+### Template mode: your own variables
+
+`marketing.send_email` in template mode has an optional `variables` field (name to
+value, values may contain tokens). `freebie_title` set to `{{ nodes.lookup.product_title }}`
+prints as `{{ freebie_title }}` in the template and in the subject. Built-in variables
+(`email`, `first_name`, `unsubscribe_url` …) are never replaced, and values are escaped
+in the HTML body.
+
+### The newsletter day gate
+
+The automation node `newsletter_day_gate` holds a drip mail back on a day a campaign is
+scheduled or went out, and asks again at the same time the next day. The day is drawn in
+`marketing.day_gate.timezone` (default `Europe/Berlin`).
 
 ## Personal data
 
