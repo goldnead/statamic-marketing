@@ -353,7 +353,11 @@ return [
 
     'delivery' => [
 
-        'mail_headers' => [
+        // Also fillable from the environment as one string:
+        // MARKETING_MAIL_HEADERS="Name: Wert;Name2: Wert2". Applies to every
+        // mail this addon sends (campaigns, test sends, sequences, double
+        // opt-in); mails of other packages never get it.
+        'mail_headers' => env('MARKETING_MAIL_HEADERS') ?: [
             // 'X-Mailgun-Track-Clicks' => 'no',
         ],
 
