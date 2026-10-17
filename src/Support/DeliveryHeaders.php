@@ -31,7 +31,25 @@ final class DeliveryHeaders
     {
         $headers = [];
 
-        foreach ((array) config('marketing.delivery.mail_headers', []) as $name => $value) {
+        $map = config('marketing.delivery.mail_headers', []);
+
+        // From the environment the map arrives as one string, `Name: Wert;Name2: Wert2`.
+        // The name ends at the first colon, so a value may contain colons.
+        if (is_string($map)) {
+            $parsed = [];
+
+            foreach (explode(';', $map) as $pair) {
+                [$name, $value] = array_pad(explode(':', $pair, 2), 2, null);
+
+                if ($value !== null && trim($name) !== '' && trim($value) !== '') {
+                    $parsed[trim($name)] = trim($value);
+                }
+            }
+
+            $map = $parsed;
+        }
+
+        foreach ((array) $map as $name => $value) {
             if (! is_string($name) || trim($name) === '') {
                 continue;
             }

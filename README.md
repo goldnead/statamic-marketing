@@ -752,6 +752,18 @@ an open redirect on your own domain rather than merely a weaker signature.
 the provider's own counter off, which most of them offer and Brevo does not. It
 is empty by default; `config/marketing.php` has the verified table of names.
 
+The same setting can come from the environment as one string, names and values
+separated by a colon, pairs by a semicolon (quote it in `.env`):
+
+```
+MARKETING_MAIL_HEADERS="X-Route: broadcast;X-Other: value"
+```
+
+Despite the name it is not only for link tracking: it adds any header to every mail
+the addon sends (campaigns, test sends, sequences, double opt-in), for example to pick
+a sending route at a provider that chooses it per message. Mails from other packages
+are not touched.
+
 ## Personal data
 
 The addon stores personal data in your own application's database, in four

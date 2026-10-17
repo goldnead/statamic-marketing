@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.28.0 — 2026-10-17
+
+### Added: Kopfzeilen aus der Umgebung
+
+- `delivery.mail_headers` lässt sich jetzt aus `MARKETING_MAIL_HEADERS` füllen (`Name: Wert;Name2: Wert2`).
+  Die Zeilen hängen an jeder Mail des Addons (Kampagne, Testversand, Sequenz, Double-Opt-in), an keiner
+  fremden. Leer bleibt alles wie bisher.
+
 ## 2.27.0 — 2026-10-16
 
 ### Added: Ein-Klick-Bewertung einer Ausgabe
