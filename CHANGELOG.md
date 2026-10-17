@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.30.1 — 2026-10-18
+
+### Fixed: campaign mails from a template file are not framed twice
+
+- The template-file fallback handed to `statamic-email-templates` now says `branded => false`. A template file is a complete layout with its own header and footer; with a branded layout configured it was framed a second time and, on a phone, the mail came out wider than the screen. Needs statamic-email-templates 2.9.1 or newer to take effect; with older versions the key is ignored and nothing changes.
+
+### Upgrading
+
+- No migration, no new config key.
+
 ## 2.30.0 — 2026-10-17
 
 ### Changed
