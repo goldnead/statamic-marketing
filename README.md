@@ -764,6 +764,20 @@ the addon sends (campaigns, test sends, sequences, double opt-in), for example t
 a sending route at a provider that chooses it per message. Mails from other packages
 are not touched.
 
+### Bounces and complaints from Lettermint
+
+Lettermint signs its webhooks instead of sending a static token, so it has its own
+route: `POST /!/marketing/webhooks/lettermint` (the prefix is `marketing.routes.prefix`).
+Put the webhook's signing secret, `whsec_` prefix included, into
+`MARKETING_LETTERMINT_WEBHOOK_SECRET`; while it is empty the route answers 404. A
+delivery whose signature does not verify, or is older than five minutes, gets 401 and
+changes nothing.
+
+Subscribe the webhook to `message.hard_bounced`, `message.soft_bounced`,
+`message.spam_complaint`, `message.unsubscribed` and `suppression.added`. A hard bounce,
+a complaint and an unsubscribe end the subscription exactly as the other providers'
+feedback does (including the LeadHub opt-out); a soft bounce is only recorded.
+
 ## Personal data
 
 The addon stores personal data in your own application's database, in four

@@ -78,6 +78,7 @@ class EspEventProcessor
         return match ($provider) {
             'mailgun' => $this->normalizeMailgun($payload),
             'postmark' => $this->normalizePostmark($payload),
+            'lettermint' => $this->normalizeLettermint($payload),
             default => [
                 'type' => $payload['type'] ?? $payload['event'] ?? null,
                 'email' => $payload['email'] ?? $payload['recipient'] ?? null,
@@ -131,6 +132,54 @@ class EspEventProcessor
             // unrecognized `Type` is unknown severity — treat as soft.
             'hard' => ($payload['Type'] ?? null) === 'HardBounce',
             'meta' => ['provider' => 'postmark', 'description' => $payload['Description'] ?? null],
+        ];
+    }
+
+    /**
+     * Lettermint names a bounce by its event (`message.hard_bounced` is
+     * permanent, `message.soft_bounced` is not) and mirrors every address it
+     * suppresses as `suppression.added` with a `reason`. Both are mapped: the
+     * suppression event is the one that arrives even when the message event
+     * carried nothing we could match. Repeating the same outcome is harmless,
+     * the processor only ever moves a subscription to a final state.
+     *
+     * Only an address suppression counts. A domain or extension entry, a
+     * `manual` reason and `suppression.removed` (a release is not a
+     * resubscription, that is the person's decision) map to no type.
+     */
+    protected function normalizeLettermint(array $payload): array
+    {
+        $event = $payload['event'] ?? null;
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+        $email = $data['recipient'] ?? null;
+        $hard = false;
+
+        $type = match ($event) {
+            'message.hard_bounced' => 'bounce',
+            'message.soft_bounced' => 'bounce',
+            'message.spam_complaint' => 'complaint',
+            'message.unsubscribed' => 'unsubscribe',
+            default => null,
+        };
+        $hard = $event === 'message.hard_bounced';
+
+        if ($event === 'suppression.added' && ($data['type'] ?? null) === 'email') {
+            $email = $data['value'] ?? null;
+            $type = match ($data['reason'] ?? null) {
+                'hard_bounce' => 'bounce',
+                'spam_complaint' => 'complaint',
+                'unsubscribe' => 'unsubscribe',
+                default => null,
+            };
+            $hard = ($data['reason'] ?? null) === 'hard_bounce';
+        }
+
+        return [
+            'type' => $type,
+            'email' => is_string($email) && $email !== '' ? $email : null,
+            'message_uuid' => null,
+            'hard' => $hard,
+            'meta' => ['provider' => 'lettermint', 'event' => $event, 'event_id' => $payload['id'] ?? null],
         ];
     }
 
