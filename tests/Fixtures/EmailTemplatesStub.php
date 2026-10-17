@@ -63,9 +63,18 @@ if (! class_exists(EmailTemplates::class)) {
          */
         public static array $entries = [];
 
+        /**
+         * What the last fallback callable returned, so a test can see which
+         * flags marketing passes to the resolver (e.g. `branded`).
+         *
+         * @var array<string,mixed>|null
+         */
+        public static ?array $lastFallback = null;
+
         public static function reset(): void
         {
             self::$entries = [];
+            self::$lastFallback = null;
         }
 
         /**
@@ -85,6 +94,8 @@ if (! class_exists(EmailTemplates::class)) {
             }
 
             $result = $fallback($slug);
+
+            self::$lastFallback = is_array($result) ? $result : null;
 
             if ($result instanceof EmailTemplateData) {
                 return $result;

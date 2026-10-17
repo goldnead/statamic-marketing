@@ -423,7 +423,10 @@ class CampaignRenderer
                 function (string $slug): ?array {
                     $template = $this->templates->find($slug);
 
-                    return $template ? ['html' => $template->html, 'name' => $template->name] : null;
+                    // `branded => false`: the template file is a complete layout
+                    // with its own header and footer, email-templates must not
+                    // frame it in the host's branded shell a second time.
+                    return $template ? ['html' => $template->html, 'name' => $template->name, 'branded' => false] : null;
                 },
             );
 
