@@ -579,7 +579,13 @@ return [
     |           'redirect' => '/freebie/danke',     // path (app URL is prepended) or https:// URL
     |           'list' => 'newsletter',             // optional, see below
     |       ],
+    |       'too-expensive' => [
+    |           'tags' => ['objection:price'],
+    |           'thanks' => 'Thanks, that helps.',   // shown instead of a redirect (plain text)
+    |       ],
     |   ],
+    |
+    | A definition has a `redirect` or a `thanks` text; with both, `thanks` wins.
     |
     | `list` names the list the subscription is looked up on. Left out, the
     | list the mail is sent from is used.

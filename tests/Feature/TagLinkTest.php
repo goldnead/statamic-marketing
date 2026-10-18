@@ -36,6 +36,9 @@ beforeEach(function (): void {
         'on-other-list' => ['tags' => ['x'], 'redirect' => '/x', 'list' => 'other'],
         'open-redirect' => ['tags' => ['x'], 'redirect' => '//evil.example/x'],
         'no-tags' => ['tags' => [], 'redirect' => '/x'],
+        'thanks-only' => ['tags' => ['too-expensive'], 'thanks' => 'Danke dir, das hilft mir. <b>Und mehr</b>'],
+        'thanks-and-redirect' => ['tags' => ['both'], 'thanks' => 'Danke.', 'redirect' => '/ignored'],
+        'thanks-blank' => ['tags' => ['blank'], 'thanks' => '   '],
     ]);
 
     MarketingTagLink::register();
@@ -340,4 +343,34 @@ it('tolerates the parameter a mail platform adds when it forwards the reader', f
 
     $this->get($withSe)->assertOk();
     $this->post($withSe)->assertRedirect('http://localhost/freebie/danke');
+});
+
+it('answers the POST with a thank-you page instead of a redirect when the definition has a thanks text', function (): void {
+    $url = URL::signedRoute('marketing.tag-link.show', ['marketingTagKey' => 'thanks-only', 's' => $this->jane->uuid]);
+
+    // The GET is the confirmation page and still sets nothing.
+    $this->get($url)->assertOk();
+    expect(LeadHub::findByEmail('jane@example.com')['tags'] ?? [])->not->toContain('too-expensive');
+
+    $response = $this->post($url);
+
+    $response->assertOk()
+        ->assertSee('Danke dir, das hilft mir.')
+        // Plain text: markup in the text is escaped, not rendered.
+        ->assertDontSee('<b>Und mehr</b>', false)
+        ->assertSee('&lt;b&gt;Und mehr&lt;/b&gt;', false);
+
+    expect(LeadHub::findByEmail('jane@example.com')['tags'])->toContain('too-expensive');
+});
+
+it('prefers the thanks text over a redirect', function (): void {
+    $url = URL::signedRoute('marketing.tag-link.show', ['marketingTagKey' => 'thanks-and-redirect', 's' => $this->jane->uuid]);
+
+    $this->post($url)->assertOk()->assertSee('Danke.');
+});
+
+it('treats a blank thanks text and no redirect as no definition', function (): void {
+    $url = URL::signedRoute('marketing.tag-link.show', ['marketingTagKey' => 'thanks-blank', 's' => $this->jane->uuid]);
+
+    $this->post($url)->assertNotFound();
 });

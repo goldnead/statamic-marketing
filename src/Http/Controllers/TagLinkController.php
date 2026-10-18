@@ -40,11 +40,15 @@ class TagLinkController extends Controller
 
         $links->apply($subscription, $definition['tags']);
 
-        return redirect()->away($definition['redirect']);
+        if ($definition['thanks'] !== null) {
+            return response()->view('marketing::tag-link-thanks', ['thanks' => $definition['thanks']]);
+        }
+
+        return redirect()->away((string) $definition['redirect']);
     }
 
     /**
-     * @return array{0: array{tags: list<string>, redirect: string, list: ?string}, 1: Subscription}
+     * @return array{0: array{tags: list<string>, redirect: ?string, thanks: ?string, list: ?string}, 1: Subscription}
      */
     protected function resolve(Request $request, string $key, TagLinks $links): array
     {
