@@ -8,6 +8,7 @@ use Goldnead\Marketing\Models\SequenceStep;
 use Goldnead\Marketing\Support\EmailTemplateOptions;
 use Goldnead\StatamicAutomations\Contracts\AutomationRepository;
 use Goldnead\StatamicAutomations\Engine\VersionManager;
+use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Models\Automation;
 use Goldnead\StatamicAutomations\Models\AutomationRun;
 use Goldnead\StatamicAutomations\Models\AutomationScheduledJob;
@@ -299,13 +300,10 @@ class SequenceSync
      * the call without closing the run leaves a run that says `waiting`
      * forever with nothing left to wake it. Both, or neither.
      *
-     * **This reaches straight into two of the sibling's tables, and that is a
-     * placeholder, not a design.** Automations exposes no public way to ask
-     * "which runs are waiting on this flow" or to move one along;
-     * `EnrollmentGate::cancelOpenRuns()` is `protected` and carries an
-     * enrolment signature that does not fit here. A ticket for that interface
-     * is filed on the automations side; when it lands, this method is what
-     * calls it.
+     * The cancelling half calls `Automations::cancelRunsOnMissingNodes()` when
+     * the installed automations has it. Older releases get the direct writes
+     * to the sibling's two tables, as a fallback and nothing more, until the
+     * minimum version carries the method.
      *
      * **Known gap:** only a run that is *asleep* is seen. A run being walked
      * right now — its scheduled job already `dispatched`, the run `running` —
@@ -327,30 +325,52 @@ class SequenceSync
 
         $cancel = $stranded['cancel'];
 
-        if ($cancel !== []) {
-            AutomationScheduledJob::query()
-                ->whereIn('id', array_keys($cancel))
-                ->update(['status' => AutomationScheduledJob::STATUS_CANCELLED]);
+        if ($cancel === []) {
+            return ['moved' => count($stranded['repoint']), 'ended' => 0];
+        }
 
-            $runIds = array_values(array_unique(array_filter($cancel)));
+        $reason = sprintf(
+            'the sequence "%s" was shortened and the step this run was waiting for no longer exists.',
+            $sequence->handle,
+        );
 
-            if ($runIds !== []) {
-                AutomationRun::query()
-                    ->whereIn('id', $runIds)
-                    ->whereIn('status', [
-                        AutomationRun::STATUS_WAITING,
-                        AutomationRun::STATUS_QUEUED,
-                        AutomationRun::STATUS_RUNNING,
-                    ])
-                    ->update([
-                        'status' => AutomationRun::STATUS_CANCELLED,
-                        'error_message' => sprintf(
-                            'Cancelled: the sequence "%s" was shortened and the step this run was waiting for no longer exists.',
-                            $sequence->handle,
-                        ),
-                        'finished_at' => now(),
-                    ]);
-            }
+        // The public way, where the sibling has it: it cancels the calls and
+        // the runs together, and what it has no node for is exactly what
+        // classifyStranded() just left in $cancel, because the moved calls now
+        // name a surviving node.
+        $manager = Automations::getFacadeRoot();
+
+        if (is_object($manager) && method_exists($manager, 'cancelRunsOnMissingNodes')) {
+            $ended = (int) $manager->cancelRunsOnMissingNodes(
+                $automation,
+                array_column($graph['nodes'], 'node_key'),
+                $reason,
+            );
+
+            return ['moved' => count($stranded['repoint']), 'ended' => $ended];
+        }
+
+        // Fallback for automations releases without the public method: the
+        // same two writes, done here.
+        AutomationScheduledJob::query()
+            ->whereIn('id', array_keys($cancel))
+            ->update(['status' => AutomationScheduledJob::STATUS_CANCELLED]);
+
+        $runIds = array_values(array_unique(array_filter($cancel)));
+
+        if ($runIds !== []) {
+            AutomationRun::query()
+                ->whereIn('id', $runIds)
+                ->whereIn('status', [
+                    AutomationRun::STATUS_WAITING,
+                    AutomationRun::STATUS_QUEUED,
+                    AutomationRun::STATUS_RUNNING,
+                ])
+                ->update([
+                    'status' => AutomationRun::STATUS_CANCELLED,
+                    'error_message' => 'Cancelled: '.$reason,
+                    'finished_at' => now(),
+                ]);
         }
 
         return ['moved' => count($stranded['repoint']), 'ended' => count($cancel)];

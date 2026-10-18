@@ -346,6 +346,58 @@ it('ends the waiting runs when the shortening is confirmed, instead of failing t
         ->and($run->fresh()->error_message)->toContain('after_purchase');
 });
 
+it('hands the stranded passes to the public engine method and writes nothing itself', function (): void {
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload());
+
+    $run = sleepingRunOn('delay_2');
+    $job = AutomationScheduledJob::query()->where('automation_run_id', $run->id)->firstOrFail();
+
+    // A partial of the real engine: only the new method is replaced, and it
+    // reports one closed pass without touching the tables. If marketing still
+    // wrote directly, the call would be cancelled here anyway, and the
+    // assertion on it below would fail.
+    $engine = Mockery::mock(Automations::getFacadeRoot())->makePartial();
+    $engine->shouldReceive('cancelRunsOnMissingNodes')
+        ->once()
+        ->withArgs(fn ($automation, $survivors, $reason): bool => $survivors === ['trigger', 'mail_1']
+            && str_contains($reason, 'after_purchase'))
+        ->andReturn(1);
+
+    Automations::swap($engine);
+
+    $this->patch(cp_route('marketing.sequences.update', 'after_purchase'), managedSequencePayload([
+        'confirm_shrink' => true,
+        'steps' => [
+            ['template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days'],
+        ],
+    ]))->assertSessionHasNoErrors();
+
+    expect($job->fresh()->status)->toBe(AutomationScheduledJob::STATUS_PENDING)
+        ->and($run->fresh()->status)->toBe(AutomationRun::STATUS_WAITING);
+});
+
+it('falls back to the direct writes when the installed automations has no public method', function (): void {
+    $this->post(cp_route('marketing.sequences.store'), managedSequencePayload());
+
+    $run = sleepingRunOn('delay_2');
+
+    // An engine without the method, as an older release has it.
+    Automations::swap(new class {});
+
+    $this->patch(cp_route('marketing.sequences.update', 'after_purchase'), managedSequencePayload([
+        'confirm_shrink' => true,
+        'steps' => [
+            ['template' => 'danke', 'subject_override' => 'Danke', 'delay_amount' => 0, 'delay_unit' => 'days'],
+        ],
+    ]))->assertSessionHasNoErrors();
+
+    $job = AutomationScheduledJob::query()->where('automation_run_id', $run->id)->firstOrFail();
+
+    expect($job->status)->toBe(AutomationScheduledJob::STATUS_CANCELLED)
+        ->and($run->fresh()->status)->toBe(AutomationRun::STATUS_CANCELLED)
+        ->and($run->fresh()->error_message)->toContain('after_purchase');
+});
+
 it('moves a sleeping run on instead of cancelling it when only the gap is removed', function (): void {
     $this->post(cp_route('marketing.sequences.store'), managedSequencePayload());
 
