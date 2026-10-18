@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.32.0 - 2026-10-18
+
+### Added: the `marketing.message_clicked` automation node
+
+- New node `marketing.message_clicked` (class `Goldnead\Marketing\Integrations\Automations\Actions\MessageClickedAction`, group Marketing), registered as a built-in next to `marketing.send_email`. It asks whether a tracked link in one delivery was followed, so a flow can wait (`delay`), check, and split (`branch` on `clicked`): "two days after the offer, ask those who clicked, send the next lesson to the rest".
+- Input `message_uuid` (token, usually `{{ nodes.send_1.message_uuid }}` from a `marketing.send_email` node), optional `url_contains` (only clicks on links containing this text count, e.g. `utm_content=offer`) and optional `ignore_within_seconds` (clicks that soon after the mail left are not counted, a filter for mail scanners that follow every link on delivery; 0 by default).
+- Output `clicked` (bool), `clicks` (int), `clicked_at` and `url` of the first counted click.
+- An unknown or missing message fails the node; it never answers "no click" because the lookup broke. Test runs pass without a message.
+- The node does not wait and writes nothing. Needs goldnead/statamic-automations like the other nodes.
+
+### Upgrading
+
+- No migration, no config.
+
 ## 2.31.0 - 2026-10-18
 
 ### Added: the newsletter day gate as an automation node

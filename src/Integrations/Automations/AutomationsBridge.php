@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Integrations\Automations;
 
+use Goldnead\Marketing\Integrations\Automations\Actions\MessageClickedAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\SendMarketingEmailAction;
 use Goldnead\StatamicAutomations\Facades\Automations;
@@ -95,6 +96,7 @@ class AutomationsBridge
         if (method_exists($manager, 'registerBuiltIn')) {
             $manager->registerBuiltIn(SendMarketingEmailAction::handle());
             $manager->registerBuiltIn(NewsletterDayGateAction::handle());
+            $manager->registerBuiltIn(MessageClickedAction::handle());
         }
 
         $manager->action(SendMarketingEmailAction::handle(), SendMarketingEmailAction::class);
@@ -104,6 +106,9 @@ class AutomationsBridge
         // graph keeps running; a site registration of that handle made later
         // simply replaces this one.
         $manager->action(NewsletterDayGateAction::handle(), NewsletterDayGateAction::class);
+
+        // The click check: did anybody follow a link in one delivery.
+        $manager->action(MessageClickedAction::handle(), MessageClickedAction::class);
 
         if (! method_exists($manager, 'registerOptionSource')) {
             return;
