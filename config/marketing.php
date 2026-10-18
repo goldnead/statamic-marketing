@@ -548,4 +548,44 @@ return [
         'webhook_manager' => true,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Newsletter day gate
+    |--------------------------------------------------------------------------
+    |
+    | The `newsletter_day_gate` automation node holds a drip mail back on a day
+    | a campaign goes out (or already went out). "The day" is a calendar day in
+    | this timezone, which is deliberately not `app.timezone`: that one has to
+    | stay UTC for the stored timestamps, and the reader lives somewhere else.
+    |
+    */
+
+    'day_gate' => [
+        'timezone' => env('MARKETING_DAY_GATE_TIMEZONE', 'Europe/Berlin'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tag links
+    |--------------------------------------------------------------------------
+    |
+    | Named links that tag the reader who clicks them. Used in a mail as
+    | `{{ marketing_tag_link:key }}`; the URL is signed and carries the
+    | subscription's uuid, never an address.
+    |
+    |   'tag_links' => [
+    |       'wants-freebie' => [
+    |           'tags' => ['interest:freebie'],     // set on the contact
+    |           'redirect' => '/freebie/danke',     // path (app URL is prepended) or https:// URL
+    |           'list' => 'newsletter',             // optional, see below
+    |       ],
+    |   ],
+    |
+    | `list` names the list the subscription is looked up on. Left out, the
+    | list the mail is sent from is used.
+    |
+    */
+
+    'tag_links' => [],
+
 ];

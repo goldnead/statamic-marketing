@@ -67,4 +67,13 @@ return [
     'archive_neutral_name' => 'there',
     'archive_empty' => 'No issues have been published here yet.',
     'archive_feed_link' => 'RSS feed',
+
+    /*
+     * The page between a tag link in a mail and its result. Opening the link
+     * sets nothing, because link scanners open every URL. The page submits
+     * itself; the button is the way through for anyone without JavaScript.
+     */
+    'tag_link_title' => 'One moment',
+    'tag_link_body' => 'One moment, I am saving your choice.',
+    'tag_link_button' => 'Continue',
 ];

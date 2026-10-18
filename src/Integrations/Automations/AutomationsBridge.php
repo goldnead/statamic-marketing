@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Integrations\Automations;
 
+use Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\SendMarketingEmailAction;
 use Goldnead\StatamicAutomations\Facades\Automations;
 use Illuminate\Contracts\Events\Dispatcher;
@@ -93,9 +94,16 @@ class AutomationsBridge
 
         if (method_exists($manager, 'registerBuiltIn')) {
             $manager->registerBuiltIn(SendMarketingEmailAction::handle());
+            $manager->registerBuiltIn(NewsletterDayGateAction::handle());
         }
 
         $manager->action(SendMarketingEmailAction::handle(), SendMarketingEmailAction::class);
+
+        // The day gate: a drip mail waits out the days a campaign goes out.
+        // Same handle a site that built this node itself used, so a stored
+        // graph keeps running; a site registration of that handle made later
+        // simply replaces this one.
+        $manager->action(NewsletterDayGateAction::handle(), NewsletterDayGateAction::class);
 
         if (! method_exists($manager, 'registerOptionSource')) {
             return;

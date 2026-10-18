@@ -119,6 +119,8 @@ class ServiceProvider extends AddonServiceProvider
         // Pfad-Helfer der Anwendung.
         $this->mergeConfigFrom(__DIR__.'/../config/marketing.php', 'marketing');
 
+        $this->allowTagLinkInContent();
+
         $langPath = __DIR__.'/../resources/lang';
 
         $this->app->resolving('translator', function ($translator) use ($langPath) {
@@ -381,6 +383,37 @@ class ServiceProvider extends AddonServiceProvider
         $bind(MailingListRepository::class, EloquentMailingListRepository::class, FlatFileMailingListRepository::class);
         $bind(CampaignRepository::class, EloquentCampaignRepository::class, FlatFileCampaignRepository::class);
         $bind(EmailTemplateRepository::class, EloquentEmailTemplateRepository::class, FlatFileEmailTemplateRepository::class);
+    }
+
+    /**
+     * Let `{{ marketing_tag_link:key }}` run in a mail's content.
+     *
+     * Statamic evaluates Antlers that comes from content (a Bard field, an
+     * email template an editor wrote) as user content, and there only an
+     * allowlist of tags runs: the core ones and tags in the application's own
+     * `Tags` namespace. An addon's tag is none of those, so in a campaign it
+     * would print nothing and say nothing. The tag only ever signs a link for
+     * the subscription the mail is being rendered for, which is why it is safe
+     * to let an editor type it.
+     *
+     * `allowedContentTags` is unset by default, which means "the defaults";
+     * setting it to the defaults plus this tag changes nothing else. A site
+     * that configured the list itself keeps its list, with this one added.
+     */
+    protected function allowTagLinkInContent(): void
+    {
+        $pattern = 'marketing_tag_link:*';
+        $configured = config('statamic.antlers.allowedContentTags');
+
+        if ($configured === null) {
+            config(['statamic.antlers.allowedContentTags' => ['@default', $pattern]]);
+
+            return;
+        }
+
+        if (is_array($configured) && ! in_array($pattern, $configured, true)) {
+            config(['statamic.antlers.allowedContentTags' => [...$configured, $pattern]]);
+        }
     }
 
     /**

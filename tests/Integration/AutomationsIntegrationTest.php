@@ -230,7 +230,7 @@ it('contributes the marketing send node to the automations builder', function ()
     expect($described['kind'])->toBe('action')
         ->and($described['group'])->toBe('Marketing')
         ->and(collect($described['schema'])->pluck('handle')->all())
-        ->toBe(['campaign', 'template', 'subject', 'list', 'to', 'mail_class']);
+        ->toBe(['campaign', 'template', 'subject', 'list', 'to', 'mail_class', 'variables']);
 
     // `campaign` stopped being `required` in 1.12.0, and that is not a
     // loosening. Either it or `template` has to be set, and a form that demands
