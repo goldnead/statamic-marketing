@@ -823,6 +823,14 @@ The automation node `newsletter_day_gate` holds a drip mail back on a day a camp
 scheduled or went out, and asks again at the same time the next day. The day is drawn in
 `marketing.day_gate.timezone` (default `Europe/Berlin`).
 
+### Did they click?
+
+The automation node `marketing.message_clicked` reads the stored click events of one delivery
+(`message_uuid`, usually `{{ nodes.send_1.message_uuid }}`) and outputs `clicked`. Optional
+`url_contains` narrows it to one link, `ignore_within_seconds` drops clicks that happened right
+after the mail left (mail scanners). It does not wait: put a `delay` in front and a `branch` on
+`nodes.<key>.clicked` behind it.
+
 ## Personal data
 
 The addon stores personal data in your own application's database, in four
