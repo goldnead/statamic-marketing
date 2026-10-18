@@ -73,7 +73,7 @@ class MessageClickedAction implements AutomationAction
                 'label' => 'Link contains',
                 'type' => 'text',
                 'required' => false,
-                'help' => 'Only clicks on a link whose address contains this text count, for example utm_content=offer. Empty: any link in the mail.',
+                'help' => 'Only clicks on a link whose address contains this text count (plain, case-sensitive substring), for example utm_content=offer. Empty: any link in the mail.',
             ],
             [
                 'handle' => 'ignore_within_seconds',
@@ -113,6 +113,8 @@ class MessageClickedAction implements AutomationAction
         if ($uuid === '' && $context->isTestMode()) {
             return ActionResult::success([
                 'clicked' => false,
+                'clicked_at' => null,
+                'url' => null,
                 'clicks' => 0,
                 'note' => 'Test mode — no message to look at.',
             ]);
