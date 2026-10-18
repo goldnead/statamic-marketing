@@ -1,5 +1,60 @@
 # Changelog
 
+## 2.32.0 - 2026-10-18
+
+### Added: the `marketing.message_clicked` automation node
+
+- New node `marketing.message_clicked` (class `Goldnead\Marketing\Integrations\Automations\Actions\MessageClickedAction`, group Marketing), registered as a built-in next to `marketing.send_email`. It asks whether a tracked link in one delivery was followed, so a flow can wait (`delay`), check, and split (`branch` on `clicked`): "two days after the offer, ask those who clicked, send the next lesson to the rest".
+- Input `message_uuid` (token, usually `{{ nodes.send_1.message_uuid }}` from a `marketing.send_email` node), optional `url_contains` (only clicks on links containing this text count, e.g. `utm_content=offer`) and optional `ignore_within_seconds` (clicks that soon after the mail left are not counted, a filter for mail scanners that follow every link on delivery; 0 by default).
+- Output `clicked` (bool), `clicks` (int), `clicked_at` and `url` of the first counted click.
+- An unknown or missing message fails the node; it never answers "no click" because the lookup broke. Test runs pass without a message.
+- The node does not wait and writes nothing. Needs goldnead/statamic-automations like the other nodes.
+
+### Upgrading
+
+- No migration, no config.
+
+## 2.31.0 - 2026-10-18
+
+### Added: the newsletter day gate as an automation node
+
+- New node `newsletter_day_gate` (class `Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction`, group Marketing), registered as a built-in next to `marketing.send_email`. Put it in front of a drip mail: when a campaign is scheduled for, or already went out on, the current calendar day, the run waits and asks again at the same time the next day. Test runs never wait.
+- The handle is the one sites already used for their own copy of this node, so stored graphs keep running unchanged.
+- The day is drawn in `marketing.day_gate.timezone` (default `Europe/Berlin`, env `MARKETING_DAY_GATE_TIMEZONE`), not in `app.timezone`. An unknown zone falls back to Berlin.
+- Needs goldnead/statamic-automations like the other nodes; without it nothing is registered and nothing else changes.
+
+### Added: variables for `marketing.send_email` in template mode
+
+- New optional field `variables` (key_value, tokenable). Each pair becomes an Antlers variable in the template and in the subject: `freebie_title` with the value `{{ nodes.lookup.product_title }}` prints as `{{ freebie_title }}`. The values resolve against the run like the subject does.
+- A pair never replaces a built-in variable (`email`, `first_name`, `unsubscribe_url`, `sequence_unsubscribe_url`, `subject`, `list` and so on). Names that Antlers cannot print and values that are not text are skipped.
+- Values are plain text. In the HTML body they are escaped, so a `<script>` in a product title arrives as text; in the subject and the plain-text part they are used as they are.
+- `SingleSend::sendTemplate()` takes the same pairs as a new last argument `$variables`.
+
+### Added: signed tag links
+
+- New config `marketing.tag_links`: a key maps to `tags`, `redirect` (a path, which gets the application URL, or an https URL) and optionally `list`.
+- New Antlers tag `{{ marketing_tag_link:key }}` prints the signed URL for the subscription the mail is sent to, or `#` for an unknown key and in the Control Panel preview. The URL carries the subscription uuid, never an address. Keys may contain hyphens.
+- Two public routes under the marketing prefix, `marketing.tag-link.show` (GET) and `marketing.tag-link.apply` (POST) on `{prefix}/tag/{key}?s={uuid}`. The GET shows a page (view `marketing::tag-link`) and sets nothing, so mail scanners that open every link tag nobody. The page sends the POST itself and has a "Continue" button for readers without JavaScript. The POST sets the tags and redirects to the configured target only.
+- Tags go to the LeadHub contact (created if there is none, source `marketing-tag-link`). Setting a tag twice changes nothing.
+- Both routes use the signature check of the click counter, so a parameter a mail platform adds in transit does not break the link. The click counter may wrap the link like any other.
+- The tag is added to Statamic's allowlist for Antlers in user content (`statamic.antlers.allowedContentTags`), because without it the tag prints nothing inside a campaign or an email template.
+
+### Upgrading
+
+- No migration. New config keys `day_gate.timezone` and `tag_links`; publish the config again only if you want to see them in your copy.
+- A site that registered its own `newsletter_day_gate` can delete that class and its registration. If both stay, the one registered last answers to the handle.
+- Sites that override `marketing::layout` get the tag-link page in their look. The page uses the classes `.btn` and `.muted`.
+
+## 2.30.1 — 2026-10-18
+
+### Fixed: campaign mails from a template file are not framed twice
+
+- The template-file fallback handed to `statamic-email-templates` now says `branded => false`. A template file is a complete layout with its own header and footer; with a branded layout configured it was framed a second time and, on a phone, the mail came out wider than the screen. Needs statamic-email-templates 2.9.1 or newer to take effect; with older versions the key is ignored and nothing changes.
+
+### Upgrading
+
+- No migration, no new config key.
+
 ## 2.30.0 — 2026-10-17
 
 ### Changed

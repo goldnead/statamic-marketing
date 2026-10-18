@@ -69,4 +69,13 @@ return [
     'archive_neutral_name' => 'du',
     'archive_empty' => 'Hier ist noch keine Ausgabe veröffentlicht.',
     'archive_feed_link' => 'RSS-Feed',
+
+    /*
+     * Die Zwischenseite eines Tag-Links aus der Mail. Der Aufruf allein setzt
+     * nichts: Link-Scanner öffnen jede URL. Die Seite schickt sich selbst ab,
+     * der Knopf ist der Weg für alle ohne JavaScript.
+     */
+    'tag_link_title' => 'Einen Moment',
+    'tag_link_body' => 'Einen Moment, ich speichere deine Auswahl.',
+    'tag_link_button' => 'Weiter',
 ];

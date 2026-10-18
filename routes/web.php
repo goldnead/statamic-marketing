@@ -6,6 +6,7 @@ use Goldnead\Marketing\Http\Controllers\ConfirmController;
 use Goldnead\Marketing\Http\Controllers\LettermintWebhookController;
 use Goldnead\Marketing\Http\Controllers\RatingController;
 use Goldnead\Marketing\Http\Controllers\SubscribeController;
+use Goldnead\Marketing\Http\Controllers\TagLinkController;
 use Goldnead\Marketing\Http\Controllers\TrackingController;
 use Goldnead\Marketing\Http\Controllers\UnsubscribeController;
 use Goldnead\Marketing\Http\Middleware\SetBrandFromListHandle;
@@ -127,6 +128,34 @@ Route::prefix(config('marketing.routes.prefix', '!/marketing'))->group(function 
         ->middleware([
             ValidateTrackingSignature::class,
             $brandFrom(Message::class, 'uuid', 'uuid'),
+        ]);
+
+    /*
+     * Tag links (`{{ marketing_tag_link:key }}`). The same split as the
+     * confirmation above: the GET shows a page and changes nothing, the POST
+     * sets the tags. Both are signed, with the mail-platform tolerance of the
+     * click counter, and both address the one subscription in `s`, which is
+     * where the brand comes from. The POST keeps CSRF: it only ever comes from
+     * the page the GET just served.
+     *
+     * One URL for both verbs, so the page can post to the address it was
+     * opened on and the signature still holds. `marketingTagKey` and not `key`
+     * for the usual reason: parameter names are application-wide.
+     */
+    Route::get('/tag/{marketingTagKey}', [TagLinkController::class, 'show'])
+        ->name('marketing.tag-link.show')
+        ->where('marketingTagKey', '[A-Za-z0-9_-]+')
+        ->middleware([
+            ValidateTrackingSignature::class,
+            $brandFrom(Subscription::class, 'uuid', 's'),
+        ]);
+
+    Route::post('/tag/{marketingTagKey}', [TagLinkController::class, 'apply'])
+        ->name('marketing.tag-link.apply')
+        ->where('marketingTagKey', '[A-Za-z0-9_-]+')
+        ->middleware([
+            ValidateTrackingSignature::class,
+            $brandFrom(Subscription::class, 'uuid', 's'),
         ]);
 
     // Lettermint's event webhook. Machine to machine: no session, no CSRF

@@ -87,6 +87,21 @@ it('falls back to the marketing template repository for a raw legacy handle', fu
     expect($html)->toContain('CONTENT');
 });
 
+it('tells email-templates not to frame its own layout file a second time', function () {
+    // backlog-email-templates-doppelter-markenrahmen: the template file already
+    // carries its header and footer, a branded shell around it doubles the frame.
+    app(EmailTemplateRepository::class)->save(new EmailTemplate(
+        handle: 'brand',
+        name: 'Brand',
+        html: '<main>BRAND {{ content }}</main>',
+    ));
+
+    renderCampaign($this->list, 'brand');
+
+    expect(EmailTemplates::$lastFallback)->not->toBeNull();
+    expect(EmailTemplates::$lastFallback['branded'] ?? null)->toBeFalse();
+});
+
 it('uses the built-in fallback layout when no template is referenced', function () {
     $html = renderCampaign($this->list, null);
 

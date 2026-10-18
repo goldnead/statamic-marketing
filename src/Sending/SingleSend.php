@@ -130,6 +130,11 @@ class SingleSend
      * @param  string|null  $reference  what to write in the mail log. Defaults
      *                                  to the template slug, the way the
      *                                  campaign path defaults to its handle.
+     * @param  array<string, mixed>  $variables  further Antlers variables for the
+     *                                           template and the subject. They
+     *                                           add to the built-in ones and
+     *                                           never replace one; see
+     *                                           {@see CampaignRenderer::extraVariables()}.
      */
     public function sendTemplate(
         string $template,
@@ -139,6 +144,7 @@ class SingleSend
         ?MailClass $class = null,
         ?string $reference = null,
         ?string $sequenceUuid = null,
+        array $variables = [],
     ): SingleSendResult {
         // Before the gates, because it is not about the recipient. A template
         // that answers to nothing is a broken node, and the answer to a broken
@@ -158,6 +164,7 @@ class SingleSend
             campaignHandle: null,
             templateHandle: $template,
             sequenceUuid: $sequenceUuid,
+            extraVariables: $variables,
         );
     }
 
@@ -183,6 +190,7 @@ class SingleSend
         ?string $campaignHandle,
         ?string $templateHandle,
         ?string $sequenceUuid = null,
+        array $extraVariables = [],
     ): SingleSendResult {
         $email = (string) $subscription->email;
 
@@ -226,7 +234,7 @@ class SingleSend
         ]);
 
         try {
-            $rendered = $this->renderer->render($campaign, $list, $subscription, $message, $sequenceUuid);
+            $rendered = $this->renderer->render($campaign, $list, $subscription, $message, $sequenceUuid, $extraVariables);
 
             // Same brand the message row was stamped with, same identity the
             // list path uses. A sequence mail is a mail.

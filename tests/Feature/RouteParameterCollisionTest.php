@@ -234,7 +234,7 @@ it('keeps the bound names and the route files in agreement', function (): void {
     // exactly that kind of word. Prefixing costs nothing — parameter names are
     // internal and never appear in a URL.
     expect($unbound)->toBe(
-        ['handle', 'marketingCampaign', 'marketingChoice', 'subscription', 'token', 'uuid'],
+        ['handle', 'marketingCampaign', 'marketingChoice', 'marketingTagKey', 'subscription', 'token', 'uuid'],
         'The unbound parameter names changed. Keep them unbound — and if one of these ever needs '
         .'a binding, rename it to `marketing…` in the same commit.'
     );
