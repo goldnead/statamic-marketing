@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.33.1 - 2026-10-18
+
+### Changed: shortening a sequence cancels stranded runs through automations' public method
+
+When the installed `goldnead/statamic-automations` is 2.28.0 or newer, `SequenceSync` closes the runs that a
+shortened sequence strands by calling `Automations::cancelRunsOnMissingNodes()` instead of writing into
+`automation_scheduled_jobs` and `automation_runs` itself. Older automations releases keep the direct writes as a
+fallback. Same behaviour, a cleaner seam. No migration, no config.
+
 ## 2.33.0 - 2026-10-18
 
 ### Added: a thank-you text for tag links
