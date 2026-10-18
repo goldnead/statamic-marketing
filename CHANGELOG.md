@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.33.0 - 2026-10-18
+
+### Added: a thank-you text for tag links
+
+- A `marketing.tag_links` definition can carry `thanks` (plain text) instead of `redirect`. After the POST the reader sees the existing confirmation layout with the text instead of being sent on. `redirect` stays the default; with both, `thanks` wins. A definition needs one of the two. The text is escaped.
+
+### Upgrading
+
+- No migration. New translation key `tag_link_thanks_title` (en, de).
+
 ## 2.32.0 - 2026-10-18
 
 ### Added: the `marketing.message_clicked` automation node

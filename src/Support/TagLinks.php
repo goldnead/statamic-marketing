@@ -41,7 +41,7 @@ class TagLinks
      * absent rather than half-working: a link that answers 200 and does
      * nothing is worse than one that answers 404.
      *
-     * @return array{tags: list<string>, redirect: string, list: ?string}|null
+     * @return array{tags: list<string>, redirect: ?string, thanks: ?string, list: ?string}|null
      */
     public function definition(string $key): ?array
     {
@@ -65,7 +65,13 @@ class TagLinks
 
         $redirect = $this->target($raw['redirect'] ?? null);
 
-        if ($tags === [] || $redirect === null) {
+        // A thank-you text instead of a redirect: shown on the page the POST
+        // answers with. Plain text, escaped when rendered. It wins over a redirect.
+        $thanks = isset($raw['thanks']) && is_string($raw['thanks']) && trim($raw['thanks']) !== ''
+            ? trim($raw['thanks'])
+            : null;
+
+        if ($tags === [] || ($redirect === null && $thanks === null)) {
             return null;
         }
 
@@ -73,7 +79,7 @@ class TagLinks
             ? trim($raw['list'])
             : null;
 
-        return ['tags' => $tags, 'redirect' => $redirect, 'list' => $list];
+        return ['tags' => $tags, 'redirect' => $redirect, 'thanks' => $thanks, 'list' => $list];
     }
 
     /**

@@ -76,4 +76,5 @@ return [
     'tag_link_title' => 'One moment',
     'tag_link_body' => 'One moment, I am saving your choice.',
     'tag_link_button' => 'Continue',
+    'tag_link_thanks_title' => 'Thank you',
 ];

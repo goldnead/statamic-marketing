@@ -78,4 +78,5 @@ return [
     'tag_link_title' => 'Einen Moment',
     'tag_link_body' => 'Einen Moment, ich speichere deine Auswahl.',
     'tag_link_button' => 'Weiter',
+    'tag_link_thanks_title' => 'Danke',
 ];
