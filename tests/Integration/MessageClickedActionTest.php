@@ -3,6 +3,7 @@
 use Goldnead\Marketing\Integrations\Automations\Actions\MessageClickedAction;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\TrackingService;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Facades\Automations;
@@ -23,9 +24,15 @@ beforeEach(function (): void {
     $this->travelTo('2026-10-13 10:00:00');
 
     $this->message = function (string $email = 'maria@example.com'): Message {
-        // A template send: no campaign, no subscription, a template handle.
+        $subscription = Subscription::create([
+            'list_handle' => 'newsletter',
+            'email' => $email,
+            'status' => Subscription::STATUS_SUBSCRIBED,
+        ]);
+
         return Message::create([
-            'template_handle' => 'vokale-v1',
+            'campaign_handle' => 'brief',
+            'subscription_id' => $subscription->id,
             'email' => $email,
             'status' => 'sent',
             'sent_at' => now(),
