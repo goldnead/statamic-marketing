@@ -143,6 +143,33 @@ class Campaign
         return $this->variantSubject !== null && trim($this->variantSubject) !== '';
     }
 
+    /**
+     * Does this campaign go out to people who are inside a running sequence too?
+     *
+     * Off unless an editor switched it on ("send anyway"). By default a
+     * newsletter leaves out the people who are inside an automation that
+     * pauses it ("one track at a time"); see StartCampaignJob.
+     */
+    public function sendsDuringSequences(): bool
+    {
+        return (bool) ($this->meta['send_during_sequences'] ?? false);
+    }
+
+    /**
+     * How many people the send left out because they were inside a sequence.
+     *
+     * Null when the question was never asked (automations not installed, the
+     * override on, a mail that is not a newsletter, or the campaign is not sent
+     * yet); zero when it was asked and nobody was inside. The report shows the
+     * tile for both numbers and hides it for null.
+     */
+    public function sequencePauseSkipped(): ?int
+    {
+        $skipped = $this->meta['sequence_pause']['skipped'] ?? null;
+
+        return $skipped === null ? null : (int) $skipped;
+    }
+
     public function isDraft(): bool
     {
         return $this->status === self::STATUS_DRAFT;

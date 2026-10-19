@@ -270,6 +270,11 @@ const statTiles = computed(() => props.stats ? [
     // install that caps nothing is noise; a missing one on the report where it
     // did happen is people the tiles do not account for.
     ...(props.stats.capped ? [{ label: __('Capped'), value: props.stats.capped }] : []),
+    // "Skipped: inside a running sequence". Shown whenever the question was
+    // asked (so a 0 is an answer), hidden when it never was.
+    ...(props.stats.sequence_paused != null
+        ? [{ label: __('marketing::campaigns.report.sequence_paused'), value: props.stats.sequence_paused }]
+        : []),
 ] : []);
 
 // The open figures, told apart. `stats.opened` is unchanged and still counts

@@ -222,6 +222,7 @@ class CampaignController extends Controller
             content: app(CampaignContentField::class)->fromForm($data['content'] ?? ''),
             mailClass: MailClass::fromValue($data['mail_class'] ?? null)->value,
             abShare: (int) ($data['ab_share'] ?? 0),
+            meta: ($data['send_during_sequences'] ?? false) ? ['send_during_sequences' => true] : [],
         );
 
         $this->campaigns->save($campaign);
@@ -589,7 +590,9 @@ class CampaignController extends Controller
      */
     protected function overviewPayload(Campaign $campaign, CampaignStats $stats, CampaignReport $report): array
     {
-        $figures = $stats->forCampaign($campaign);
+        // Beside the figures, not inside them: it is a new question ("who was
+        // left out, and why"), and null means it was never asked.
+        $figures = $stats->forCampaign($campaign) + ['sequence_paused' => $campaign->sequencePauseSkipped()];
 
         return [
             'stats' => $figures,
@@ -989,6 +992,18 @@ class CampaignController extends Controller
         $campaign->content = app(CampaignContentField::class)->fromForm($data['content'] ?? '');
         $campaign->mailClass = MailClass::fromValue($data['mail_class'] ?? null)->value;
         $campaign->abShare = (int) ($data['ab_share'] ?? 0);
+
+        if (array_key_exists('send_during_sequences', $data)) {
+            $meta = $campaign->meta;
+
+            if ($data['send_during_sequences']) {
+                $meta['send_during_sequences'] = true;
+            } else {
+                unset($meta['send_during_sequences']);
+            }
+
+            $campaign->meta = $meta;
+        }
 
         if ($series !== null) {
             $this->applySeries($campaign, $series);
@@ -1416,6 +1431,9 @@ class CampaignController extends Controller
             // `marketing`, and an editor who picked "reminder" and got a capped
             // campaign would have no way to see why.
             'mail_class' => ['nullable', Rule::in(MailClass::values())],
+            // "Send anyway": also to people who are inside a running sequence
+            // that pauses the newsletter. See Campaign::sendsDuringSequences().
+            'send_during_sequences' => ['nullable', 'boolean'],
             'preheader' => ['nullable', 'string', 'max:255'],
             'from_name' => ['nullable', 'string', 'max:255'],
             'from_email' => ['nullable', 'email'],
