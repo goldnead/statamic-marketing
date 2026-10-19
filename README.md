@@ -329,6 +329,22 @@ nothing; `POST` confirms. Mail gateways and preview features fetch every URL in 
 subscription created by a scanner is both wrong and, because it carries a plausible timestamp,
 hard to tell from a real one afterwards.
 
+## One track at a time: the newsletter and running sequences
+
+With `goldnead/statamic-automations` 2.31 or newer, an automation can be flagged **Pauses the newsletter**
+(a toggle on its trigger). A newsletter then leaves out the people who are, at send time, inside a
+queued, running or waiting run of such an automation: a welcome series, a mini-course. They do not get
+that issue later; the next one reaches them once they are out.
+
+- It applies to campaigns classified `marketing` (the capped class). Reminders, digests and
+  transactional mail are not held back. A test send is never filtered.
+- Per campaign, **Send anyway** (`Campaign::sendsDuringSequences()`) sends to everybody regardless.
+- The report's overview shows **Skipped: inside a running sequence** and the send logs the same number.
+  The figure is absent when the question was never asked (no automations, override on).
+- Without automations, or with a release that predates the question, nothing changes. If automations
+  fails to answer, the campaign goes out as before and the failure is logged (fail-open: the check only
+  ever holds mail back, so it must not be able to stop a newsletter).
+
 ## The campaign report
 
 The report opens on **Overview** and has four more tabs — **Delivery**,

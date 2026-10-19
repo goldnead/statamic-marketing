@@ -40,6 +40,53 @@ class AutomationsBridge
             && class_exists(Automations::class);
     }
 
+    /**
+     * Which of these addresses are inside a running sequence that pauses the
+     * newsletter ("one track at a time")?
+     *
+     * Asked of automations, which owns the answer: marketing does not know what
+     * a sequence is, only that somebody who is inside one should not also get
+     * the broadcast. Addresses go in and come out trimmed and lower-cased.
+     *
+     * `null` means "not asked": automations is absent, too old to know the
+     * question, or failed. The caller sends as before in all three cases. The
+     * failure case is logged and deliberately fails OPEN, the opposite of the
+     * suppression gate: this check only ever holds mail back, so losing it can
+     * cost one doubled mail but never mails somebody who said no.
+     *
+     * @param  iterable<int, string|null>  $emails
+     * @return list<string>|null
+     */
+    public function subjectsInPausingRuns(iterable $emails): ?array
+    {
+        $manager = $this->manager();
+
+        if (! is_object($manager) || ! method_exists($manager, 'subjectsInPausingRuns')) {
+            return null;
+        }
+
+        try {
+            return array_values(array_map(
+                fn ($email) => mb_strtolower(trim((string) $email)),
+                (array) $manager->subjectsInPausingRuns($emails),
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Marketing could not ask automations who is inside a sequence ('.$e->getMessage().'); the campaign goes out as if nobody was.');
+
+            return null;
+        }
+    }
+
+    /** The automations manager, or null when it is not installed, disabled or not booted. */
+    protected function manager(): mixed
+    {
+        if (! static::available() || ! app()->bound('automations')) {
+            return null;
+        }
+
+        return Automations::getFacadeRoot();
+    }
+
     public function boot(Dispatcher $events): void
     {
         if ($this->booted || ! static::available()) {

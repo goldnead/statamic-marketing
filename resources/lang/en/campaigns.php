@@ -55,7 +55,10 @@ return [
         'bounced' => 'Bounced',
         'capped' => 'Capped',
     ],
+    'send_during_sequences' => 'Send anyway',
+    'send_during_sequences_help' => 'By default the newsletter leaves out people who are inside a running sequence (welcome, mini-course, course series). They are not sent this issue later. This switch sends it to them as well.',
     'report' => [
+        'sequence_paused' => 'Skipped: inside a running sequence',
         'tabs' => [
             'overview' => 'Overview',
             'delivery' => 'Delivery',

@@ -81,6 +81,10 @@ const contentFields = computed(
 // Opting a campaign out is an act; leaving this alone never is.
 const mailClass = ref(props.campaign?.mail_class || 'marketing');
 
+// "One track at a time": by default a newsletter skips people who are inside a
+// running sequence that pauses it. Ticking this sends to them anyway.
+const sendDuringSequences = ref(Boolean(props.campaign?.meta?.send_during_sequences));
+
 const capDays = computed(() => Math.round((props.frequencyCap?.window_hours ?? 168) / 24));
 
 const capNote = computed(() => {
@@ -313,6 +317,7 @@ function payload() {
         reply_to: replyTo.value || null,
         content: contentValues.value.content ?? null,
         mail_class: mailClass.value || null,
+        send_during_sequences: sendDuringSequences.value,
         ...seriesPayloadFields(),
     };
 }
@@ -334,7 +339,7 @@ const contentErrors = computed(() =>
 // form instead, otherwise it would be invisible again.
 const fieldKeys = [
     'name', 'handle', 'subject', 'variant_subject', 'ab_share', 'preheader', 'content',
-    'list', 'segment', 'template', 'mail_class',
+    'list', 'segment', 'template', 'mail_class', 'send_during_sequences',
     'from_name', 'from_email', 'reply_to',
     'email', 'scheduled_at',
     'series_enabled', 'series.radius_km', 'series.days_before', 'series.send_time',
@@ -1054,6 +1059,18 @@ onBeforeUnmount(() => clearTimeout(previewTimer));
                                         </template>
                                         {{ capNote }}
                                     </p>
+                                </Field>
+
+                                <!-- "One track at a time". Only a marketing mail is
+                                     held back for a sequence, so the switch is
+                                     only offered there. -->
+                                <Field
+                                    v-if="mailClass === 'marketing'"
+                                    :label="__('marketing::campaigns.send_during_sequences')"
+                                    :instructions="__('marketing::campaigns.send_during_sequences_help')"
+                                    :error="formErrors.send_during_sequences"
+                                >
+                                    <Switch v-model="sendDuringSequences" data-marketing-send-during-sequences />
                                 </Field>
                             </div>
                         </Card>

@@ -55,7 +55,10 @@ return [
         'bounced' => 'Unzustellbar',
         'capped' => 'Gedeckelt',
     ],
+    'send_during_sequences' => 'Trotzdem an alle',
+    'send_during_sequences_help' => 'Normalerweise lässt der Newsletter Leute aus, die gerade in einer laufenden Strecke stecken (Willkommen, Minikurs, Kursstrecke). Sie bekommen diese Ausgabe dann nicht nachgeschickt. Mit diesem Schalter geht sie auch an sie.',
     'report' => [
+        'sequence_paused' => 'Ausgelassen: in laufender Strecke',
         'tabs' => [
             'overview' => 'Übersicht',
             'delivery' => 'Zustellbarkeit',

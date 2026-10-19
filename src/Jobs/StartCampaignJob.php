@@ -11,6 +11,7 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Events\CampaignSending;
 use Goldnead\Marketing\Events\CampaignSent;
+use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\SingleSend;
@@ -76,16 +77,33 @@ class StartCampaignJob implements ShouldQueue
         // LeadHub contact UUIDs. `null` = no segment filter (whole list).
         $segmentMemberIds = $this->resolveSegmentMemberIds($campaign);
 
+        // "One track at a time": people inside a running sequence that pauses
+        // the newsletter are left out of this issue. Asked per chunk below;
+        // `$sequencePaused` counts them, `$asked` records that the question
+        // was put to automations at all (null answers never count).
+        $sequencePaused = 0;
+        $asked = false;
+        $pausing = $this->pausesForSequences($campaign);
+        // Resolved here and not injected: callers that run `handle()` by hand
+        // pass the first four dependencies, and that signature stays.
+        $automations = app(AutomationsBridge::class);
+
         try {
             Subscription::query()
                 ->forList((string) $campaign->listHandle)
                 ->subscribed()
-                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $variants, $queue, $perMinute, $segmentMemberIds, &$index) {
+                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $variants, $automations, $pausing, $queue, $perMinute, $segmentMemberIds, &$index, &$sequencePaused, &$asked) {
                     // One question per chunk rather than one per subscriber.
                     // The addresses this returns never become Message rows at
                     // all — a blocked address must not enter a send, not merely
                     // fail to leave one.
                     $suppressed = $gate->suppressedAmong($subscriptions->pluck('email'));
+
+                    $inSequence = $pausing
+                        ? $automations->subjectsInPausingRuns($subscriptions->map(fn ($s) => $this->subjectOf($s)))
+                        : null;
+                    $asked = $asked || $inSequence !== null;
+                    $inSequence = $inSequence === null ? [] : array_flip($inSequence);
 
                     foreach ($subscriptions as $subscription) {
                         if (isset($suppressed[(string) $subscription->email_normalized])) {
@@ -101,6 +119,15 @@ class StartCampaignJob implements ShouldQueue
                         // excluded — but consent is never granted by the segment.
                         if ($segmentMemberIds !== null
                             && ! isset($segmentMemberIds[(string) $subscription->contact_uuid])) {
+                            continue;
+                        }
+
+                        // Counted only here, after every other reason to skip
+                        // somebody: "left out because of a sequence" must mean
+                        // people who would otherwise have got this issue.
+                        if (isset($inSequence[$this->subjectOf($subscription)])) {
+                            $sequencePaused++;
+
                             continue;
                         }
 
@@ -167,6 +194,10 @@ class StartCampaignJob implements ShouldQueue
             throw $e;
         }
 
+        if ($asked) {
+            $this->recordSequencePause($campaigns, $campaign, $sequencePaused);
+        }
+
         // Empty audience: nothing will ever finalize the campaign, so do it here.
         if ($index === 0 && Message::forCampaign($campaign->handle)->pending()->count() === 0) {
             $campaign->status = Campaign::STATUS_SENT;
@@ -175,6 +206,49 @@ class StartCampaignJob implements ShouldQueue
 
             event(new CampaignSent($campaign));
         }
+    }
+
+    /**
+     * Does this send leave out people who are inside a running sequence?
+     *
+     * Only a newsletter does (class `marketing`: the capped one), and only
+     * unless the editor ticked "send anyway" on the campaign. Reminders,
+     * digests and receipts go to people for a reason that does not wait for
+     * their welcome series to end.
+     */
+    protected function pausesForSequences(Campaign $campaign): bool
+    {
+        return ! $campaign->sendsDuringSequences() && $campaign->mailClass()->countsTowardCap();
+    }
+
+    /** The form automations stores a person in: trimmed and lower-cased. */
+    protected function subjectOf(Subscription $subscription): string
+    {
+        return mb_strtolower(trim((string) $subscription->email));
+    }
+
+    /**
+     * Keep the count on the campaign (the report shows it) and say it in the
+     * log. Skipped people get no catch-up: the next issue reaches them once
+     * they are out of the sequence.
+     *
+     * Written onto a freshly loaded campaign, not the one this job started
+     * with: a queue that already ran (a sync queue, a tiny audience) may have
+     * finalised the campaign meanwhile, and saving the stale copy would put
+     * its status back to "sending".
+     */
+    protected function recordSequencePause(CampaignRepository $campaigns, Campaign $campaign, int $skipped): void
+    {
+        $fresh = $campaigns->find($campaign->handle) ?? $campaign;
+        $meta = $fresh->meta;
+        $meta['sequence_pause'] = ['skipped' => $skipped];
+        $fresh->meta = $meta;
+        $campaigns->save($fresh);
+
+        Log::info(
+            "Marketing campaign [{$campaign->handle}] left out {$skipped} recipient(s) who are inside "
+            .'a running sequence that pauses the newsletter.'
+        );
     }
 
     /**

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.34.0 - 2026-10-19
+
+### Added: the newsletter leaves out people who are inside a running sequence ("one track at a time")
+
+When `goldnead/statamic-automations` 2.31.0 or newer is installed and an automation is flagged **Pauses the newsletter**, a campaign skips every recipient who is, at send time, inside a queued, running or waiting run of such an automation. Skipped people do not get that issue later. Applies to campaigns of class `marketing`; reminders, digests, transactional mail and test sends are untouched.
+
+- New switch on the campaign form, **Send anyway** (`meta.send_during_sequences`, `Campaign::sendsDuringSequences()`), to send to everybody regardless. Off by default.
+- The number left out is counted per campaign (`meta.sequence_pause.skipped`, `Campaign::sequencePauseSkipped()`), logged, and shown on the report's overview as **Skipped: inside a running sequence**. Only people who would otherwise have received the issue are counted (not the unsubscribed, suppressed or out-of-segment).
+- New `AutomationsBridge::subjectsInPausingRuns()`. Without automations, with an older release, or when automations throws, the campaign goes out exactly as before (fail-open; a failure is logged).
+
+No migration. Nothing changes until an automation is flagged.
+
 ## 2.33.1 - 2026-10-18
 
 ### Changed: shortening a sequence cancels stranded runs through automations' public method
