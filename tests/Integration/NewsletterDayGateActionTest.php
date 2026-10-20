@@ -5,6 +5,7 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Support\ActionResult;
@@ -160,7 +161,13 @@ describe('one mail per day', function (): void {
             ->execute(AutomationContext::make($data, $testMode), $config);
 
         $this->mailed = function (string $email, string $sentAtUtc): void {
+            $subscription = Subscription::firstOrCreate(
+                ['list_handle' => 'newsletter', 'email' => $email],
+                ['status' => Subscription::STATUS_SUBSCRIBED],
+            );
+
             Message::create([
+                'subscription_id' => $subscription->id,
                 'email' => $email,
                 'status' => Message::STATUS_SENT,
                 'sent_at' => $sentAtUtc,

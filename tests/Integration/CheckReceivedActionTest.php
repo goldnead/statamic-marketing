@@ -2,6 +2,7 @@
 
 use Goldnead\Marketing\Integrations\Automations\Actions\CheckReceivedAction;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Support\ActionResult;
@@ -23,7 +24,14 @@ beforeEach(function (): void {
     $this->travelTo('2026-10-13 10:00:00');
 
     $this->mail = function (string $email, string $sentAt, array $attributes = []): Message {
+        // A message always belongs to the subscription it was sent against.
+        $subscription = Subscription::firstOrCreate(
+            ['list_handle' => 'newsletter', 'email' => $email],
+            ['status' => Subscription::STATUS_SUBSCRIBED],
+        );
+
         return Message::create(array_merge([
+            'subscription_id' => $subscription->id,
             'email' => $email,
             'status' => Message::STATUS_SENT,
             'sent_at' => $sentAt,
