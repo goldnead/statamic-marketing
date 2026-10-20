@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing;
 
+use Goldnead\BrandContext\Map\MapObjectRegistry;
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\Events\Events\OccurrenceCancelled;
 use Goldnead\Events\Events\OccurrencePresaleChanged;
@@ -28,6 +29,7 @@ use Goldnead\Marketing\Integrations\Insights\SubscribersActive;
 use Goldnead\Marketing\Integrations\Insights\Unsubscribed;
 use Goldnead\Marketing\Integrations\Leadhub\ContactSubscriptionsPanel;
 use Goldnead\Marketing\Integrations\Leadhub\TimelineRecorder;
+use Goldnead\Marketing\Integrations\Map\NewsletterMapObjects;
 use Goldnead\Marketing\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\Marketing\Jobs\SyncSeriesJob;
 use Goldnead\Marketing\Repositories\Eloquent\EloquentCampaignRepository;
@@ -202,6 +204,10 @@ class ServiceProvider extends AddonServiceProvider
         // auf anderen nicht, ohne dass etwas auf dem Bildschirm sagt, auf
         // welchen.
         app(SettingsRegistry::class)->register(Settings::class);
+
+        // Der Newsletter als Karte der Funnel-Landkarte. brand-context ist
+        // Pflicht in composer.json, die Registry also immer da.
+        app(MapObjectRegistry::class)->register(NewsletterMapObjects::class);
     }
 
     /**
