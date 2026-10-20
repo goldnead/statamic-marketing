@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added: the newsletter as a card on the funnels map
+
+`brand-context`'s funnels map can now point at the newsletter. It is one fixed object (type `newsletter`, id `newsletter`) linking to the campaigns list, with a note that people inside a running sequence that pauses the newsletter are left out. No on/off switch and no weekday are shown, because this addon stores neither. The card's number is newsletter-class mails sent in the period, and it is absent (not zero) when there is no newsletter campaign. No migration, no config.
+
 ## 2.35.0 - 2026-10-20
 
 ### Added: `SubscriptionService::subscribeWithConsent()`, a sign-up that records how consent was given
