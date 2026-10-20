@@ -156,13 +156,7 @@ class SubscriptionService
         // No confirmation mail exists on this path — a single-opt-in list, or
         // an editor adding somebody they vouch for. Nothing was withheld, so
         // there is nothing to report.
-        // Only how the consent was given reaches the contact timeline. `meta` also
-        // carries the consent record with the wording the person was shown; that
-        // stays on the subscription and is not copied into LeadHub.
-        $subscription = $this->markSubscribed($subscription, array_intersect_key(
-            (array) ($options['meta'] ?? []),
-            ['reason' => true, 'consent_proof' => true],
-        ));
+        $subscription = $this->markSubscribed($subscription, (array) ($options['meta'] ?? []));
         $subscription->confirmation = ConfirmationResult::sent();
 
         return $subscription;

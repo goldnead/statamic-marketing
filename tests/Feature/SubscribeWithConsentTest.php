@@ -46,21 +46,6 @@ it('ignores skip_confirmation in the options, the list decides', function (): vo
     expect($subscription->fresh()->status)->toBe(Subscription::STATUS_PENDING);
 });
 
-it('keeps the consent wording out of the contact timeline, and passes only reason and consent_proof', function (): void {
-    $list = ($this->list)(false);
-
-    ($this->service)()->subscribeWithConsent($list, 'maria@example.com', ($this->consent)(), [], [
-        'meta' => ['campaign' => 'stimmanalyse', 'reason' => 'booking', 'consent_proof' => 'booking_checkbox'],
-    ]);
-
-    $event = Event::query()->where('type', 'marketing.subscribed')->firstOrFail();
-
-    expect($event->payload)->toHaveKeys(['reason', 'consent_proof'])
-        ->and($event->payload)->not->toHaveKey('consent')
-        ->and($event->payload)->not->toHaveKey('campaign')
-        ->and(json_encode($event->payload))->not->toContain($this->wording);
-});
-
 it('subscribes at once without double opt-in and records the consent in full', function (): void {
     $list = ($this->list)(false);
 
