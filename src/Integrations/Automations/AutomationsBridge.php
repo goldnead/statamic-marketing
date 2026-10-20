@@ -2,6 +2,8 @@
 
 namespace Goldnead\Marketing\Integrations\Automations;
 
+use Goldnead\Marketing\Integrations\Automations\Actions\CheckReceivedAction;
+use Goldnead\Marketing\Integrations\Automations\Actions\CheckTagAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\MessageClickedAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction;
 use Goldnead\Marketing\Integrations\Automations\Actions\SendMarketingEmailAction;
@@ -144,6 +146,8 @@ class AutomationsBridge
             $manager->registerBuiltIn(SendMarketingEmailAction::handle());
             $manager->registerBuiltIn(NewsletterDayGateAction::handle());
             $manager->registerBuiltIn(MessageClickedAction::handle());
+            $manager->registerBuiltIn(CheckReceivedAction::handle());
+            $manager->registerBuiltIn(CheckTagAction::handle());
         }
 
         $manager->action(SendMarketingEmailAction::handle(), SendMarketingEmailAction::class);
@@ -156,6 +160,10 @@ class AutomationsBridge
 
         // The click check: did anybody follow a link in one delivery.
         $manager->action(MessageClickedAction::handle(), MessageClickedAction::class);
+
+        // The two checks on the address: has it been mailed, does it carry a tag.
+        $manager->action(CheckReceivedAction::handle(), CheckReceivedAction::class);
+        $manager->action(CheckTagAction::handle(), CheckTagAction::class);
 
         if (! method_exists($manager, 'registerOptionSource')) {
             return;

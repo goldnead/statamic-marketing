@@ -4,6 +4,7 @@ use Carbon\CarbonImmutable;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Integrations\Automations\Actions\NewsletterDayGateAction;
+use Goldnead\Marketing\Models\Message;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Facades\Automations;
 use Goldnead\StatamicAutomations\Support\ActionResult;
@@ -141,4 +142,102 @@ it('never blocks a test run', function (): void {
     ($this->campaign)('heute', Campaign::STATUS_SENT, sentAtUtc: '2026-10-13 07:00:00');
 
     expect(($this->gate)(testMode: true)->status)->toBe('success');
+});
+
+it('names the campaign as the reason when a campaign holds it back', function (): void {
+    $this->travelTo('2026-10-13 10:00:00');
+    ($this->campaign)('heute', Campaign::STATUS_SENT, sentAtUtc: '2026-10-13 07:00:00');
+
+    $result = ($this->gate)();
+
+    expect($result->output['blocked'])->toBeTrue()
+        ->and($result->output['reason'])->toBe('campaign');
+});
+
+describe('one mail per day', function (): void {
+    beforeEach(function (): void {
+        $this->gateWith = fn (array $config, array $data = [], bool $testMode = false): ActionResult => (new NewsletterDayGateAction)
+            ->execute(AutomationContext::make($data, $testMode), $config);
+
+        $this->mailed = function (string $email, string $sentAtUtc): void {
+            Message::create([
+                'email' => $email,
+                'status' => Message::STATUS_SENT,
+                'sent_at' => $sentAtUtc,
+                'campaign_handle' => 'welcome-1',
+            ]);
+        };
+
+        $this->subscriber = ['subscriber' => ['email' => 'maria@example.com']];
+    });
+
+    it('holds the drip mail when the address already received a marketing mail today', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 07:00:00');
+
+        $result = ($this->gateWith)(['one_per_day' => true], $this->subscriber);
+
+        expect($result->status)->toBe('waiting')
+            ->and($result->output['blocked'])->toBeTrue()
+            ->and($result->output['reason'])->toBe('mailed_today')
+            ->and(CarbonImmutable::parse($result->waitUntil['due_at'])->toIso8601String())->toBe('2026-10-14T10:00:00+00:00');
+    });
+
+    it('does not hold for a mail sent on another day', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-12 07:00:00');
+
+        expect(($this->gateWith)(['one_per_day' => true], $this->subscriber)->status)->toBe('success');
+    });
+
+    it('counts the day in Berlin, not in UTC', function (): void {
+        // 23:30 UTC on the 12th is 01:30 on the 13th in Berlin.
+        ($this->mailed)('maria@example.com', '2026-10-12 23:30:00');
+        $this->travelTo('2026-10-13 10:00:00');
+
+        expect(($this->gateWith)(['one_per_day' => true], $this->subscriber)->status)->toBe('waiting');
+    });
+
+    it('does nothing unless the switch is on', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 07:00:00');
+
+        $off = ($this->gateWith)([], $this->subscriber);
+
+        expect($off->status)->toBe('success')
+            ->and($off->output)->toBe(['blocked' => false])
+            ->and(($this->gateWith)(['one_per_day' => false], $this->subscriber)->status)->toBe('success');
+    });
+
+    it('reads the configured address before the one the run is about', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('jonas@example.com', '2026-10-13 07:00:00');
+
+        expect(($this->gateWith)(['one_per_day' => true, 'email' => 'jonas@example.com'], $this->subscriber)->status)->toBe('waiting')
+            ->and(($this->gateWith)(['one_per_day' => true], $this->subscriber)->status)->toBe('success');
+    });
+
+    it('still reports a campaign as the reason when both hold', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->campaign)('heute', Campaign::STATUS_SENT, sentAtUtc: '2026-10-13 07:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 07:00:00');
+
+        expect(($this->gateWith)(['one_per_day' => true], $this->subscriber)->output['reason'])->toBe('campaign');
+    });
+
+    it('fails without any address instead of letting the mail through', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+
+        $result = ($this->gateWith)(['one_per_day' => true]);
+
+        expect($result->status)->toBe('failed')
+            ->and($result->output['missing_data_reference'])->toBe('email');
+    });
+
+    it('never blocks a test run', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 07:00:00');
+
+        expect(($this->gateWith)(['one_per_day' => true], $this->subscriber, testMode: true)->status)->toBe('success');
+    });
 });
