@@ -3,7 +3,9 @@
 namespace Goldnead\Marketing\Support;
 
 use Carbon\CarbonInterface;
+use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -12,13 +14,20 @@ use Illuminate\Database\Eloquent\Builder;
  * Every node that asks this question asks it here, so "already mailed" means
  * the same thing in the check node, the check on a tag, and the day gate.
  *
- * A mail counts when it left: status `sent`, or `bounced`, because a bounce
- * is reported after the hand-over and overwrites the status of that message.
- * Pending, claimed, failed, skipped and capped rows are not counted, and
- * neither is anything that was never a marketing mail.
+ * A mail counts when it left or is on its way out: status `sent`, `bounced`
+ * (a bounce is reported after the hand-over and overwrites the status of that
+ * message) or `sending` once `sent_at` is stamped, which the job does before the
+ * hand-over, so a parallel run does not send the same person a second mail.
+ * Pending, failed, skipped and capped rows are not counted, and neither is
+ * anything that was never a marketing mail.
  *
- * The address is compared without regard to case. Templates and campaigns
- * are matched by handle; when both are given, a message matching either counts.
+ * The address is found through its subscriptions (`email_normalized`, indexed),
+ * and the messages through their `subscription_id`. Every message belongs to a
+ * subscription, so this is the same set as comparing the message address, without
+ * a scan over the messages table.
+ *
+ * Templates and campaigns are matched by handle; when both are given, a message
+ * matching either counts.
  */
 final class MailReceipts
 {
@@ -55,9 +64,13 @@ final class MailReceipts
         ?CarbonInterface $since = null,
         ?CarbonInterface $until = null,
     ): Builder {
+        $subscriptions = Subscription::query()
+            ->select('id')
+            ->where('email_normalized', (string) EmailNormalizer::normalize($email));
+
         $query = Message::query()
-            ->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($email))])
-            ->whereIn('status', [Message::STATUS_SENT, Message::STATUS_BOUNCED])
+            ->whereIn('subscription_id', $subscriptions)
+            ->whereIn('status', [Message::STATUS_SENT, Message::STATUS_BOUNCED, Message::STATUS_SENDING])
             ->whereNotNull('sent_at');
 
         if ($templates !== [] || $campaigns !== []) {

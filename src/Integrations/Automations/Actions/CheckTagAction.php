@@ -10,14 +10,20 @@ use Goldnead\Marketing\Models\Subscription;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Contracts\AutomationAction;
 use Goldnead\StatamicAutomations\Support\ActionResult;
+use Illuminate\Support\Str;
 
 /**
  * Asks whether the subscription of this address on one list carries a tag.
  *
  * Tags are where `TagLinks` puts them. With LeadHub installed they are on the
  * person's contact, so the contact is read (by the subscription's contact uuid,
- * then by email, the order `TagLinks` writes in). Without LeadHub they are
- * `meta.tags` on the subscription. The node reads what the link wrote.
+ * then by email, the order `TagLinks` writes in). `meta.tags` on the
+ * subscription is read as well, so a tag the link wrote there while no contact
+ * could be found still counts. The node reads what the link wrote.
+ *
+ * Tags are compared by their slug (`Str::slug`) on both sides, because LeadHub
+ * stores a tag by its name and derives the slug from it: "Wants Freebie" on the
+ * contact and `wants-freebie` in the node are the same tag.
  *
  * ## Outputs
  *
@@ -83,9 +89,9 @@ class CheckTagAction implements AutomationAction
                 'required' => true,
                 'default' => self::MODE_REPORT,
                 'options' => [
-                    self::MODE_REPORT => 'any (just report, never stop)',
-                    self::MODE_REQUIRE => 'has the tag',
-                    self::MODE_FORBID => 'does not have the tag',
+                    ['value' => self::MODE_REPORT, 'label' => 'any (just report, never stop)'],
+                    ['value' => self::MODE_REQUIRE, 'label' => 'has the tag'],
+                    ['value' => self::MODE_FORBID, 'label' => 'does not have the tag'],
                 ],
                 'help' => 'When the condition does not hold, the run ends here. That is a stop, not a failure. "Just report" never stops: the node outputs has_tag and a branch node splits on it.',
             ],
@@ -174,7 +180,7 @@ class CheckTagAction implements AutomationAction
             return ActionResult::missingDataReference('email', 'Email', '{{ subscriber.email }}');
         }
 
-        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
             return ActionResult::failed('A valid "email" is required.', ['mode' => $mode]);
         }
 
@@ -186,10 +192,11 @@ class CheckTagAction implements AutomationAction
 
             $tags = $subscription === null ? [] : $this->tagsOf($subscription);
         } catch (\Throwable $e) {
-            return ActionResult::failed('Reading the subscriber tags failed: '.$e->getMessage(), ['mode' => $mode]);
+            // The class only: the exception message can carry the bound values, the address among them.
+            return ActionResult::failed('Reading the subscriber tags failed ('.get_class($e).').', ['mode' => $mode]);
         }
 
-        $hasTag = in_array($tag, $tags, true);
+        $hasTag = collect($tags)->contains(fn (string $have): bool => $this->sameTag($have, $tag));
         $subscribed = $subscription?->isSubscribed() ?? false;
 
         $output = [
@@ -200,31 +207,46 @@ class CheckTagAction implements AutomationAction
         ];
 
         if ($mode === self::MODE_REQUIRE && ! $hasTag) {
-            return ActionResult::stopped(sprintf('%s does not carry the tag "%s" on [%s], so the run ends here.', $email, $tag, $list->handle));
+            return ActionResult::stopped(sprintf('The address has no tag "%s" on [%s], so the run ends here.', $tag, $list->handle));
         }
 
         if ($mode === self::MODE_FORBID && $hasTag) {
-            return ActionResult::stopped(sprintf('%s already carries the tag "%s" on [%s], so the run ends here.', $email, $tag, $list->handle));
+            return ActionResult::stopped(sprintf('The address already has the tag "%s" on [%s], so the run ends here.', $tag, $list->handle));
         }
 
         return ActionResult::success($output);
     }
 
     /**
-     * The tag names on the person behind a subscription, read where TagLinks
-     * writes them.
+     * The tag names behind a subscription, read where TagLinks writes them: the
+     * LeadHub contact (when LeadHub is installed and the contact is found) and
+     * `meta.tags` of the subscription, merged.
      *
      * @return list<string>
      */
     protected function tagsOf(Subscription $subscription): array
     {
+        $fromContact = [];
+
         if (class_exists(LeadHub::class)) {
             $contact = $subscription->contact_uuid ? LeadHub::find((string) $subscription->contact_uuid) : null;
             $contact ??= LeadHub::findByEmail((string) $subscription->email);
 
-            return array_values(array_map('strval', (array) ($contact['tags'] ?? [])));
+            $fromContact = (array) ($contact['tags'] ?? []);
         }
 
-        return array_values(array_map('strval', (array) (($subscription->meta ?? [])['tags'] ?? [])));
+        $fromMeta = (array) (($subscription->meta ?? [])['tags'] ?? []);
+
+        return array_values(array_unique(array_map('strval', [...$fromContact, ...$fromMeta])));
+    }
+
+    /**
+     * Two tag names are the same tag when their slugs are equal.
+     */
+    private function sameTag(string $have, string $wanted): bool
+    {
+        $slug = Str::slug(trim($have));
+
+        return $slug !== '' && $slug === Str::slug(trim($wanted));
     }
 }

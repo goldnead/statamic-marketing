@@ -156,7 +156,13 @@ class SubscriptionService
         // No confirmation mail exists on this path — a single-opt-in list, or
         // an editor adding somebody they vouch for. Nothing was withheld, so
         // there is nothing to report.
-        $subscription = $this->markSubscribed($subscription, (array) ($options['meta'] ?? []));
+        // Only how the consent was given reaches the contact timeline. `meta` also
+        // carries the consent record with the wording the person was shown; that
+        // stays on the subscription and is not copied into LeadHub.
+        $subscription = $this->markSubscribed($subscription, array_intersect_key(
+            (array) ($options['meta'] ?? []),
+            ['reason' => true, 'consent_proof' => true],
+        ));
         $subscription->confirmation = ConfirmationResult::sent();
 
         return $subscription;
@@ -177,6 +183,11 @@ class SubscriptionService
      *
      * An address that is already subscribed is left alone, as `subscribe()`
      * leaves it: the earlier consent stays the one on record.
+     *
+     * The list decides whether confirmation is needed: `skip_confirmation` in
+     * $options is ignored and set from the list's double opt-in. The consent
+     * record is merged into `meta` by this method; a `meta.consent` the caller
+     * passes is replaced by it.
      *
      * @param  array{method?:string,text?:string,source?:string,given_at?:mixed}  $consent
      * @param  array{first_name?:string,last_name?:string}  $attributes

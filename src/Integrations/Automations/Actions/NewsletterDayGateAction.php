@@ -147,14 +147,15 @@ class NewsletterDayGateAction implements AutomationAction
             return ActionResult::missingDataReference('email', 'Email', '{{ subscriber.email }}');
         }
 
-        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
             return ActionResult::failed('A valid "email" is required for "one mail per day".');
         }
 
         try {
             $mailedToday = MailReceipts::query($email, since: $dayStart, until: $dayEnd)->exists();
         } catch (\Throwable $e) {
-            return ActionResult::failed('Reading the sent mails failed: '.$e->getMessage());
+            // The class only: the exception message can carry the bound values, the address among them.
+            return ActionResult::failed('Reading the sent mails failed ('.get_class($e).').');
         }
 
         if (! $mailedToday) {

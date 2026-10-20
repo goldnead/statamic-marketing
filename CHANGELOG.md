@@ -13,11 +13,11 @@ A subscription can now carry the consent it rests on, in `meta.consent`: the met
 
 ### Added: the automation node `marketing.check_received` ("Check Mail Received")
 
-Asks whether an address has already been sent a marketing mail, and can end the run on the answer. Modes `report` (default), `require` and `forbid`, as the check node for access does. Optional filters: `template` and `campaign` (comma-separated handles; a mail matching either counts), `within_days`, and `today` (since the start of the current day in `marketing.day_gate.timezone`). Outputs `received`, `count` and `last_at`. Only mails that left count (status `sent` or `bounced`). An unreadable address or a failed lookup is a failure, not a "no".
+Asks whether an address has already been sent a marketing mail, and can end the run on the answer. Modes `report` (default), `require` and `forbid`, as the check node for access does. Optional filters: `template` and `campaign` (comma-separated handles; a mail matching either counts), `within_days`, and `today` (since the start of the current day in `marketing.day_gate.timezone`). Outputs `received`, `count` and `last_at`. Counts mails with status `sent`, `bounced` or `sending` (stamped), so two parallel runs cannot both send; pending, failed, skipped and capped rows do not count. An unreadable address or a failed lookup is a failure, not a "no". `within_days` takes whole days only; 1.5 is refused, not cut to 1.
 
 ### Added: the automation node `marketing.check_tag` ("Check Subscriber Tag")
 
-Asks whether the subscription of an address on one list carries a tag, the one a tag link put there, and can end the run on the answer. Same modes as above. With LeadHub installed the tags are read from the person's contact, where the tag link writes them; without it, from `meta.tags`. No subscription on the list is an answer (`has_tag` and `subscribed` both false), not a failure. Outputs `has_tag`, `subscribed` and `tags`.
+Asks whether the subscription of an address on one list carries a tag, the one a tag link put there, and can end the run on the answer. Same modes as above. With LeadHub installed the tags are read from the person's contact, where the tag link writes them; and `meta.tags` on the subscription is read in both cases. Tags are compared by slug on both sides, so "Wants Freebie" on the contact and `wants-freebie` in the node are the same tag. No subscription on the list is an answer (`has_tag` and `subscribed` both false), not a failure. Outputs `has_tag`, `subscribed` and `tags`.
 
 ### Added: `newsletter_day_gate` can also hold back "one marketing mail per day"
 

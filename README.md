@@ -860,8 +860,9 @@ scheduled or went out, and asks again at the same time the next day. The day is 
 `marketing.day_gate.timezone` (default `Europe/Berlin`).
 
 With `one_per_day` on, it holds back also when this address already received a marketing mail
-today (`email` names the address, empty means the address the run is about). `reason` in the
-output says why it held: `campaign` or `mailed_today`.
+today (`email` names the address, empty means the address the run is about). The count is taken in the
+current brand context, and it includes mails in status `sending` that are already stamped, so a parallel run
+does not send a second one. `reason` in the output says why it held: `campaign` or `mailed_today`.
 
 ### Did they click?
 
@@ -878,16 +879,16 @@ marketing mail. Modes: `report` (default, only outputs `received`), `require` an
 (stop the run when the answer is not the one wanted). Optional filters: `template` and
 `campaign` (comma-separated handles, a mail matching either counts), `within_days`, and
 `today` (since the start of the current day in `marketing.day_gate.timezone`). Outputs
-`received`, `count` and `last_at`. Only mails that left count, so pending, failed, skipped and
-capped rows do not.
+`received`, `count` and `last_at`. Mails that left count (`sent`, `bounced`, and `sending` once stamped),
+so pending, failed, skipped and capped rows do not.
 
 ### Does the subscriber carry a tag?
 
 The automation node `marketing.check_tag` asks whether the subscription of an address on one
 list carries a tag, such as one a tag link put there. Same modes as above, plus `list` and
 `tag` (both required). Outputs `has_tag`, `subscribed` and `tags`. With LeadHub installed the
-tags are read from the person's contact, where tag links write them; without it, from
-`meta.tags` on the subscription. No subscription on the list gives `has_tag: false` and
+tags are read from the person's contact, where tag links write them, and `meta.tags` on the subscription is
+read as well. Tags are compared by slug, so `Wants Freebie` and `wants-freebie` are the same tag. No subscription on the list gives `has_tag: false` and
 `subscribed: false`, not an error.
 
 ## Personal data

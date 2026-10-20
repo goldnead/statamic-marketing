@@ -160,7 +160,7 @@ describe('one mail per day', function (): void {
         $this->gateWith = fn (array $config, array $data = [], bool $testMode = false): ActionResult => (new NewsletterDayGateAction)
             ->execute(AutomationContext::make($data, $testMode), $config);
 
-        $this->mailed = function (string $email, string $sentAtUtc): void {
+        $this->mailed = function (string $email, string $sentAtUtc, string $status = Message::STATUS_SENT): void {
             $subscription = Subscription::firstOrCreate(
                 ['list_handle' => 'newsletter', 'email' => $email],
                 ['status' => Subscription::STATUS_SUBSCRIBED],
@@ -169,7 +169,7 @@ describe('one mail per day', function (): void {
             Message::create([
                 'subscription_id' => $subscription->id,
                 'email' => $email,
-                'status' => Message::STATUS_SENT,
+                'status' => $status,
                 'sent_at' => $sentAtUtc,
                 'campaign_handle' => 'welcome-1',
             ]);
@@ -188,6 +188,23 @@ describe('one mail per day', function (): void {
             ->and($result->output['blocked'])->toBeTrue()
             ->and($result->output['reason'])->toBe('mailed_today')
             ->and(CarbonImmutable::parse($result->waitUntil['due_at'])->toIso8601String())->toBe('2026-10-14T10:00:00+00:00');
+    });
+
+    it('holds back for a mail that is already on its way out, so a parallel run does not send a second', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 09:55:00', Message::STATUS_SENDING);
+
+        $result = ($this->gateWith)(['one_per_day' => true], $this->subscriber);
+
+        expect($result->status)->toBe('waiting')
+            ->and($result->output['reason'])->toBe('mailed_today');
+    });
+
+    it('does not count a pending mail for the day', function (): void {
+        $this->travelTo('2026-10-13 10:00:00');
+        ($this->mailed)('maria@example.com', '2026-10-13 09:55:00', Message::STATUS_PENDING);
+
+        expect(($this->gateWith)(['one_per_day' => true], $this->subscriber)->status)->toBe('success');
     });
 
     it('does not hold for a mail sent on another day', function (): void {

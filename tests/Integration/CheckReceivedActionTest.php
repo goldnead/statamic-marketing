@@ -131,9 +131,53 @@ it('keeps only the mails of the last N days with within_days', function (): void
 });
 
 it('refuses a within_days that is not a whole number of days', function (): void {
-    $result = ($this->check)(['within_days' => 0]);
+    expect(($this->check)(['within_days' => 0])->status)->toBe('failed')
+        ->and(($this->check)(['within_days' => 1.5])->status)->toBe('failed')
+        ->and(($this->check)(['within_days' => '2.5'])->status)->toBe('failed');
+});
 
-    expect($result->status)->toBe('failed');
+it('counts a mail that is on its way out, once its sent_at is stamped', function (): void {
+    ($this->mail)('maria@example.com', '2026-10-13 09:00:00', ['status' => Message::STATUS_SENDING]);
+
+    expect(($this->check)([])->output)->toMatchArray(['received' => true, 'count' => 1]);
+});
+
+it('finds the mails through the subscription, whatever the case of the address', function (): void {
+    ($this->mail)('Maria@Example.com', '2026-10-12 08:00:00');
+
+    expect(($this->check)([], 'maria@example.com')->output['received'])->toBeTrue()
+        ->and(($this->check)([], 'Maria@Example.com')->output['count'])->toBe(1);
+});
+
+it('accepts an address with umlauts', function (): void {
+    ($this->mail)('jürgen@example.com', '2026-10-12 08:00:00');
+
+    $result = ($this->check)([], 'Jürgen@example.com');
+
+    expect($result->status)->toBe('success')
+        ->and($result->output['received'])->toBeTrue();
+});
+
+it('names no address in a stop reason', function (): void {
+    ($this->mail)('maria@example.com', '2026-10-12 08:00:00');
+
+    $forbid = ($this->check)(['mode' => CheckReceivedAction::MODE_FORBID]);
+    $require = ($this->check)(['mode' => CheckReceivedAction::MODE_REQUIRE], 'jonas@example.com');
+
+    expect($forbid->status)->toBe('stopped')
+        ->and($forbid->output['reason'])->not->toContain('maria@example.com')
+        ->and($require->status)->toBe('stopped')
+        ->and($require->output['reason'])->not->toContain('jonas@example.com');
+});
+
+it('offers the modes as a list of value and label', function (): void {
+    $field = collect(CheckReceivedAction::schema())->firstWhere('handle', 'mode');
+
+    expect($field['options'])->toBe([
+        ['value' => 'report', 'label' => 'any (just report, never stop)'],
+        ['value' => 'require', 'label' => 'the address has received such a mail'],
+        ['value' => 'forbid', 'label' => 'the address has not received such a mail'],
+    ]);
 });
 
 it('keeps only the mails of today in the day gate timezone with today', function (): void {
@@ -198,6 +242,12 @@ it('fails for a broken address instead of answering no', function (): void {
 });
 
 it('fails when the reading itself breaks instead of answering no', function (): void {
+    // Schema::drop inside a transaction is rolled back on sqlite only. On MySQL DDL
+    // commits, and the table would be gone for the rest of the suite.
+    if (DB::getDriverName() !== 'sqlite') {
+        $this->markTestSkipped('Dropping a table inside a transaction is only safe on sqlite.');
+    }
+
     ($this->mail)('maria@example.com', '2026-10-12 08:00:00');
 
     // The table is gone for the length of this test; sqlite rolls the drop back.

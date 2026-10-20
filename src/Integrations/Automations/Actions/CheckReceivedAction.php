@@ -82,9 +82,9 @@ class CheckReceivedAction implements AutomationAction
                 'required' => true,
                 'default' => self::MODE_REPORT,
                 'options' => [
-                    self::MODE_REPORT => 'any (just report, never stop)',
-                    self::MODE_REQUIRE => 'the address has received such a mail',
-                    self::MODE_FORBID => 'the address has not received such a mail',
+                    ['value' => self::MODE_REPORT, 'label' => 'any (just report, never stop)'],
+                    ['value' => self::MODE_REQUIRE, 'label' => 'the address has received such a mail'],
+                    ['value' => self::MODE_FORBID, 'label' => 'the address has not received such a mail'],
                 ],
                 'help' => 'When the condition does not hold, the run ends here. That is a stop, not a failure. "Just report" never stops: the node outputs received and a branch node splits on it.',
             ],
@@ -154,7 +154,8 @@ class CheckReceivedAction implements AutomationAction
 
         $days = $config['within_days'] ?? null;
 
-        if ($days !== null && $days !== '' && (! is_numeric($days) || (int) $days < 1)) {
+        // Whole days only: 1.5 would otherwise be cut to 1 without a word.
+        if ($days !== null && $days !== '' && (filter_var($days, FILTER_VALIDATE_INT) === false || (int) $days < 1)) {
             return ActionResult::failed('"within_days" must be a whole number of days, 1 or more.');
         }
 
@@ -176,7 +177,7 @@ class CheckReceivedAction implements AutomationAction
             return ActionResult::missingDataReference('email', 'Email', '{{ subscriber.email }}');
         }
 
-        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL, FILTER_FLAG_EMAIL_UNICODE)) {
             return ActionResult::failed('A valid "email" is required.', ['mode' => $mode]);
         }
 
@@ -196,7 +197,8 @@ class CheckReceivedAction implements AutomationAction
             $count = (clone $query)->count();
             $lastSent = (clone $query)->max('sent_at');
         } catch (\Throwable $e) {
-            return ActionResult::failed('Reading the sent mails failed: '.$e->getMessage(), ['mode' => $mode]);
+            // The class only: the exception message can carry the bound values, the address among them.
+            return ActionResult::failed('Reading the sent mails failed ('.get_class($e).').', ['mode' => $mode]);
         }
 
         $received = $count > 0;
@@ -208,11 +210,11 @@ class CheckReceivedAction implements AutomationAction
         ];
 
         if ($mode === self::MODE_REQUIRE && ! $received) {
-            return ActionResult::stopped(sprintf('%s has not received a matching marketing mail, so the run ends here.', $email));
+            return ActionResult::stopped('The address has not received a matching marketing mail, so the run ends here.');
         }
 
         if ($mode === self::MODE_FORBID && $received) {
-            return ActionResult::stopped(sprintf('%s has already received a matching marketing mail (%d), so the run ends here.', $email, $count));
+            return ActionResult::stopped(sprintf('The address has already received a matching marketing mail (%d), so the run ends here.', $count));
         }
 
         return ActionResult::success($output);

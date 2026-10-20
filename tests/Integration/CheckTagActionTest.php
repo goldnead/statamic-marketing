@@ -125,6 +125,73 @@ it('never stops in report mode', function (): void {
     expect(($this->check)(['mode' => CheckTagAction::MODE_REPORT])->status)->toBe('success');
 });
 
+it('matches a tag by its slug in both directions', function (): void {
+    $subscription = ($this->subscribe)('maria@example.com');
+    ($this->tag)($subscription, 'Wants Freebie');
+
+    expect(($this->check)([])->output['has_tag'])->toBeTrue()
+        ->and(($this->check)(['tag' => 'Wants Freebie'])->output['has_tag'])->toBeTrue();
+
+    $other = ($this->subscribe)('jonas@example.com');
+    ($this->tag)($other, 'wants-freebie');
+
+    expect(($this->check)(['tag' => 'Wants Freebie'], 'jonas@example.com')->output['has_tag'])->toBeTrue();
+});
+
+it('reads meta.tags when no contact can be found', function (): void {
+    Subscription::create([
+        'list_handle' => 'newsletter',
+        'email' => 'maria@example.com',
+        'status' => Subscription::STATUS_SUBSCRIBED,
+        'meta' => ['tags' => ['wants-freebie']],
+    ]);
+
+    $result = ($this->check)([]);
+
+    expect($result->output['has_tag'])->toBeTrue()
+        ->and($result->output['tags'])->toBe(['wants-freebie']);
+});
+
+it('merges the contact tags and meta.tags', function (): void {
+    $subscription = ($this->subscribe)('maria@example.com');
+    ($this->tag)($subscription, 'interessiert-an-stimmanalyse');
+    $subscription->update(['meta' => ['tags' => ['wants-freebie']]]);
+
+    $result = ($this->check)([]);
+
+    expect($result->output['tags'])->toContain('interessiert-an-stimmanalyse', 'wants-freebie');
+});
+
+it('accepts an address with umlauts', function (): void {
+    $subscription = ($this->subscribe)('jürgen@example.com');
+    ($this->tag)($subscription, 'wants-freebie');
+
+    $result = ($this->check)([], 'Jürgen@example.com');
+
+    expect($result->status)->toBe('success')
+        ->and($result->output['has_tag'])->toBeTrue();
+});
+
+it('names no address in a stop reason', function (): void {
+    ($this->subscribe)('maria@example.com');
+
+    $result = ($this->check)(['mode' => CheckTagAction::MODE_REQUIRE]);
+
+    expect($result->status)->toBe('stopped')
+        ->and($result->output['reason'])->toContain('wants-freebie')
+        ->and($result->output['reason'])->not->toContain('maria@example.com');
+});
+
+it('offers the modes as a list of value and label', function (): void {
+    $field = collect(CheckTagAction::schema())->firstWhere('handle', 'mode');
+
+    expect($field['options'])->toBe([
+        ['value' => 'report', 'label' => 'any (just report, never stop)'],
+        ['value' => 'require', 'label' => 'has the tag'],
+        ['value' => 'forbid', 'label' => 'does not have the tag'],
+    ]);
+});
+
 it('fails for a list that does not exist instead of answering no', function (): void {
     expect(($this->check)(['list' => 'gibt-es-nicht'])->status)->toBe('failed');
 });
