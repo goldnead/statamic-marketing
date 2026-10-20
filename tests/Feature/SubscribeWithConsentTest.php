@@ -1,6 +1,5 @@
 <?php
 
-use Goldnead\Leadhub\Models\Event;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Mail\ConfirmSubscriptionMail;
