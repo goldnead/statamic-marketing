@@ -329,6 +329,26 @@ nothing; `POST` confirms. Mail gateways and preview features fetch every URL in 
 subscription created by a scanner is both wrong and, because it carries a plausible timestamp,
 hard to tell from a real one afterwards.
 
+### Subscribing with recorded consent
+
+From PHP, `SubscriptionService::subscribeWithConsent()` subscribes an address and records
+the consent it rests on in `meta.consent`: the method, the list, the exact wording the person
+was shown (stored verbatim, with its SHA-256), the source, and when it was given and confirmed.
+
+```php
+app(SubscriptionService::class)->subscribeWithConsent($list, $email, [
+    'method' => 'booking_checkbox',
+    'text' => 'Ich möchte den Newsletter erhalten.',   // the wording as it was shown
+    'source' => 'cal.com:kostenlose-stimmanalyse',
+    'given_at' => $checkedAt,                         // optional, defaults to now
+]);
+```
+
+Without double opt-in the address is subscribed at once and `confirmed_at` is the time of the
+consent. With double opt-in the confirmation runs as usual, and `confirmed_at` is written when
+the link is used. An address already on the list is left as it was, consent included. An empty
+`method`, `text` or `source` throws `InvalidArgumentException`.
+
 ## One track at a time: the newsletter and running sequences
 
 With `goldnead/statamic-automations` 2.31 or newer, an automation can be flagged **Pauses the newsletter**
@@ -839,6 +859,11 @@ The automation node `newsletter_day_gate` holds a drip mail back on a day a camp
 scheduled or went out, and asks again at the same time the next day. The day is drawn in
 `marketing.day_gate.timezone` (default `Europe/Berlin`).
 
+With `one_per_day` on, it holds back also when this address already received a marketing mail
+today (`email` names the address, empty means the address the run is about). The count is taken in the
+current brand context, and it includes mails in status `sending` that are already stamped, so a parallel run
+does not send a second one. `reason` in the output says why it held: `campaign` or `mailed_today`.
+
 ### Did they click?
 
 The automation node `marketing.message_clicked` reads the stored click events of one delivery
@@ -846,6 +871,25 @@ The automation node `marketing.message_clicked` reads the stored click events of
 `url_contains` narrows it to one link, `ignore_within_seconds` drops clicks that happened right
 after the mail left (mail scanners). It does not wait: put a `delay` in front and a `branch` on
 `nodes.<key>.clicked` behind it.
+
+### Has this address been mailed?
+
+The automation node `marketing.check_received` asks whether an address already received a
+marketing mail. Modes: `report` (default, only outputs `received`), `require` and `forbid`
+(stop the run when the answer is not the one wanted). Optional filters: `template` and
+`campaign` (comma-separated handles, a mail matching either counts), `within_days`, and
+`today` (since the start of the current day in `marketing.day_gate.timezone`). Outputs
+`received`, `count` and `last_at`. Mails that left count (`sent`, `bounced`, and `sending` once stamped),
+so pending, failed, skipped and capped rows do not.
+
+### Does the subscriber carry a tag?
+
+The automation node `marketing.check_tag` asks whether the subscription of an address on one
+list carries a tag, such as one a tag link put there. Same modes as above, plus `list` and
+`tag` (both required). Outputs `has_tag`, `subscribed` and `tags`. With LeadHub installed the
+tags are read from the person's contact, where tag links write them, and `meta.tags` on the subscription is
+read as well. Tags are compared by slug, so `Wants Freebie` and `wants-freebie` are the same tag. No subscription on the list gives `has_tag: false` and
+`subscribed: false`, not an error.
 
 ## Personal data
 

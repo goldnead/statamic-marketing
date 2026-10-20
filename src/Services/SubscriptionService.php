@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Services;
 
+use Carbon\CarbonImmutable;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Contracts\SenderIdentityResolver;
 use Goldnead\Marketing\Data\MailingList;
@@ -159,6 +160,98 @@ class SubscriptionService
         $subscription->confirmation = ConfirmationResult::sent();
 
         return $subscription;
+    }
+
+    /**
+     * Subscribe with a recorded consent: the wording the person saw, how they
+     * gave it, and when.
+     *
+     * The consent goes into `meta['consent']` and is merged with `$options['meta']`,
+     * never replacing it. `text` is stored verbatim, and `text_sha256` is its hash,
+     * so the wording can be proven later without trusting the text column.
+     *
+     * With double opt-in the normal `subscribe()` path runs: the row is pending,
+     * the confirmation mail goes out, and `confirmed_at` stays null until
+     * `confirmByToken()` stamps it. Without double opt-in the row is subscribed
+     * at once (`skip_confirmation`) and `confirmed_at` is the time of the consent.
+     *
+     * An address that is already subscribed is left alone, as `subscribe()`
+     * leaves it: the earlier consent stays the one on record.
+     *
+     * The list decides whether confirmation is needed: `skip_confirmation` in
+     * $options is ignored and set from the list's double opt-in. The consent
+     * record is merged into `meta` by this method; a `meta.consent` the caller
+     * passes is replaced by it.
+     *
+     * @param  array{method?:string,text?:string,source?:string,given_at?:mixed}  $consent
+     * @param  array{first_name?:string,last_name?:string}  $attributes
+     * @param  array{source?:string,meta?:array,skip_confirmation?:bool}  $options
+     *
+     * @throws \InvalidArgumentException when method, text or source is empty, or given_at is not a date
+     */
+    public function subscribeWithConsent(MailingList $list, string $email, array $consent, array $attributes = [], array $options = []): Subscription
+    {
+        $method = trim((string) ($consent['method'] ?? ''));
+        $text = (string) ($consent['text'] ?? '');
+        $source = trim((string) ($consent['source'] ?? ''));
+
+        if ($method === '') {
+            throw new \InvalidArgumentException('A consent needs a "method", for example "booking_checkbox".');
+        }
+
+        if (trim($text) === '') {
+            throw new \InvalidArgumentException('A consent needs the "text" the person was shown, verbatim.');
+        }
+
+        if ($source === '') {
+            throw new \InvalidArgumentException('A consent needs a "source", for example "cal.com:kostenlose-stimmanalyse".');
+        }
+
+        $givenAt = $this->consentTime($consent['given_at'] ?? null);
+
+        $existing = Subscription::query()
+            ->where('uniqueness_key', Subscription::uniquenessKeyFor($list->handle, $email))
+            ->first();
+
+        // Nothing is written for an address already on the list: the call goes
+        // through subscribe(), which returns the row untouched in that case.
+        if ($existing?->isSubscribed()) {
+            return $this->subscribe($list, $email, $attributes, $options);
+        }
+
+        $doubleOptIn = $list->usesDoubleOptIn();
+
+        $record = [
+            'method' => $method,
+            'list' => $list->handle,
+            'text' => $text,
+            'text_sha256' => hash('sha256', $text),
+            'source' => $source,
+            'requested_at' => $givenAt,
+            'confirmed_at' => $doubleOptIn ? null : $givenAt,
+        ];
+
+        $options['meta'] = array_merge((array) ($options['meta'] ?? []), ['consent' => $record]);
+        $options['source'] = $options['source'] ?? $source;
+        $options['skip_confirmation'] = ! $doubleOptIn;
+
+        return $this->subscribe($list, $email, $attributes, $options);
+    }
+
+    /** The consent's time as an ISO 8601 string. Null means now. */
+    private function consentTime(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return now()->toIso8601String();
+        }
+
+        try {
+            return $value instanceof \DateTimeInterface
+                ? CarbonImmutable::instance($value)->toIso8601String()
+                : CarbonImmutable::parse((string) $value)->toIso8601String();
+        } catch (\Throwable $e) {
+            throw new \InvalidArgumentException('The consent "given_at" is not a date: '.$e->getMessage(), 0, $e);
+        }
     }
 
     /**
@@ -394,10 +487,29 @@ class SubscriptionService
             return $fresh->status === Subscription::STATUS_UNSUBSCRIBED ? null : $fresh;
         }
 
-        return $this->markSubscribed($subscription->refresh(), [
+        $subscription = $subscription->refresh();
+
+        // The button press is when a double opt-in consent is confirmed. Only
+        // a consent recorded by subscribeWithConsent() carries the field.
+        $this->stampConsentConfirmed($subscription);
+
+        return $this->markSubscribed($subscription, [
             'reason' => 'double_opt_in',
             'consent_proof' => 'confirmation_link',
         ]);
+    }
+
+    /** Writes `confirmed_at` into a recorded consent that is still waiting for it. */
+    protected function stampConsentConfirmed(Subscription $subscription): void
+    {
+        $meta = (array) ($subscription->meta ?? []);
+
+        if (! is_array($meta['consent'] ?? null) || ($meta['consent']['confirmed_at'] ?? null) !== null) {
+            return;
+        }
+
+        $meta['consent']['confirmed_at'] = now()->toIso8601String();
+        $subscription->forceFill(['meta' => $meta])->save();
     }
 
     /**
