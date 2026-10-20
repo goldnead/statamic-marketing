@@ -24,7 +24,7 @@
         "source": "https://github.com/goldnead/statamic-marketing"
     },
     "require": {
-        "goldnead/statamic-brand-context": "^1.18",
+        "goldnead/statamic-brand-context": "^1.17",
         "goldnead/statamic-leadhub": "^2.14",
         "goldnead/statamic-suppression": "^1.0",
         "inertiajs/inertia-laravel": "^2.0 || ^3.0",
