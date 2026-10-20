@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.35.0 - 2026-10-20
+
+### Added: `SubscriptionService::subscribeWithConsent()`, a sign-up that records how consent was given
+
+A subscription can now carry the consent it rests on, in `meta.consent`: the method (for example `booking_checkbox`), the list, the exact wording the person was shown (`text`, with its SHA-256 as `text_sha256`), the source, when it was given (`requested_at`) and when it was confirmed (`confirmed_at`).
+
+- Without double opt-in the address is subscribed at once and `confirmed_at` is the time of the consent.
+- With double opt-in the normal confirmation runs. `confirmed_at` stays empty until the confirmation link is used, and is written then.
+- An address already subscribed is left exactly as it was, with the consent it already has.
+- An empty `method`, `text` or `source`, or a `given_at` that is not a date, throws `InvalidArgumentException`.
+
+### Added: the automation node `marketing.check_received` ("Check Mail Received")
+
+Asks whether an address has already been sent a marketing mail, and can end the run on the answer. Modes `report` (default), `require` and `forbid`, as the check node for access does. Optional filters: `template` and `campaign` (comma-separated handles; a mail matching either counts), `within_days`, and `today` (since the start of the current day in `marketing.day_gate.timezone`). Outputs `received`, `count` and `last_at`. Only mails that left count (status `sent` or `bounced`). An unreadable address or a failed lookup is a failure, not a "no".
+
+### Added: the automation node `marketing.check_tag` ("Check Subscriber Tag")
+
+Asks whether the subscription of an address on one list carries a tag, the one a tag link put there, and can end the run on the answer. Same modes as above. With LeadHub installed the tags are read from the person's contact, where the tag link writes them; without it, from `meta.tags`. No subscription on the list is an answer (`has_tag` and `subscribed` both false), not a failure. Outputs `has_tag`, `subscribed` and `tags`.
+
+### Added: `newsletter_day_gate` can also hold back "one marketing mail per day"
+
+Two new optional fields: `one_per_day` (default off) and `email` (tokenable; empty uses the address the run is about). With `one_per_day` on, a run that has already sent this address a marketing mail today waits until tomorrow at the same time, as it does for a campaign. The node's output now carries `reason`: `campaign` or `mailed_today`.
+
+### Upgrading
+
+- No migration, no config.
+- The two new `newsletter_day_gate` fields are optional and off by default. Graphs saved before keep their behavior; the node's output gains `reason` when it blocks.
+
 ## 2.34.0 - 2026-10-19
 
 ### Added: the newsletter leaves out people who are inside a running sequence ("one track at a time")
