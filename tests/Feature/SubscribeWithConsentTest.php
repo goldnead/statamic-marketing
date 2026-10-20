@@ -47,7 +47,8 @@ it('subscribes at once without double opt-in and records the consent in full', f
     expect($subscription->status)->toBe(Subscription::STATUS_SUBSCRIBED)
         ->and($subscription->source)->toBe('cal.com:kostenlose-stimmanalyse')
         ->and($subscription->meta['campaign'])->toBe('stimmanalyse')
-        ->and($subscription->meta['consent'])->toBe([
+        // toEqual, not toBe: MySQL stores JSON with its own key order.
+        ->and($subscription->meta['consent'])->toEqual([
             'method' => 'booking_checkbox',
             'list' => 'newsletter',
             'text' => $this->wording,
