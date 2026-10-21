@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added: the mail of a `marketing.send_email` step for the dry run of the map
+
+`SendMarketingEmailAction::mailPreview(array $config, array $person)` renders the mail of a step (template mode: template, subject, list,
+variables; campaign mode: the campaign) for a person made of `email`, `first_name`, `last_name`, `name`. The automations map asks for it
+with `method_exists`, so every `marketing.send_email` step of a series shows its mail in the Probelauf. It renders and nothing else: no
+consent, suppression, opt-out or cap is asked, no message row is written, nothing is sent, no link is rewritten to a tracking address and
+no open pixel is added. The words of the person are escaped in the HTML and stay text in the subject. New: `CampaignRenderer::renderForPreview()`,
+`SingleSend::previewTemplate()`.
+
 ## 2.36.0 - 2026-10-20
 
 ### Added: the newsletter as a card on the funnels map

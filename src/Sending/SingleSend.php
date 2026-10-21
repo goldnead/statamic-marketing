@@ -13,6 +13,7 @@ use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignRenderer;
+use Goldnead\Marketing\Support\RenderedMail;
 use Goldnead\Marketing\Support\SendSnapshot;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
@@ -165,6 +166,32 @@ class SingleSend
             templateHandle: $template,
             sequenceUuid: $sequenceUuid,
             extraVariables: $variables,
+        );
+    }
+
+    /**
+     * The mail of a template send as one person would read it, rendered and nothing else.
+     *
+     * The same renderer as {@see sendTemplate()}, so the preview cannot drift from the mail. What it
+     * leaves out is everything `deliver()` does: no gate, no message row, no cap, no tracking, no
+     * mail. For the dry run of the automations map.
+     *
+     * @param  array<string, mixed>  $person  `email`, `first_name`, `last_name`, `name`
+     * @param  array<string, mixed>  $variables  further Antlers variables, as in {@see sendTemplate()}
+     */
+    public function previewTemplate(
+        string $template,
+        string $subject,
+        MailingList $list,
+        ?MailClass $class = null,
+        array $person = [],
+        array $variables = [],
+    ): RenderedMail {
+        return $this->renderer->renderForPreview(
+            $this->templateCampaign($template, $subject, $list, $class ?? MailClass::Marketing),
+            $list,
+            $person,
+            $variables,
         );
     }
 
