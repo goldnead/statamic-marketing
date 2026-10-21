@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.37.0 - 2026-10-21
+
 ### Added: the mail of a `marketing.send_email` step for the dry run of the map
 
 `SendMarketingEmailAction::mailPreview(array $config, array $person)` renders the mail of a step (template mode: template, subject, list,
