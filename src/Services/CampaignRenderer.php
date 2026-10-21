@@ -164,8 +164,10 @@ class CampaignRenderer
             ? $this->archiveVariables($campaign, $list, $subjectTemplate)
             : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
 
+        // A preview shows a person's words in HTML, and a name typed into a form is not markup: escaped here, like the
+        // values a run adds below. The subject is text and gets them as they are (see the end of this method).
         if ($person !== null) {
-            $variables = $this->withSubscriberAlias(array_merge($variables, $this->previewPerson($person)));
+            $variables = $this->withSubscriberAlias(array_merge($variables, array_map(fn (string $value): string => e($value), $this->previewPerson($person))));
         }
 
         $variables += $this->ratingVariables($subscription, $message);
@@ -214,7 +216,11 @@ class CampaignRenderer
             }
         }
 
-        $subject = $this->parse($subjectTemplate, array_merge($variables, $added));
+        $subjectVariables = $person !== null
+            ? $this->withSubscriberAlias(array_merge($variables, $this->previewPerson($person)))
+            : $variables;
+
+        $subject = $this->parse($subjectTemplate, array_merge($subjectVariables, $added));
 
         return new RenderedMail(
             subject: $subject,

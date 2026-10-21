@@ -50,6 +50,17 @@ it('renders a template mode step with the person in subject and body', function 
         ->and($mail['from'])->toBeNull();
 });
 
+it('escapes the words of the person in the HTML and keeps them as text in the subject', function (): void {
+    $mail = SendMarketingEmailAction::mailPreview(
+        $this->template,
+        ['first_name' => '<img src=x onerror=alert(1)>', 'email' => 'x@example.com'],
+    );
+
+    expect($mail['html'])->not->toContain('<img src=x')
+        ->and($mail['html'])->toContain('&lt;img src=x onerror=alert(1)&gt;')
+        ->and($mail['subject'])->toBe('<img src=x onerror=alert(1)>, dein erster Tag');
+});
+
 it('prints the variables of the step as long as they are plain text', function (): void {
     $mail = SendMarketingEmailAction::mailPreview(
         $this->template + ['variables' => [['key' => 'freebie_title', 'value' => 'Atem-Guide'], ['key' => 'offen', 'value' => '{{ nodes.lookup.x }}']]],
