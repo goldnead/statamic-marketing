@@ -264,6 +264,92 @@ class SendMarketingEmailAction implements AutomationAction
     }
 
     /**
+     * The mail of this step as a given person would read it, for the dry run of
+     * the automations map. The orchestrator finds this with `method_exists` on
+     * the node's class, so an older release simply does not ask.
+     *
+     * It renders and nothing else. No gate is consulted (consent, suppression,
+     * opt-out, cap), no message row is written, nothing is sent, no link is
+     * rewritten to a tracking address and no open pixel is added: what comes
+     * back is the mail with nobody behind it but the person's words.
+     *
+     * @param  array<string, mixed>  $config  the step's config, tokens already resolved where the run had a person
+     * @param  array<string, mixed>  $person  `email`, `first_name`, `last_name`, `name`
+     * @return array{subject: string, html: string, from: ?string}|null null when the step names no mail that exists
+     */
+    public static function mailPreview(array $config, array $person = []): ?array
+    {
+        return app(static::class)->previewMail($config, $person);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $person
+     * @return array{subject: string, html: string, from: ?string}|null
+     */
+    public function previewMail(array $config, array $person = []): ?array
+    {
+        $mode = SendMode::fromConfig($config);
+
+        if (! $mode->isValid()) {
+            return null;
+        }
+
+        try {
+            if ($mode->isCampaign()) {
+                $campaign = $this->campaigns->find($mode->campaign);
+
+                if ($campaign === null) {
+                    return null;
+                }
+
+                $listHandle = $mode->list !== '' ? $mode->list : (string) $campaign->listHandle;
+                $rendered = app(CampaignRenderer::class)->renderForPreview($campaign, $this->previewList($listHandle), $person);
+            } else {
+                if (! $this->sender->canResolveTemplate($mode->template)) {
+                    return null;
+                }
+
+                $rendered = $this->sender->previewTemplate(
+                    $mode->template,
+                    $mode->subject,
+                    $this->previewList($mode->list),
+                    $mode->mailClass,
+                    $person,
+                    $this->previewVariables($config),
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        return ['subject' => $rendered->subject, 'html' => $rendered->html, 'from' => null];
+    }
+
+    /** The list the step names, or a stand-in with its handle: a look at the mail does not depend on the list existing. */
+    protected function previewList(string $handle): MailingList
+    {
+        return ($handle !== '' ? $this->lists->find($handle) : null) ?? new MailingList(handle: $handle, name: $handle);
+    }
+
+    /**
+     * The `variables` pairs a preview can fill: plain text only. A value that still holds a token of the
+     * run (`{{ nodes.lookup.title }}`) has no answer without a run, and prints nothing instead of the token.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    protected function previewVariables(array $config): array
+    {
+        return array_filter(
+            $this->extraVariables($config),
+            fn ($value): bool => ! (is_string($value) && str_contains($value, '{{')),
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public static function outputSchema(): array

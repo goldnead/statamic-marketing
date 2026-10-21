@@ -82,6 +82,26 @@ class CampaignRenderer
     }
 
     /**
+     * The mail as one named person would read it, for a look and for nothing else.
+     *
+     * Like {@see renderForArchive()} there is no message, so no link is
+     * rewritten to a tracking address and no open pixel is added, and there is
+     * no subscription behind it: the self-service links stay inert (`#`). Unlike
+     * the archive the person's own words stand in the mail: `email`,
+     * `first_name`, `last_name` and `name`, offered a second time under
+     * `subscriber.*` like in a real send. The caller is a dry run (the
+     * automations map), which asks the mail of a step without sending, storing or
+     * counting anything.
+     *
+     * @param  array<string, mixed>  $person  `email`, `first_name`, `last_name`, `name`; what is missing stays empty
+     * @param  array<string, mixed>  $extraVariables  as in {@see render()}
+     */
+    public function renderForPreview(Campaign $campaign, MailingList $list, array $person = [], array $extraVariables = []): RenderedMail
+    {
+        return $this->build($campaign, $list, null, null, archive: false, extraVariables: $extraVariables, person: $person);
+    }
+
+    /**
      * Die Vorlage, wie sie beim Versand steht: das Layout mit eingesetztem
      * Kampagnentext, alle uebrigen `{{ … }}` unangetastet.
      *
@@ -133,6 +153,7 @@ class CampaignRenderer
         bool $archive,
         ?string $sequenceUuid = null,
         array $extraVariables = [],
+        ?array $person = null,
     ): RenderedMail {
         // Resolved before anything is parsed, because the subject is also a
         // template variable — a body that prints `{{ subject }}` must show the
@@ -142,6 +163,10 @@ class CampaignRenderer
         $variables = $archive
             ? $this->archiveVariables($campaign, $list, $subjectTemplate)
             : $this->variables($campaign, $list, $subscription, $subjectTemplate, $sequenceUuid);
+
+        if ($person !== null) {
+            $variables = $this->withSubscriberAlias(array_merge($variables, $this->previewPerson($person)));
+        }
 
         $variables += $this->ratingVariables($subscription, $message);
 
@@ -781,6 +806,28 @@ class CampaignRenderer
                 'name' => $neutral,
             ]
         ));
+    }
+
+    /**
+     * The four person variables of a preview, as plain text and nothing else.
+     *
+     * @param  array<string, mixed>  $person
+     * @return array{email: string, first_name: string, last_name: string, name: string}
+     */
+    protected function previewPerson(array $person): array
+    {
+        $text = fn (string $key): string => is_scalar($person[$key] ?? null) ? trim((string) $person[$key]) : '';
+
+        $first = $text('first_name');
+        $last = $text('last_name');
+        $email = $text('email');
+
+        return [
+            'email' => $email,
+            'first_name' => $first,
+            'last_name' => $last,
+            'name' => $text('name') ?: (trim($first.' '.$last) ?: $email),
+        ];
     }
 
     protected function neutralName(): string
