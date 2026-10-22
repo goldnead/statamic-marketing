@@ -111,6 +111,11 @@ abstract class TestCase extends OrchestraTestCase
     protected function getPackageProviders($app): array
     {
         return [
+            // A suggest, so only when it is installed. Listed ahead of Statamic
+            // like Composer's discovery does (goldnead/* sorts before
+            // statamic/cms): its route has to be registered before Statamic's
+            // catch-all or the catch-all answers it.
+            ...(class_exists(\Goldnead\IdentityContracts\ServiceProvider::class) ? [\Goldnead\IdentityContracts\ServiceProvider::class] : []),
             StatamicServiceProvider::class,
             \Goldnead\BrandContext\ServiceProvider::class,
             \Goldnead\Suppression\ServiceProvider::class,

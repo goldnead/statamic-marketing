@@ -44,7 +44,24 @@ class TagLinkController extends Controller
             return response()->view('marketing::tag-link-thanks', ['thanks' => $definition['thanks']]);
         }
 
-        return redirect()->away((string) $definition['redirect']);
+        return redirect()->away($this->withAutoLogin((string) $definition['redirect'], $subscription));
+    }
+
+    /**
+     * The redirect, through the login link when the subscriber has an account
+     * and the target is a page behind the login. A tag link is a link in a
+     * mail, and the click on it must land where the other links of that mail
+     * land.
+     */
+    protected function withAutoLogin(string $target, Subscription $subscription): string
+    {
+        $class = '\\Goldnead\\IdentityContracts\\AutoLogin\\AutoLogin';
+
+        if (! config('marketing.auto_login', true) || ! class_exists($class)) {
+            return $target;
+        }
+
+        return app($class)->linkFor($subscription->email, $target) ?? $target;
     }
 
     /**

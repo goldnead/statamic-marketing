@@ -207,6 +207,10 @@ class CampaignRenderer
         $html = $this->ensurePostalLine($html);
 
         if ($message) {
+            // Before click tracking, so the counter wraps the login link and
+            // forwards to it: the click is counted and the reader is logged in.
+            [$html, $text] = $this->withAutoLogin($html, $text, $subscription);
+
             if (config('marketing.tracking.clicks', true)) {
                 $html = $this->rewriteLinks($html, $message, $this->selfServiceUrls($subscription));
             }
@@ -1078,6 +1082,35 @@ class CampaignRenderer
             },
             $html,
         );
+    }
+
+    /**
+     * Links to a page behind the login become login links for a recipient who
+     * has an account.
+     *
+     * The rewriting is `goldnead/statamic-identity-contracts`' (optional: a
+     * `suggest`). Without it, with it switched off, for a recipient without an
+     * account or for a user it will not log in, the mail comes back untouched.
+     * Only a real send gets here: a preview has no message, and a login link
+     * built for nobody in particular would be a credential printed on screen.
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function withAutoLogin(string $html, string $text, ?Subscription $subscription): array
+    {
+        $class = '\\Goldnead\\IdentityContracts\\AutoLogin\\AutoLogin';
+
+        if ($subscription === null || ! config('marketing.auto_login', true) || ! class_exists($class)) {
+            return [$html, $text];
+        }
+
+        $links = app($class);
+
+        if (! $links->enabled()) {
+            return [$html, $text];
+        }
+
+        return [$links->rewriteHtml($html, $subscription->email), $links->rewriteText($text, $subscription->email)];
     }
 
     /**

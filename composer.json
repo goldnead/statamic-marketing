@@ -43,6 +43,7 @@
     },
     "suggest": {
         "goldnead/statamic-automations": "^2.31 (the newsletter skips people inside a flagged sequence; cancels stranded runs through its public method; older releases work without both). Build drip sequences and welcome flows from marketing triggers/actions in the visual workflow builder",
+        "goldnead/statamic-identity-contracts": "^1.3 (links in a sent mail to a page behind the login log the recipient in; switched on there, with the paths to cover)",
         "goldnead/statamic-events": "Run a concert-mail series: one template, one waiting campaign per upcoming term, aimed at a postal-code radius around the venue",
         "goldnead/statamic-webhook-manager": "Receive ESP feedback webhooks (bounces, complaints) and fire outbound webhooks on marketing events",
         "goldnead/statamic-insights": "Put the newsletter figures — sign-ups, unsubscribes, list size, mails sent, open and click rate — on the shared Insights dashboard next to revenue"
