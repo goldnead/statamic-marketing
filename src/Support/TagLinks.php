@@ -34,6 +34,9 @@ class TagLinks
     /** The query parameter that holds the subscription uuid. */
     public const SUBSCRIPTION = 's';
 
+    /** The query parameter that holds the time the link was printed (unix seconds). */
+    public const ISSUED = 'iat';
+
     /**
      * One definition, normalised, or null when there is none worth honouring.
      *
@@ -97,6 +100,13 @@ class TagLinks
 
         return URL::signedRoute('marketing.tag-link.show', [
             self::PARAMETER => $key,
+            // When the link was printed. The signature makes it tamper-proof, and
+            // the redirect asks it whether it may still log somebody in (a tag link
+            // itself never expires). See TagLinkController::isYoung(). It sits
+            // before `s` on purpose: the page posts to `Request::fullUrl()`, which
+            // sorts the query, and `iat` < `s` < `signature` keeps that string
+            // identical to the one that was signed.
+            self::ISSUED => now()->getTimestamp(),
             self::SUBSCRIPTION => $subscription->uuid,
         ]);
     }

@@ -7,6 +7,7 @@ use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Marketing\Support\TagLinks;
 use Goldnead\Marketing\Tags\MarketingTagLink;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Facades\Auth;
@@ -193,9 +194,25 @@ it('carries a login link into the plain text part too', function (): void {
         ->and($text)->not->toContain('lessons/tag-1)');
 });
 
+/** A tag link as it is printed into a mail, with the time it was printed. */
+function tagUrl(string $key, $subscription, ?int $issued): string
+{
+    return URL::signedRoute('marketing.tag-link.apply', array_filter([
+        'marketingTagKey' => $key,
+        'iat' => $issued,
+        's' => $subscription->uuid,
+    ], fn ($v) => $v !== null));
+}
+
+it('prints the time into the tag link', function (): void {
+    $printed = TagLinks::class;
+    $url = app($printed)->url('start', $this->jane);
+
+    expect($url)->toContain('iat='.now()->getTimestamp());
+});
+
 it('lets the tag link redirect through the login for a subscriber with an account', function (): void {
-    ($this->render)($this->jane); // a mail went out just now
-    $url = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->jane->uuid]);
+    $url = tagUrl('start', $this->jane, now()->getTimestamp());
 
     $response = $this->post($url);
 
@@ -206,22 +223,29 @@ it('lets the tag link redirect through the login for a subscriber with an accoun
     expect(Auth::id())->toBe($this->user->id);
 });
 
-it('does not let an old tag link log anybody in: only while the person was mailed within the login lifetime', function (): void {
-    $url = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->jane->uuid]);
+it('does not let an old tag link log anybody in, however recently the person was mailed', function (): void {
+    // Somebody who gets mail all the time: a mail went out just now.
+    ($this->render)($this->jane);
 
-    // Never mailed at all.
-    $this->post($url)->assertRedirect('/account/courses/cvt/lessons/tag-1');
-
-    // Mailed, but longer ago than a login link would live.
-    Message::create(['campaign_handle' => 'tag-1', 'subscription_id' => $this->jane->id, 'email' => 'jane@example.com', 'status' => Message::STATUS_SENT, 'sent_at' => now()->subDays(20)]);
-    $this->post($url)->assertRedirect('/account/courses/cvt/lessons/tag-1');
+    // Printed before the time was part of the link.
+    $this->post(tagUrl('start', $this->jane, null))->assertRedirect('/account/courses/cvt/lessons/tag-1');
+    // Printed longer ago than a login link lives.
+    $this->post(tagUrl('start', $this->jane, now()->subDays(20)->getTimestamp()))->assertRedirect('/account/courses/cvt/lessons/tag-1');
+    // Printed in the future (a forged clock does not help: it is signed, and this is not accepted either).
+    $this->post(tagUrl('start', $this->jane, now()->addDays(3)->getTimestamp()))->assertRedirect('/account/courses/cvt/lessons/tag-1');
 
     expect(Auth::check())->toBeFalse();
 
-    // Mailed within the lifetime: logged in.
-    Message::create(['campaign_handle' => 'tag-2', 'subscription_id' => $this->jane->id, 'email' => 'jane@example.com', 'status' => Message::STATUS_SENT, 'sent_at' => now()->subDays(13)]);
-    $response = $this->post($url);
+    // Within the lifetime: logged in.
+    $response = $this->post(tagUrl('start', $this->jane, now()->subDays(13)->getTimestamp()));
     expect($response->headers->get('Location'))->toStartWith('http://localhost/!/autologin?');
+});
+
+it('cannot be talked into a younger tag link by editing the printed time', function (): void {
+    $old = tagUrl('start', $this->jane, now()->subDays(40)->getTimestamp());
+    $edited = preg_replace('/iat=\d+/', 'iat='.now()->getTimestamp(), $old);
+
+    $this->post($edited)->assertForbidden();
 });
 
 it('still sends the mail with its plain links when the login link cannot be built', function (): void {
@@ -236,9 +260,8 @@ it('still sends the mail with its plain links when the login link cannot be buil
 });
 
 it('keeps the plain redirect of a tag link for somebody without an account or on another path', function (): void {
-    ($this->render)($this->jane);
-    $noAccount = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->nobody->uuid]);
-    $otherPath = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'plain', 's' => $this->jane->uuid]);
+    $noAccount = tagUrl('start', $this->nobody, now()->getTimestamp());
+    $otherPath = tagUrl('plain', $this->jane, now()->getTimestamp());
 
     $this->post($noAccount)->assertRedirect('/account/courses/cvt/lessons/tag-1');
     $this->post($otherPath)->assertRedirect('/danke');
