@@ -44,7 +44,58 @@ class TagLinkController extends Controller
             return response()->view('marketing::tag-link-thanks', ['thanks' => $definition['thanks']]);
         }
 
-        return redirect()->away((string) $definition['redirect']);
+        return redirect()->away($this->withAutoLogin((string) $definition['redirect'], $subscription, $request));
+    }
+
+    /**
+     * The redirect, through the login link when the subscriber has an account
+     * and the target is a page behind the login. A tag link is a link in a
+     * mail, and the click on it must land where the other links of that mail
+     * land.
+     */
+    protected function withAutoLogin(string $target, Subscription $subscription, Request $request): string
+    {
+        $class = '\\Goldnead\\IdentityContracts\\AutoLogin\\AutoLogin';
+
+        if (! config('marketing.auto_login', true) || ! class_exists($class)) {
+            return $target;
+        }
+
+        try {
+            $links = app($class);
+
+            if (! $links->enabled() || ! $this->isYoung($request)) {
+                return $target;
+            }
+
+            return $links->linkFor($subscription->email, $target) ?? $target;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $target;
+        }
+    }
+
+    /**
+     * A tag link never expires, and every click would hand out a login link
+     * with a lifetime of its own. So the login is only offered while the tag
+     * link is as young as a login link in the same mail would be: the signed
+     * `iat` of the URL says when it was printed. An older link (a mail dug out of
+     * an archive, a forwarded copy) still tags and redirects, it just does not
+     * log anybody in; a link without `t` (printed before this existed) the same.
+     *
+     * Known limit: inside that window a tag link is a login for its person
+     * like the other links of its mail, and unlike them a password change
+     * does not end it (it carries no account state). The window is the
+     * lifetime of the login links of that mail, 14 days by default.
+     */
+    protected function isYoung(Request $request): bool
+    {
+        $printed = (int) $request->query(TagLinks::ISSUED, 0);
+        $days = max(1, (int) config('identity-contracts.autologin.ttl_days', 14));
+        $now = now()->getTimestamp();
+
+        return $printed > 0 && $printed <= $now + 300 && $printed >= $now - $days * 86400;
     }
 
     /**

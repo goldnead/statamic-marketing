@@ -263,6 +263,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Auto login links
+    |--------------------------------------------------------------------------
+    |
+    | With goldnead/statamic-identity-contracts (1.3 or later) installed and its
+    | `identity-contracts.autologin` switched on, links in a sent mail to a page
+    | behind the login log the recipient in when they have an account. Set this
+    | to false to keep this addon's mails out of it.
+    |
+    */
+
+    'auto_login' => true,
+
+    /*
+    |--------------------------------------------------------------------------
     | Timeline — the mails on a LeadHub contact's record
     |--------------------------------------------------------------------------
     |

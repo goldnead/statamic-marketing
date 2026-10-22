@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 2.39.0 - 2026-10-23
+
+### Added: links in a sent mail to a page behind the login log the recipient in
+
+A reader who clicked the link of an automation mail to a lesson landed on the login form, with a password nobody ever told them.
+With `goldnead/statamic-identity-contracts` 1.3 or later installed (a `suggest`) and its `identity-contracts.autologin` switched on, the
+renderer now turns every matching internal link of a **sent** mail (HTML and text part) into a signed, expiring login link for a recipient
+who has an account. It does so before click tracking wraps the link: the click is counted at `/c/{uuid}`, which forwards to the login link,
+which logs the recipient in and lands on the original page. A tag link whose redirect is such a page redirects through the login link too,
+but only while the tag link is young: it now carries the time it was printed (`iat`, signed), and an older one (or one printed before this
+release) still tags and redirects, it just logs nobody in. Known limit: inside those 14 days a tag link is a login for its person, and
+unlike the other links of its mail a password change does not end it.
+Previews, the web archive and recipients without an account are untouched. `marketing.auto_login` (default true) keeps this addon out of
+it. Nothing changes without the identity package or while its auto login is off.
+
 ## 2.38.0 - 2026-10-22
 
 ### Added: `MessageEngagement::forMessages()`, what became of a set of mails in people
