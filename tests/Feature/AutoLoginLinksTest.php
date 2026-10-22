@@ -32,6 +32,14 @@ class AutoLoginTestUser extends Authenticatable
     public $timestamps = false;
 }
 
+/** A user model whose table does not exist: every lookup throws. */
+class AutoLoginBrokenUser extends Authenticatable
+{
+    protected $table = 'users_that_do_not_exist';
+
+    public $timestamps = false;
+}
+
 beforeEach(function (): void {
     if (! class_exists(AutoLogin::class)) {
         $this->markTestSkipped('goldnead/statamic-identity-contracts 1.3 or later is not installed.');
@@ -186,6 +194,7 @@ it('carries a login link into the plain text part too', function (): void {
 });
 
 it('lets the tag link redirect through the login for a subscriber with an account', function (): void {
+    ($this->render)($this->jane); // a mail went out just now
     $url = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->jane->uuid]);
 
     $response = $this->post($url);
@@ -197,7 +206,37 @@ it('lets the tag link redirect through the login for a subscriber with an accoun
     expect(Auth::id())->toBe($this->user->id);
 });
 
+it('does not let an old tag link log anybody in: only while the person was mailed within the login lifetime', function (): void {
+    $url = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->jane->uuid]);
+
+    // Never mailed at all.
+    $this->post($url)->assertRedirect('/account/courses/cvt/lessons/tag-1');
+
+    // Mailed, but longer ago than a login link would live.
+    Message::create(['campaign_handle' => 'tag-1', 'subscription_id' => $this->jane->id, 'email' => 'jane@example.com', 'status' => Message::STATUS_SENT, 'sent_at' => now()->subDays(20)]);
+    $this->post($url)->assertRedirect('/account/courses/cvt/lessons/tag-1');
+
+    expect(Auth::check())->toBeFalse();
+
+    // Mailed within the lifetime: logged in.
+    Message::create(['campaign_handle' => 'tag-2', 'subscription_id' => $this->jane->id, 'email' => 'jane@example.com', 'status' => Message::STATUS_SENT, 'sent_at' => now()->subDays(13)]);
+    $response = $this->post($url);
+    expect($response->headers->get('Location'))->toStartWith('http://localhost/!/autologin?');
+});
+
+it('still sends the mail with its plain links when the login link cannot be built', function (): void {
+    config(['auth.providers.users.model' => AutoLoginBrokenUser::class]);
+
+    $mail = ($this->render)($this->jane);
+
+    $href = ($this->hrefOf)($mail->html, 'Zur Lektion');
+    parse_str((string) parse_url($href, PHP_URL_QUERY), $query);
+
+    expect($query['url'])->toBe('http://localhost/account/courses/cvt/lessons/tag-1');
+});
+
 it('keeps the plain redirect of a tag link for somebody without an account or on another path', function (): void {
+    ($this->render)($this->jane);
     $noAccount = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'start', 's' => $this->nobody->uuid]);
     $otherPath = URL::signedRoute('marketing.tag-link.apply', ['marketingTagKey' => 'plain', 's' => $this->jane->uuid]);
 

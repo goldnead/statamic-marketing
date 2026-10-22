@@ -1104,13 +1104,21 @@ class CampaignRenderer
             return [$html, $text];
         }
 
-        $links = app($class);
+        // A convenience for the reader must never cost the mail: whatever goes
+        // wrong in there, the mail goes out with the links it already had.
+        try {
+            $links = app($class);
 
-        if (! $links->enabled()) {
+            if (! $links->enabled()) {
+                return [$html, $text];
+            }
+
+            return [$links->rewriteHtml($html, $subscription->email), $links->rewriteText($text, $subscription->email)];
+        } catch (\Throwable $e) {
+            report($e);
+
             return [$html, $text];
         }
-
-        return [$links->rewriteHtml($html, $subscription->email), $links->rewriteText($text, $subscription->email)];
     }
 
     /**

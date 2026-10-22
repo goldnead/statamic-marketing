@@ -2,6 +2,7 @@
 
 namespace Goldnead\Marketing\Http\Controllers;
 
+use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Support\TagLinks;
 use Illuminate\Http\Request;
@@ -61,7 +62,36 @@ class TagLinkController extends Controller
             return $target;
         }
 
-        return app($class)->linkFor($subscription->email, $target) ?? $target;
+        try {
+            $links = app($class);
+
+            if (! $links->enabled() || ! $this->mailedRecently($subscription)) {
+                return $target;
+            }
+
+            return $links->linkFor($subscription->email, $target) ?? $target;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $target;
+        }
+    }
+
+    /**
+     * A tag link never expires, and every click would hand out a login link
+     * with a lifetime of its own. So the login is only offered while the link
+     * is as young as a login link in the mail would be: the person was mailed
+     * within the login link's lifetime. A mail dug out of an old archive still
+     * tags and redirects, it just does not log anybody in.
+     */
+    protected function mailedRecently(Subscription $subscription): bool
+    {
+        $days = max(1, (int) config('identity-contracts.autologin.ttl_days', 14));
+
+        return Message::query()
+            ->where('subscription_id', $subscription->id)
+            ->where('sent_at', '>=', now()->subDays($days))
+            ->exists();
     }
 
     /**
