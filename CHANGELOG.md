@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 2.38.0 - 2026-10-22
+
+### Added: `MessageEngagement::forMessages()`, what became of a set of mails in people
+
+Counts, for the messages named by uuid, people (lower-cased address, once however many mails or events): `sent`, `opened` (an open that
+was not a machine's, or a click), `proxy_only` (only machine opens, as Apple's Mail Privacy Protection leaves them: read or not is unknown),
+`clicked` and `unsubscribed`. Read only, chunked for SQLite. The automations map uses it for the step table of a series ("Wo springen sie ab?");
+the meaning of `machine` stays in this addon.
+
 ## 2.37.0 - 2026-10-21
 
 ### Added: the mail of a `marketing.send_email` step for the dry run of the map
