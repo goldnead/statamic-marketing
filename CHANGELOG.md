@@ -10,8 +10,11 @@
   a signed login link (`/!/autologin?…&signature=…`, statamic-identity-contracts) still forwards
   the reader to that URL, but the event row (`marketing_message_events.url`), the
   `MessageClicked` payload and the campaign report (click list and per-link breakdown) now hold
-  only the page it leads to (its `to` value). Rows written earlier are cut down the same way in
-  the report. Every other URL is stored as before.
+  only the page it leads to (its `to` value). Rows written earlier are cut down the same way where
+  they are read: the report and the output and `url` filter of the automations node
+  `marketing.message_clicked`. The old rows themselves are not rewritten, and the per-link
+  breakdown does not merge an old row with a new one for the same page. Every other URL is stored
+  as before.
 
 ## 2.39.0 - 2026-10-23
 
