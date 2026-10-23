@@ -49,7 +49,8 @@ final class ClickTarget
         }
 
         // Doubled slashes ("//!/autologin") are read as one by the web server.
-        $path = trim((string) preg_replace('#/{2,}#', '/', $path), '/');
+        // Percent-encoding too: the router decodes the path first ("/%21/auto%6Cogin" is the route).
+        $path = trim((string) preg_replace('#/{2,}#', '/', rawurldecode($path)), '/');
 
         return $path === $route;
     }
