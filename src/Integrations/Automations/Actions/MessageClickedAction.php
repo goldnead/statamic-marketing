@@ -4,6 +4,7 @@ namespace Goldnead\Marketing\Integrations\Automations\Actions;
 
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Support\ClickTarget;
 use Goldnead\StatamicAutomations\Context\AutomationContext;
 use Goldnead\StatamicAutomations\Contracts\AutomationAction;
 use Goldnead\StatamicAutomations\Support\ActionResult;
@@ -136,7 +137,8 @@ class MessageClickedAction implements AutomationAction
             ->orderBy('created_at')
             ->orderBy('id')
             ->get()
-            ->filter(fn (MessageEvent $event): bool => $needle === '' || str_contains((string) $event->url, $needle))
+            // Rows written before click tracking cut login links down still carry a signature.
+            ->filter(fn (MessageEvent $event): bool => $needle === '' || str_contains((string) ClickTarget::forStorage($event->url === null ? null : (string) $event->url), $needle))
             ->filter(fn (MessageEvent $event): bool => ! $this->tooSoon($message, $event, $ignore))
             ->values();
 
@@ -145,7 +147,7 @@ class MessageClickedAction implements AutomationAction
         return ActionResult::success([
             'clicked' => $first !== null,
             'clicked_at' => $first?->created_at?->toIso8601String(),
-            'url' => $first?->url,
+            'url' => $first === null ? null : ClickTarget::forStorage($first->url === null ? null : (string) $first->url),
             'clicks' => $clicks->count(),
         ]);
     }

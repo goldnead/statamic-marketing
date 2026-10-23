@@ -56,6 +56,18 @@ it('is registered as a built-in node', function (): void {
         ->and($automations->isBuiltIn('marketing.message_clicked'))->toBeTrue();
 });
 
+it('never hands a login link signature on, not even from a row written before', function (): void {
+    $message = ($this->message)();
+    $login = 'https://example.test/!/autologin?b=abc&expires=9999999999&to=%2Faccount%2Fkurs&u=7&signature=SECRETSIG';
+
+    MessageEvent::create(['message_id' => $message->id, 'type' => MessageEvent::TYPE_CLICK, 'url' => $login]);
+
+    $result = ($this->check)(['message_uuid' => $message->uuid]);
+
+    expect($result->output['url'])->toBe('/account/kurs')
+        ->and(json_encode($result->output))->not->toContain('SECRETSIG');
+});
+
 it('says no for a message nobody clicked in', function (): void {
     $message = ($this->message)();
 
