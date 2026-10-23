@@ -7,6 +7,7 @@ use Goldnead\Marketing\Events\MessageOpened;
 use Goldnead\Marketing\Events\MessageOpenedByHuman;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Support\ClickTarget;
 use Goldnead\Marketing\Support\MachineOpen;
 
 class TrackingService
@@ -80,6 +81,10 @@ class TrackingService
         if (! $message) {
             return null;
         }
+
+        // The reader is forwarded to the full URL by the controller; what is
+        // written down never contains a login link's signature.
+        $url = (string) ClickTarget::forStorage($url);
 
         $firstClick = $message->first_clicked_at === null;
 

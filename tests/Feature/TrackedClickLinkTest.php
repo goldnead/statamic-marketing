@@ -2,10 +2,13 @@
 
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Events\MessageClicked;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
+use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Goldnead\Marketing\Support\TrackingParameters;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 
@@ -246,4 +249,46 @@ it('ships a list on which every entry is a parameter a mail provider adds', func
         '_hsenc', '_hsmi',
         'mkt_tok',
     ]);
+});
+
+/* ------------------------------ a login link is a credential, not a statistic */
+
+function autologinTarget(): string
+{
+    return 'https://example.test/!/autologin?b=abc&expires=9999999999&to=%2Faccount%2Fcourses%2Fcvt%2Flessons%2Ftag-1&u=7&signature=SECRETSIG';
+}
+
+it('redirects to a login link but stores only its target path', function (): void {
+    Event::fake([MessageClicked::class]);
+
+    $this->get(clickLink(autologinTarget()))->assertRedirect(autologinTarget());
+
+    $stored = MessageEvent::query()->where('type', 'click')->value('url');
+
+    expect($stored)->toBe('/account/courses/cvt/lessons/tag-1')
+        ->and($this->message->fresh()->clicks)->toBe(1);
+
+    Event::assertDispatched(
+        MessageClicked::class,
+        fn (MessageClicked $event) => $event->metadata === ['url' => '/account/courses/cvt/lessons/tag-1'],
+    );
+});
+
+it('never shows a signature in the campaign report, not even for a row written before', function (): void {
+    $this->get(clickLink(autologinTarget()))->assertRedirect();
+
+    MessageEvent::query()->where('type', 'click')->update(['url' => autologinTarget()]);
+
+    $report = app(CampaignReport::class);
+    $events = MessageEvent::query()->where('type', 'click')->get();
+
+    expect(json_encode($report->clickRows($events)))->not->toContain('SECRETSIG')->not->toContain('signature')
+        ->and(json_encode($report->urlBreakdown('welcome')))->not->toContain('SECRETSIG')
+        ->and($report->clickRows($events)[0]['url'])->toBe('/account/courses/cvt/lessons/tag-1');
+});
+
+it('leaves an ordinary click url as it was', function (): void {
+    $this->get(clickLink('https://example.com/news?a=1'))->assertRedirect('https://example.com/news?a=1');
+
+    expect(MessageEvent::query()->where('type', 'click')->value('url'))->toBe('https://example.com/news?a=1');
 });

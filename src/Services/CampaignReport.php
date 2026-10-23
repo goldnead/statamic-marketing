@@ -8,6 +8,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Rating;
+use Goldnead\Marketing\Support\ClickTarget;
 use Goldnead\Marketing\Support\ContactLinks;
 use Goldnead\Marketing\Support\TimeBucket;
 use Illuminate\Database\Eloquent\Builder;
@@ -413,7 +414,7 @@ class CampaignReport
     {
         return $this->eventRows($events, fn (MessageEvent $event) => [
             'clicked_at' => $this->iso($event->created_at),
-            'url' => $event->url === null ? null : (string) $event->url,
+            'url' => ClickTarget::forStorage($event->url === null ? null : (string) $event->url),
         ]);
     }
 
@@ -908,7 +909,7 @@ class CampaignReport
             ->orderByDesc('clicks')
             ->get()
             ->map(fn ($row) => [
-                'url' => (string) $row->url,
+                'url' => (string) ClickTarget::forStorage((string) $row->url),
                 'clicks' => (int) $row->clicks,
                 'people' => (int) $row->people,
             ])
