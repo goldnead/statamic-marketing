@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.39.2 - 2026-10-23
+
+### Fixed
+
+- A login link whose path is written percent-encoded (`/%21/auto%6Cogin`, `/!%2Fautologin`), which
+  the router reads as the same route, is cut down to its target in click tracking as well.
+
 ## 2.39.1 - 2026-10-23
 
 ### Fixed

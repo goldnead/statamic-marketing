@@ -12,6 +12,10 @@ it('cuts a login link down to its target, whatever the host and slashes', functi
     'https://example.test/!/autologin?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
     'http://other.test/!/autologin/?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
     'https://example.test//!/autologin?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
+    // Laravel decodes the path before routing: these reach the same route.
+    'https://example.test/%21/autologin?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
+    'https://example.test/!/auto%6Cogin?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
+    'https://example.test/!%2Fautologin?to=%2Faccount%2Fkurs%3Fx%3D1&signature=SECRET',
 ]);
 
 it('keeps only the path of a login link without a usable target', function (): void {
