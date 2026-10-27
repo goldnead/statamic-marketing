@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- The subscriber table of a list links each address to its LeadHub contact, resolved like the
+  campaign report does (normalised address, one lookup per page, no link for readers without
+  the contact permission, plain text when there is no contact).
+
 ## 2.39.2 - 2026-10-23
 
 ### Fixed

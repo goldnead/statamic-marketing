@@ -10,6 +10,7 @@ use Goldnead\Marketing\Models\MailLogEntry;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\CampaignStats;
+use Goldnead\Marketing\Support\ContactLinks;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Goldnead\Marketing\Support\Setup;
 use Illuminate\Http\Request;
@@ -137,9 +138,16 @@ class ListController extends Controller
 
         $frequency = $this->frequencyFor(collect($page->items()));
 
+        // One query for the whole page, not one per row. An address with no
+        // LeadHub contact (or a reader who may not open contacts) gets null,
+        // and the table renders it as plain text.
+        $contacts = app(ContactLinks::class);
+        $contactMap = $contacts->forEmails(collect($page->items())->pluck('email')->all());
+
         $rows = collect($page->items())->map(fn (Subscription $subscription) => [
             'id' => $subscription->uuid,
             'email' => $subscription->email,
+            'contact_url' => $contacts->urlFor($subscription->email, $contactMap),
             'name' => trim(($subscription->first_name ?? '').' '.($subscription->last_name ?? '')),
             'status' => $subscription->status,
             'subscribed_at' => $subscription->subscribed_at?->toIso8601String(),
