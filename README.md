@@ -137,6 +137,11 @@ to `50` means "test on this share, then send the winner to the rest".
 
 The value is validated: 0, or 10 to 50, and only with a variant subject.
 
+> **Behaviour change.** Before the winner send existed, `ab_share` 10 to 50 was stored and ignored:
+> the campaign went to the whole audience, half and half. Such a campaign that is still unsent now
+> runs as the two-pass test below, without an opt-in. `php artisan marketing:ab-campaigns` lists
+> them (read only); set a campaign's test share to 0 to keep the old behaviour.
+
 **The winner send** works in two passes:
 
 1. **Test.** Only the test group is mailed: about `ab_share` percent of the
@@ -159,6 +164,16 @@ The value is validated: 0, or 10 to 50, and only with a variant subject.
 - A **tie**, or fewer than `marketing.ab.min_per_variant` delivered mails
   (default 10, env `MARKETING_AB_MIN_PER_VARIANT`) in either variant, sends
   **variant A**.
+- Who decides is settled by the database, not a cache lock: the decision is one unique insert into
+  `marketing_ab_decisions`, so two hosts cannot both queue the winner. A winner pass that did not
+  write its audience to the end is queued again after `marketing.ab.resume_after_minutes`
+  (default 30) of silence: a running pass reports in once per chunk, so a long
+  throttled pass is not started a second time. Repeating a pass mails nobody
+  twice (one message row per campaign and subscription, claimed per row).
+  Known limit: `marketing_messages` has no unique index on `(campaign_handle,
+  subscription_id)`, because both columns are nullable for template sends and
+  this addon refuses uniques over nullable columns; two queue workers running
+  the same pass at the very same instant could still both create a row.
 - The decision is stored on the campaign (`meta.ab`: `winner`, `reason` as
   `higher_open_rate`, `tie` or `sample_too_small`, the delivered and opened
   counts per variant, `decided_at`), so the reason is never implied.

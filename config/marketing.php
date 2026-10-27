@@ -106,6 +106,10 @@ return [
     'ab' => [
         'wait_minutes' => (int) env('MARKETING_AB_WAIT_MINUTES', 240),
         'min_per_variant' => (int) env('MARKETING_AB_MIN_PER_VARIANT', 10),
+        // A decided test whose winner pass did not write its audience to the
+        // end is queued again after this many minutes (a lost dispatch, a job
+        // that failed for good). Repeating it is safe.
+        'resume_after_minutes' => (int) env('MARKETING_AB_RESUME_AFTER_MINUTES', 30),
     ],
 
     /*

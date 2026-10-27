@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed (behaviour change, read before updating)
+
+- **A campaign that already has a variant subject and an `ab_share` of 10 to 50 now sends as an
+  A/B test with a winner pass instead of going to the whole audience.** Before this release the
+  value was stored and ignored, so such a campaign (draft or scheduled) sent to everybody, half
+  and half. There is no opt-in: after the update it is mailed to the test share first and the rest
+  follows after the wait. To see which campaigns this affects, run `php artisan marketing:ab-campaigns`
+  (read only) before updating; to keep the old behaviour for one of them, set its test share to 0.
+- One migration runs with the update: the table `marketing_ab_decisions`, the claim on the winner
+  decision.
+
 ### Added
 
 - **A/B winner send.** A campaign with a variant subject and an `ab_share` of 10 to 50 is now tested

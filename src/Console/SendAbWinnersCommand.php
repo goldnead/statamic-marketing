@@ -8,8 +8,6 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Services\AbTest;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
-use Throwable;
 
 class SendAbWinnersCommand extends Command
 {
@@ -25,49 +23,46 @@ class SendAbWinnersCommand extends Command
         return $this->forEachBrand(fn () => $this->sendDue($campaigns, $ab));
     }
 
+    /**
+     * No lock here, on purpose. Whoever decides is settled by the database
+     * ({@see AbTest::decide()}: one unique insert) and whoever re-queues a lost
+     * winner pass by one conditional update ({@see AbTest::markDispatched()}),
+     * so two runs on two hosts, or a cache that cannot lock, cannot both queue.
+     */
     protected function sendDue(CampaignRepository $campaigns, AbTest $ab): int
     {
         $queued = 0;
 
         foreach ($campaigns->all() as $campaign) {
-            if ($campaign->status !== Campaign::STATUS_SENDING || ! $ab->isDue($campaign)) {
+            if ($campaign->status !== Campaign::STATUS_SENDING) {
                 continue;
             }
 
-            // The scheduler entry is withoutOverlapping, but this command can
-            // also be run by hand beside it. The phase written by decide() is
-            // the real guard; the lock only keeps two runs from deciding at
-            // the same instant.
-            $lock = Cache::lock("marketing-ab-winner:{$campaign->handle}", 300);
+            if ($ab->isDue($campaign)) {
+                $state = $ab->decide($campaigns, $campaign);
 
-            if (! $lock->get()) {
-                continue;
-            }
-
-            try {
-                $fresh = $campaigns->find($campaign->handle);
-
-                if (! $fresh || ! $ab->isDue($fresh)) {
+                if (! $state['claimed']) {
                     continue;
                 }
 
-                $state = $ab->decide($campaigns, $fresh);
+                $row = $ab->decision($campaign->handle);
+                $row && $ab->markDispatched($row, null);
 
-                try {
-                    StartCampaignJob::dispatch($fresh->handle, true)
-                        ->onQueue((string) config('marketing.sending.queue', 'default'));
-                } catch (Throwable $e) {
-                    // Nothing went out: take the decision back so the next
-                    // run decides and queues again.
-                    $ab->reopen($campaigns, $fresh);
-
-                    throw $e;
-                }
-
+                $this->queueWinner($campaign);
                 $queued++;
-                $this->info("Queued winner [{$state['winner']}] ({$state['reason']}) for campaign [{$fresh->handle}].");
-            } finally {
-                $lock->release();
+                $this->info("Queued winner [{$state['winner']}] ({$state['reason']}) for campaign [{$campaign->handle}].");
+
+                continue;
+            }
+
+            if ($ab->needsResume($campaign)) {
+                $row = $ab->decision($campaign->handle);
+
+                if ($row && $ab->markDispatched($row, $row->dispatched_at)) {
+                    $this->queueWinner($campaign);
+                    $queued++;
+                    $this->info("Queued the winner pass of campaign [{$campaign->handle}] again: it did not complete.");
+                }
             }
         }
 
@@ -76,5 +71,11 @@ class SendAbWinnersCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    protected function queueWinner(Campaign $campaign): void
+    {
+        StartCampaignJob::dispatch($campaign->handle, true)
+            ->onQueue((string) config('marketing.sending.queue', 'default'));
     }
 }

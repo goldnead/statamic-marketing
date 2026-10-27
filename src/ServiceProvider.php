@@ -9,6 +9,7 @@ use Goldnead\Events\Events\OccurrencePresaleChanged;
 use Goldnead\Events\Events\OccurrenceRescheduled;
 use Goldnead\Events\Events\OccurrenceScheduled;
 use Goldnead\Leadhub\Facades\LeadHub;
+use Goldnead\Marketing\Console\AbTestCampaignsCommand;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\ReleaseStaleSendsCommand;
@@ -90,6 +91,7 @@ class ServiceProvider extends AddonServiceProvider
         ReleaseStaleSendsCommand::class,
         SendScheduledCampaignsCommand::class,
         SendAbWinnersCommand::class,
+        AbTestCampaignsCommand::class,
         MigrateFlatBrandsCommand::class,
         ConsentIntegrityCommand::class,
         SeriesSyncCommand::class,

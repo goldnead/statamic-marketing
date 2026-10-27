@@ -16,6 +16,7 @@ use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Mail\CampaignMail;
+use Goldnead\Marketing\Models\AbDecision;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Services\AbTest;
@@ -302,4 +303,117 @@ it('ignores a test share without a second subject', function (): void {
 
     Mail::assertSent(CampaignMail::class, 4);
     expect(abState())->toBe([]);
+});
+
+it('lists the unsent campaigns whose behaviour this feature changes', function (): void {
+    abCampaign();
+
+    $this->artisan('marketing:ab-campaigns')
+        ->expectsOutputToContain('juli')
+        ->expectsOutputToContain('1 campaign(s)')
+        ->assertSuccessful();
+
+    abCampaign(0);
+
+    $this->artisan('marketing:ab-campaigns')->expectsOutputToContain('0 campaign(s)')->assertSuccessful();
+});
+
+/**
+ * The decision is a claim in the database, not a cache lock. Two hosts, or a
+ * cache that cannot lock, must still produce exactly one winner pass.
+ */
+it('decides once even when the cache lock cannot hold anybody back', function (): void {
+    config()->set('cache.default', 'null');
+
+    abAudience();
+    app(CampaignSender::class)->queue(abCampaign());
+    abOpen('tb@example.com');
+
+    $this->travel(241)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+
+    Mail::assertSent(CampaignMail::class, 4);
+    expect(Message::forCampaign('juli')->count())->toBe(4)
+        ->and(AbDecision::query()->count())->toBe(1);
+});
+
+it('does not queue a winner that another host already claimed', function (): void {
+    abAudience();
+    app(CampaignSender::class)->queue(abCampaign());
+    abOpen('tb@example.com');
+
+    $this->travel(241)->minutes();
+
+    // The other host claimed the decision and has not written the campaign yet.
+    AbDecision::create([
+        'claim_key' => app(AbTest::class)->claimKey('juli'),
+        'campaign_handle' => 'juli',
+        'winner' => 'b',
+        'reason' => 'higher_open_rate',
+        'results' => [],
+        'decided_at' => now(),
+        'dispatched_at' => now(),
+    ]);
+
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+
+    Mail::assertSent(CampaignMail::class, 2);
+    expect(abState()['phase'])->toBe('winner');
+});
+
+it('does not queue the winner pass again while it is still working', function (): void {
+    config()->set('marketing.ab.resume_after_minutes', 30);
+
+    abAudience();
+    app(CampaignSender::class)->queue(abCampaign());
+    abOpen('tb@example.com');
+
+    $this->travel(241)->minutes();
+    app(AbTest::class)->decide(app(CampaignRepository::class), app(CampaignRepository::class)->find('juli'));
+
+    // 25 minutes in, the (long, throttled) pass reports in; 25 more is 50 since
+    // the claim but only 25 since the last sign of life.
+    $this->travel(25)->minutes();
+    app(AbTest::class)->heartbeat('juli');
+    $this->travel(25)->minutes();
+
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 2);
+
+    $this->travel(6)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 4);
+});
+
+/**
+ * A winner job that never ran (lost dispatch, worker gone for good) must not
+ * leave the campaign in `sending` for ever.
+ */
+it('queues the winner pass again when it never completed, and only then', function (): void {
+    config()->set('marketing.ab.resume_after_minutes', 30);
+
+    abAudience();
+    app(CampaignSender::class)->queue(abCampaign());
+    abOpen('tb@example.com');
+
+    $this->travel(241)->minutes();
+
+    // Decided and claimed, but the job was lost before it ran.
+    app(AbTest::class)->decide(app(CampaignRepository::class), app(CampaignRepository::class)->find('juli'));
+    AbDecision::query()->update(['dispatched_at' => now()]);
+
+    $this->travel(29)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 2);
+
+    $this->travel(2)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 4);
+    expect(app(CampaignRepository::class)->find('juli')->status)->toBe(Campaign::STATUS_SENT);
+
+    $this->travel(60)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 4);
+    expect(Message::forCampaign('juli')->count())->toBe(4);
 });

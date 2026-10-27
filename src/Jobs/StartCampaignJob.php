@@ -128,6 +128,12 @@ class StartCampaignJob implements ShouldQueue
                     // The addresses this returns never become Message rows at
                     // all — a blocked address must not enter a send, not merely
                     // fail to leave one.
+                    // A running winner pass says so, once per chunk: the resume
+                    // path only re-queues a pass that has gone quiet.
+                    if ($this->winnerPass) {
+                        $ab->heartbeat($campaign->handle);
+                    }
+
                     $suppressed = $gate->suppressedAmong($subscriptions->pluck('email'));
 
                     $inSequence = $pausing
@@ -254,6 +260,10 @@ class StartCampaignJob implements ShouldQueue
 
         if ($asked) {
             $this->recordSequencePause($campaigns, $campaign, $sequencePaused);
+        }
+
+        if ($this->winnerPass) {
+            $ab->winnerPassDone($campaigns, $campaign);
         }
 
         // The test pass ends here; the campaign stays `sending` until the

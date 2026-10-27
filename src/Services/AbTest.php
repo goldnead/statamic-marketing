@@ -3,9 +3,12 @@
 namespace Goldnead\Marketing\Services;
 
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Data\Campaign;
+use Goldnead\Marketing\Models\AbDecision;
 use Goldnead\Marketing\Models\Message;
+use Illuminate\Database\UniqueConstraintViolationException;
 
 /**
  * The winner send of an A/B test: who is in the test, when it is over, who won.
@@ -135,10 +138,17 @@ class AbTest
     }
 
     /**
-     * Pick the winner and write the decision down. Idempotent: a campaign that
-     * already has one returns it untouched.
+     * Pick the winner and claim the decision.
      *
-     * @return array<string, mixed> the state, with `winner`, `reason` and `results`
+     * The claim is one insert into `marketing_ab_decisions` with a unique key:
+     * of any number of callers (two hosts, two overlapping runs, a cache that
+     * cannot lock) exactly one inserts, the others hit the index. The caller
+     * that wins gets `claimed => true` and is the only one that may queue the
+     * winner pass. A loser reads the winner's row, and repairs the campaign's
+     * `meta.ab` from it when the winner died before writing it.
+     *
+     * @return array<string, mixed> the state with `winner`, `reason`, `results`,
+     *                              plus `claimed` (this call made the decision)
      */
     public function decide(CampaignRepository $campaigns, Campaign $campaign): array
     {
@@ -146,14 +156,121 @@ class AbTest
         $ab = $this->state($fresh);
 
         if (($ab['phase'] ?? null) === self::PHASE_WINNER) {
-            return $ab;
+            return $ab + ['claimed' => false];
         }
 
-        $lastId = (int) ($ab['test_last_message_id'] ?? Message::forCampaign($fresh->handle)->max('id'));
+        [$winner, $reason, $results] = $this->pick($fresh, $ab);
+
+        try {
+            $row = AbDecision::create([
+                'claim_key' => $this->claimKey($fresh->handle),
+                'campaign_handle' => $fresh->handle,
+                'winner' => $winner,
+                'reason' => $reason,
+                'results' => $results,
+                'decided_at' => CarbonImmutable::now(),
+            ]);
+            $claimed = true;
+        } catch (UniqueConstraintViolationException) {
+            $row = $this->decision($fresh->handle);
+            $claimed = false;
+
+            if ($row === null) {
+                return $ab + ['claimed' => false];
+            }
+        }
+
+        $this->write($campaigns, $fresh, fn (array $ab) => [
+            'phase' => self::PHASE_WINNER,
+            'winner' => $row->winner,
+            'reason' => $row->reason,
+            'results' => (array) $row->results,
+            'decided_at' => $row->decided_at->toIso8601String(),
+        ] + $ab);
+
+        return $this->state($campaigns->find($campaign->handle) ?? $fresh) + ['claimed' => $claimed];
+    }
+
+    public function decision(string $campaignHandle): ?AbDecision
+    {
+        return AbDecision::query()->where('claim_key', $this->claimKey($campaignHandle))->first();
+    }
+
+    /**
+     * Stamp the claim as queued now, only if nobody else did since `$seen`.
+     * One conditional UPDATE: the row count says whether this caller won.
+     */
+    public function markDispatched(AbDecision $row, ?CarbonInterface $seen): bool
+    {
+        $query = AbDecision::query()->whereKey($row->getKey());
+
+        $seen === null
+            ? $query->whereNull('dispatched_at')
+            : $query->where('dispatched_at', $seen);
+
+        return $query->update(['dispatched_at' => CarbonImmutable::now()]) === 1;
+    }
+
+    /** The winner pass is alive: push the resume window out. */
+    public function heartbeat(string $campaignHandle): void
+    {
+        AbDecision::query()->where('claim_key', $this->claimKey($campaignHandle))->update(['dispatched_at' => CarbonImmutable::now()]);
+    }
+
+    public function resumeAfterMinutes(): int
+    {
+        return max(1, (int) config('marketing.ab.resume_after_minutes', 30));
+    }
+
+    /**
+     * A decided test whose winner pass never wrote its audience to the end and
+     * was last queued longer ago than the resume window: it was lost (a
+     * dispatch that never reached a worker, a job that failed for good) and
+     * is queued again. Safe to repeat — the pass is idempotent.
+     */
+    public function needsResume(Campaign $campaign): bool
+    {
+        $ab = $this->state($campaign);
+
+        if (! $this->winnerDecided($campaign) || ($ab['winner_pass_done'] ?? false)) {
+            return false;
+        }
+
+        $row = $this->decision($campaign->handle);
+
+        if ($row === null) {
+            return false;
+        }
+
+        $last = $row->dispatched_at ?? $row->decided_at;
+
+        return $last->copy()->addMinutes($this->resumeAfterMinutes())->lessThanOrEqualTo(CarbonImmutable::now());
+    }
+
+    /** The winner pass has written every row it will write. */
+    public function winnerPassDone(CampaignRepository $campaigns, Campaign $campaign): void
+    {
+        $this->write($campaigns, $campaign, fn (array $ab) => ['winner_pass_done' => true] + $ab);
+    }
+
+    public function claimKey(string $campaignHandle): string
+    {
+        $brand = app()->bound('brand-context') ? app('brand-context')->currentId() : null;
+
+        return $brand.'|'.$campaignHandle;
+    }
+
+    /**
+     * @param  array<string, mixed>  $ab
+     * @return array{0: string, 1: string, 2: array<string, array{delivered: int, opened: int}>}
+     */
+    protected function pick(Campaign $campaign, array $ab): array
+    {
+        $lastId = (int) ($ab['test_last_message_id'] ?? Message::forCampaign($campaign->handle)->max('id'));
         $results = [];
 
         foreach (VariantAssigner::variants() as $variant) {
-            $uuids = Message::forCampaign($fresh->handle)->forVariant($variant)->where('id', '<=', $lastId)->pluck('uuid')->all();
+            $uuids = Message::forCampaign($campaign->handle)->forVariant($variant)->where('id', '<=', $lastId)->pluck('uuid')->all();
             $figures = $this->engagement->forMessages($uuids);
             $results[$variant] = ['delivered' => $figures['sent'], 'opened' => $figures['opened']];
         }
@@ -162,39 +279,18 @@ class AbTest
         $b = $results[VariantAssigner::VARIANT_B];
 
         if (min($a['delivered'], $b['delivered']) < $this->minPerVariant()) {
-            [$winner, $reason] = [VariantAssigner::VARIANT_A, self::REASON_SAMPLE];
-        } else {
-            // Rates compared by cross-multiplication: no float equality.
-            $left = $b['opened'] * $a['delivered'];
-            $right = $a['opened'] * $b['delivered'];
-
-            [$winner, $reason] = match (true) {
-                $left > $right => [VariantAssigner::VARIANT_B, self::REASON_RATE],
-                $left < $right => [VariantAssigner::VARIANT_A, self::REASON_RATE],
-                default => [VariantAssigner::VARIANT_A, self::REASON_TIE],
-            };
+            return [VariantAssigner::VARIANT_A, self::REASON_SAMPLE, $results];
         }
 
-        $this->write($campaigns, $fresh, fn (array $ab) => [
-            'phase' => self::PHASE_WINNER,
-            'winner' => $winner,
-            'reason' => $reason,
-            'results' => $results,
-            'decided_at' => CarbonImmutable::now()->toIso8601String(),
-        ] + $ab);
+        // Rates compared by cross-multiplication: no float equality.
+        $left = $b['opened'] * $a['delivered'];
+        $right = $a['opened'] * $b['delivered'];
 
-        return $this->state($campaigns->find($campaign->handle) ?? $fresh);
-    }
-
-    /** Take a decision back, for a winner pass that could not be queued. */
-    public function reopen(CampaignRepository $campaigns, Campaign $campaign): void
-    {
-        $this->write($campaigns, $campaign, function (array $ab): array {
-            unset($ab['winner'], $ab['reason'], $ab['results'], $ab['decided_at']);
-            $ab['phase'] = self::PHASE_TESTING;
-
-            return $ab;
-        });
+        return match (true) {
+            $left > $right => [VariantAssigner::VARIANT_B, self::REASON_RATE, $results],
+            $left < $right => [VariantAssigner::VARIANT_A, self::REASON_RATE, $results],
+            default => [VariantAssigner::VARIANT_A, self::REASON_TIE, $results],
+        };
     }
 
     /**
