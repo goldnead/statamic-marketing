@@ -1184,8 +1184,16 @@ class CampaignController extends Controller
 
         $data = $request->validate([
             'scheduled_at' => ['required', 'date', function (string $attribute, mixed $value, \Closure $fail) use ($zone): void {
-                if ($zone->parse((string) $value)->lessThanOrEqualTo(CarbonImmutable::now())) {
-                    $fail(__('validation.after', ['attribute' => $attribute, 'date' => __('now')]));
+                try {
+                    $past = $zone->parse((string) $value)->lessThanOrEqualTo(CarbonImmutable::now());
+                } catch (\Throwable) {
+                    $fail(__('validation.date', ['attribute' => $attribute]));
+
+                    return;
+                }
+
+                if ($past) {
+                    $fail(__('validation.after', ['attribute' => $attribute, 'date' => 'now']));
                 }
             }],
         ]);
