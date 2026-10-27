@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- The campaign "send at" field is read in `marketing.display_timezone` (default `Europe/Berlin`,
+  env `MARKETING_DISPLAY_TIMEZONE`, falls back to `app.timezone`) instead of `app.timezone`. Typing
+  07:00 no longer sends at 08:00 or 09:00 on a UTC application. Stored times stay UTC and
+  `app.timezone` is untouched; already scheduled campaigns do not move. The editor, the campaign
+  listing and the report show scheduled and sent times in the same zone, with its abbreviation.
+
 ## 2.39.2 - 2026-10-23
 
 ### Fixed

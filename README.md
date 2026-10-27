@@ -721,6 +721,7 @@ refused with a message naming the brand that holds it.
 | `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
 | `tag_links` | `[]` | Named links that tag the reader who clicks them (see [Tag links](#tag-links-a-click-that-tags-the-reader)) |
+| `display_timezone` | `Europe/Berlin` (`MARKETING_DISPLAY_TIMEZONE`) | The zone the campaign "send at" field is read in and times are shown in; stored times stay UTC. Falls back to `app.timezone` |
 | `day_gate.timezone` | `Europe/Berlin` (`MARKETING_DAY_GATE_TIMEZONE`) | The calendar day the `newsletter_day_gate` node draws |
 | `frequency_cap.enabled` | `false` | Off until you turn it on — updating the package changes no send |
 | `frequency_cap.max` / `.window_hours` | `3` / `168` | Three marketing mails per seven days |

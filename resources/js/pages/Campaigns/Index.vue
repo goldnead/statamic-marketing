@@ -9,6 +9,7 @@ import { campaignStatusColor } from '../../support/campaignStatus.js';
 import { relativeTime } from '../../support/relativeTime.js';
 
 const props = defineProps([
+    'timezone',     // string — the zone listed times are shown in
     'campaigns',    // [{ id, handle, name, subject, list, status, status_label, series,
                     //   children_count, event: { city, date, time } | null, scheduled_at, sent_at,
                     //   recipients, open_rate, show_url, edit_url, delete_url, editable }]
@@ -71,9 +72,17 @@ function childrenLabel(count) {
     return __('marketing::campaigns.series_children_many', { count });
 }
 
+// Times are shown in the zone the server names (marketing.display_timezone),
+// with its abbreviation, not in the browser's: "07:00 MEZ" must mean the same
+// to whoever looks at it. Without a zone the browser's own is used.
+function zoneOptions() {
+    return props.timezone ? { timeZone: props.timezone, timeZoneName: 'short' } : {};
+}
+
 function formatDate(value) {
     return value
         ? new Date(value).toLocaleString(undefined, {
+            ...zoneOptions(),
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
         })
         : null;

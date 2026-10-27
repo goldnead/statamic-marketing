@@ -41,7 +41,7 @@ const props = defineProps([
     'frequencyCap',    // { enabled, max, window_hours }
     'editable',        // bool (edit only)
     'canSend',         // bool
-    'timezone',        // string — the zone a scheduled time is read in (edit only)
+    'timezone',        // string — the zone a scheduled time is read in and shown in (edit only)
     // The "series for terms" section (edit only). See CampaignController::seriesPayload().
     // { available, is_child, template?, enabled, can_toggle, settings, events,
     //   skipped_no_postal_code, columns, children }
@@ -199,9 +199,17 @@ function statusLabel(status) {
     return label === key ? status : label;
 }
 
+// Times are shown in the zone the server names (marketing.display_timezone),
+// with its abbreviation, not in the browser's: "07:00 MEZ" must mean the same
+// to whoever looks at it. Without a zone the browser's own is used.
+function zoneOptions() {
+    return props.timezone ? { timeZone: props.timezone, timeZoneName: 'short' } : {};
+}
+
 function formatDate(value) {
     return value
         ? new Date(value).toLocaleString(undefined, {
+            ...zoneOptions(),
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
         })
         : '—';

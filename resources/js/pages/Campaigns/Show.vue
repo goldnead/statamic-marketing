@@ -11,6 +11,7 @@ import BarChart from '../../components/BarChart.vue';
 import { campaignStatusColor } from '../../support/campaignStatus.js';
 
 const props = defineProps([
+    'timezone',      // string — the zone scheduled and sent times are shown in
     'campaign',      // { handle, name, subject, preheader, from_name, from_email, reply_to,
                      //   list, template, content, status, scheduled_at, sent_at, archive }
     'tab',           // 'overview' | 'delivery' | 'opens' | 'clicks' | 'unsubscribes'
@@ -480,6 +481,13 @@ function messageStatusLabel(status) {
     return __(`marketing::campaigns.message_statuses.${status}`);
 }
 
+// Times are shown in the zone the server names (marketing.display_timezone),
+// with its abbreviation, not in the browser's: "07:00 MEZ" must mean the same
+// to whoever looks at it. Without a zone the browser's own is used.
+function zoneOptions() {
+    return props.timezone ? { timeZone: props.timezone, timeZoneName: 'short' } : {};
+}
+
 /**
  * Datum und Uhrzeit, wie sie auch unter dem Schnappschuss stehen.
  *
@@ -489,14 +497,16 @@ function messageStatusLabel(status) {
  * Nachricht auf einer Seite, und das war die Haelfte des Eindrucks, es seien
  * zwei verschiedene Zeiten.
  *
- * Die Zeitzone bleibt die des Browsers. Der Server schickt den Wert mit Kennung,
- * der Browser rechnet ihn korrekt um, und der Kasten darunter formatiert seit
+ * Die Zeitzone ist `marketing.display_timezone` (mit Kuerzel), nicht die des
+ * Browsers; die Aktivitaetsgrafik bleibt in der des Browsers. Der Server
+ * schickt den Wert mit Kennung, der Browser rechnet ihn korrekt um, und der Kasten darunter formatiert seit
  * email-templates 1.x in `Statamic::displayTimezone()` — auf einem Host, dessen
  * Anzeige-Zeitzone die der Leserin ist, sagen beide dasselbe.
  */
 function formatDate(value) {
     return value
         ? new Date(value).toLocaleString(undefined, {
+            ...zoneOptions(),
             day: '2-digit', month: '2-digit', year: 'numeric',
             hour: '2-digit', minute: '2-digit',
         })

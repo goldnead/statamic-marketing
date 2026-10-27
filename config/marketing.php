@@ -564,6 +564,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Display timezone
+    |--------------------------------------------------------------------------
+    |
+    | The zone times are typed and shown in in the Control Panel: the campaign
+    | "send at" field (a zone-less datetime-local), and the scheduled and sent
+    | times in the editor, the listing and the report. Stored timestamps stay
+    | UTC; `app.timezone` is not touched. An empty or unknown value falls back
+    | to `app.timezone`.
+    |
+    */
+
+    'display_timezone' => env('MARKETING_DISPLAY_TIMEZONE', 'Europe/Berlin'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Newsletter day gate
     |--------------------------------------------------------------------------
     |
