@@ -135,11 +135,38 @@ percent. `0` — the default, and what every campaign that exists today has —
 means the whole audience is split half and half between the two subjects. `10`
 to `50` means "test on this share, then send the winner to the rest".
 
-**The winner send is not built yet.** The column, the field on the campaign
-editor and the validation (0, or 10 to 50, and only with a variant subject)
-ship first so a campaign written now carries the answer. Until the winner send
-lands, a campaign with `ab_share = 20` sends exactly like one with `0`: the
-whole audience, split evenly, no winner picked. The field says so.
+The value is validated: 0, or 10 to 50, and only with a variant subject.
+
+**The winner send** works in two passes:
+
+1. **Test.** Only the test group is mailed: about `ab_share` percent of the
+   audience, chosen by a stable hash of brand, campaign and subscription uuid
+   (so a retry, a restart or a rebuilt row never moves anybody). The group is
+   split half and half between subject A and B. The campaign stays `sending`.
+2. **Winner.** `marketing:send-ab-winners` (scheduled every minute) waits
+   `marketing.ab.wait_minutes` (default 240, env `MARKETING_AB_WAIT_MINUTES`)
+   after the last test mail was resolved, picks the winner and sends it to
+   everybody the test did not reach. The audience is read again at that
+   moment: somebody who unsubscribed or was suppressed meanwhile gets nothing,
+   a new subscriber gets the winner. The campaign is `sent` when that pass is
+   done.
+
+**The assumptions** (product decisions the code takes until they are changed):
+
+- The criterion is the **open rate** among delivered test mails, counted in
+  people and without machine opens (a click counts as an open). There is no
+  click criterion and no setting for it.
+- A **tie**, or fewer than `marketing.ab.min_per_variant` delivered mails
+  (default 10, env `MARKETING_AB_MIN_PER_VARIANT`) in either variant, sends
+  **variant A**.
+- The decision is stored on the campaign (`meta.ab`: `winner`, `reason` as
+  `higher_open_rate`, `tie` or `sample_too_small`, the delivered and opened
+  counts per variant, `decided_at`), so the reason is never implied.
+- Messages of the winner pass carry the winning variant, so the per-variant
+  report counts them with the test mails of that variant.
+
+A campaign with `ab_share = 0`, or without a variant subject, is not touched:
+one pass, the whole audience.
 
 ### Sequences
 

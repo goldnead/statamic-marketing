@@ -90,6 +90,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | A/B test winner
+    |--------------------------------------------------------------------------
+    |
+    | A campaign with a second subject and a test share (10 to 50 percent) is
+    | tested on that share first; `wait_minutes` after the last test mail was
+    | resolved, the subject with the higher open rate (people, not machines)
+    | goes to the rest of the audience.
+    |
+    | A tie, or fewer than `min_per_variant` delivered test mails in either
+    | variant, sends variant A. The reason is stored on the campaign.
+    |
+    */
+
+    'ab' => [
+        'wait_minutes' => (int) env('MARKETING_AB_WAIT_MINUTES', 240),
+        'min_per_variant' => (int) env('MARKETING_AB_MIN_PER_VARIANT', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Default sender
     |--------------------------------------------------------------------------
     |

@@ -115,7 +115,7 @@ return [
         'activity_beyond' => ':count more events happened after the last bar.',
     ],
     'ab_share' => 'A/B test share (%)',
-    'ab_share_help' => '0: the whole audience is split half and half between the two subjects, which is what happens today. 10 to 50: only this share is tested first. Sending the winner to the rest is not built yet, so the value is stored and does not change the send.',
+    'ab_share_help' => '0: the whole audience is split half and half between the two subjects, which is what happens today. 10 to 50: only this share is tested first, half and half. After the wait (4 hours unless configured otherwise) the subject with the higher open rate goes to the rest. A tie, or too few mails to compare, sends subject A.',
     'schedule_timezone' => 'Times are read in :timezone.',
     'errors' => [
         'no_list' => 'This campaign has no valid mailing list.',

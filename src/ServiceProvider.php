@@ -12,6 +12,7 @@ use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Marketing\Console\ConsentIntegrityCommand;
 use Goldnead\Marketing\Console\MigrateFlatBrandsCommand;
 use Goldnead\Marketing\Console\ReleaseStaleSendsCommand;
+use Goldnead\Marketing\Console\SendAbWinnersCommand;
 use Goldnead\Marketing\Console\SendScheduledCampaignsCommand;
 use Goldnead\Marketing\Console\SeriesSyncCommand;
 use Goldnead\Marketing\Contracts\FrequencyCap as FrequencyCapContract;
@@ -88,6 +89,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $commands = [
         ReleaseStaleSendsCommand::class,
         SendScheduledCampaignsCommand::class,
+        SendAbWinnersCommand::class,
         MigrateFlatBrandsCommand::class,
         ConsentIntegrityCommand::class,
         SeriesSyncCommand::class,
@@ -517,6 +519,14 @@ class ServiceProvider extends AddonServiceProvider
                 ->withoutOverlapping(5)
                 ->onOneServer()
                 ->name('marketing-send-scheduled');
+
+            // The winner of an A/B test, once its wait is over. Cheap when
+            // nothing is waiting: one pass over the campaigns.
+            $schedule->command('marketing:send-ab-winners')
+                ->everyMinute()
+                ->withoutOverlapping(5)
+                ->onOneServer()
+                ->name('marketing-send-ab-winners');
 
             // Rare by design: it only finds something when a worker died mid
             // send. Every five minutes is often enough that a stalled campaign

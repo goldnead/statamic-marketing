@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- **A/B winner send.** A campaign with a variant subject and an `ab_share` of 10 to 50 is now tested
+  on that share first (half and half between the subjects); `marketing:send-ab-winners`, scheduled
+  every minute, sends the subject with the higher open rate to the rest once
+  `marketing.ab.wait_minutes` (default 240) have passed. A tie, or fewer than
+  `marketing.ab.min_per_variant` (default 10) delivered mails in either variant, sends variant A;
+  the reason is stored in `meta.ab`. Campaigns with `ab_share` 0 send as before.
+
 ## 2.39.2 - 2026-10-23
 
 ### Fixed

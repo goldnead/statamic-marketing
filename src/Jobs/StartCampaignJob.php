@@ -15,6 +15,7 @@ use Goldnead\Marketing\Integrations\Automations\AutomationsBridge;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\SingleSend;
+use Goldnead\Marketing\Services\AbTest;
 use Goldnead\Marketing\Services\VariantAssigner;
 use Goldnead\Marketing\Support\SendSnapshot;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
@@ -33,7 +34,11 @@ class StartCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
-    public function __construct(public string $campaignHandle) {}
+    /**
+     * @param  bool  $winnerPass  the second pass of an A/B test: the winning
+     *                            subject to everybody the test did not reach
+     */
+    public function __construct(public string $campaignHandle, public bool $winnerPass = false) {}
 
     public function handle(
         CampaignRepository $campaigns,
@@ -63,9 +68,35 @@ class StartCampaignJob implements ShouldQueue
             return;
         }
 
-        event(new CampaignSending($campaign));
+        // A/B test with a share: two passes. The first reaches the test group
+        // only, the second (after the wait) everybody else with the winner.
+        // Without a share this is all one pass, as it always was.
+        $ab = app(AbTest::class);
+        $testing = $campaign->hasTestShare();
+        $abState = $ab->state($campaign);
 
-        $this->recordSnapshot($campaign);
+        if ($this->winnerPass && (! $testing || ! $ab->winnerDecided($campaign))) {
+            return;
+        }
+
+        // A retried first pass after the winner went out has nothing left to do.
+        if ($testing && ! $this->winnerPass && $ab->winnerDecided($campaign)) {
+            return;
+        }
+
+        $testPass = $testing && ! $this->winnerPass;
+        $winner = $this->winnerPass ? (string) ($abState['winner'] ?? VariantAssigner::VARIANT_A) : null;
+        $testLastId = (int) ($abState['test_last_message_id'] ?? 0);
+
+        if (! $this->winnerPass) {
+            event(new CampaignSending($campaign));
+
+            $this->recordSnapshot($campaign);
+        }
+
+        if ($testPass) {
+            $ab->begin($campaigns, $campaign);
+        }
 
         $queue = (string) config('marketing.sending.queue', 'default');
         $perMinute = (int) config('marketing.sending.messages_per_minute', 0);
@@ -92,7 +123,7 @@ class StartCampaignJob implements ShouldQueue
             Subscription::query()
                 ->forList((string) $campaign->listHandle)
                 ->subscribed()
-                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $variants, $automations, $pausing, $queue, $perMinute, $segmentMemberIds, &$index, &$sequencePaused, &$asked) {
+                ->chunkById((int) config('marketing.sending.chunk', 200), function ($subscriptions) use ($campaign, $contacts, $gate, $variants, $automations, $pausing, $queue, $perMinute, $segmentMemberIds, $ab, $testing, $testPass, $winner, $testLastId, &$index, &$sequencePaused, &$asked) {
                     // One question per chunk rather than one per subscriber.
                     // The addresses this returns never become Message rows at
                     // all — a blocked address must not enter a send, not merely
@@ -120,6 +151,33 @@ class StartCampaignJob implements ShouldQueue
                         if ($segmentMemberIds !== null
                             && ! isset($segmentMemberIds[(string) $subscription->contact_uuid])) {
                             continue;
+                        }
+
+                        // A/B test: the first pass reaches the test group only; the
+                        // winner pass everybody else. Before the sequence count on
+                        // purpose, so nobody is counted in the pass that skips them.
+                        if ($testing) {
+                            $inTestGroup = $ab->inTestGroup(
+                                $campaign->handle,
+                                (string) $subscription->uuid,
+                                $subscription->brand_id === null ? null : (int) $subscription->brand_id,
+                                $campaign->abShare,
+                            );
+
+                            if ($testPass && ! $inTestGroup) {
+                                continue;
+                            }
+
+                            // Somebody the test already mailed. Only a row from the
+                            // test itself counts (id up to the last one it wrote): a
+                            // test-group member who subscribed during the wait has
+                            // none and gets the winner like the rest.
+                            if (! $testPass && $inTestGroup && Message::forCampaign($campaign->handle)
+                                ->where('subscription_id', $subscription->id)
+                                ->where('id', '<=', $testLastId)
+                                ->exists()) {
+                                continue;
+                            }
                         }
 
                         // Counted only here, after every other reason to skip
@@ -150,7 +208,7 @@ class StartCampaignJob implements ShouldQueue
                             [
                                 'email' => $subscription->email,
                                 'status' => Message::STATUS_PENDING,
-                                'variant' => $this->variantFor($campaign, $subscription, $variants),
+                                'variant' => $winner ?? $this->variantFor($campaign, $subscription, $variants),
                             ],
                         );
 
@@ -198,6 +256,14 @@ class StartCampaignJob implements ShouldQueue
             $this->recordSequencePause($campaigns, $campaign, $sequencePaused);
         }
 
+        // The test pass ends here; the campaign stays `sending` until the
+        // winner went out. Nothing to finalise.
+        if ($testPass) {
+            $ab->snapshotDone($campaigns, $campaign);
+
+            return;
+        }
+
         // Empty audience: nothing will ever finalize the campaign, so do it here.
         if ($index === 0 && Message::forCampaign($campaign->handle)->pending()->count() === 0) {
             $campaign->status = Campaign::STATUS_SENT;
@@ -241,7 +307,9 @@ class StartCampaignJob implements ShouldQueue
     {
         $fresh = $campaigns->find($campaign->handle) ?? $campaign;
         $meta = $fresh->meta;
-        $meta['sequence_pause'] = ['skipped' => $skipped];
+        // The winner pass adds to what the test pass left out.
+        $before = $this->winnerPass ? (int) ($meta['sequence_pause']['skipped'] ?? 0) : 0;
+        $meta['sequence_pause'] = ['skipped' => $before + $skipped];
         $fresh->meta = $meta;
         $campaigns->save($fresh);
 

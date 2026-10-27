@@ -1,12 +1,12 @@
 <?php
 
 /**
- * The A/B test share on a campaign: stored and validated, not yet acted on.
+ * The A/B test share on a campaign: stored and validated.
  *
- * 0 is the plain half-and-half split every campaign does today. 10–50 is the
- * share a winner send would test on, and that send is Phase 2 — so what is
- * held here is that the value survives both drivers and that nothing outside
- * the range, or without a second subject, gets stored.
+ * 0 is the plain half-and-half split. 10–50 is the share the winner send
+ * tests on (see CampaignAbWinnerTest) — so what is held here is that the value
+ * survives both drivers and that nothing outside the range, or without a
+ * second subject, gets stored.
  */
 
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
