@@ -14,6 +14,7 @@ use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\Campaign;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Jobs\SendMessageJob;
 use Goldnead\Marketing\Jobs\StartCampaignJob;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\AbDecision;
@@ -384,6 +385,63 @@ it('does not queue the winner pass again while it is still working', function ()
     $this->travel(6)->minutes();
     $this->artisan('marketing:send-ab-winners')->assertSuccessful();
     Mail::assertSent(CampaignMail::class, 4);
+});
+
+it('does not finish the campaign while the winner pass is still writing its audience', function (): void {
+    $audience = abAudience();
+    app(CampaignSender::class)->queue(abCampaign());
+    abOpen('tb@example.com');
+
+    $this->travel(241)->minutes();
+    app(AbTest::class)->decide(app(CampaignRepository::class), app(CampaignRepository::class)->find('juli'));
+
+    // A fast worker resolves the first winner message before the later chunks
+    // of the pass exist.
+    $first = Message::create([
+        'campaign_handle' => 'juli',
+        'subscription_id' => $audience['r1']->id,
+        'email' => 'r1@example.com',
+        'status' => Message::STATUS_PENDING,
+        'variant' => 'b',
+    ]);
+
+    dispatch_sync(new SendMessageJob($first->id));
+
+    Mail::assertSent(CampaignMail::class, 3);
+    expect(app(CampaignRepository::class)->find('juli')->status)->toBe(Campaign::STATUS_SENDING);
+
+    // The pass goes on, ends, and only then is the campaign done.
+    abStartJob(true);
+
+    Mail::assertSent(CampaignMail::class, 4);
+    expect(app(CampaignRepository::class)->find('juli')->status)->toBe(Campaign::STATUS_SENT)
+        ->and(abState()['winner_pass_done'])->toBeTrue();
+});
+
+it('queues the test pass again when it never completed', function (): void {
+    config()->set('marketing.ab.resume_after_minutes', 30);
+
+    abAudience();
+    $campaign = abCampaign();
+    $campaign->status = Campaign::STATUS_SENDING;
+    app(CampaignRepository::class)->save($campaign);
+
+    // The job started and died for good after writing its state.
+    app(AbTest::class)->begin(app(CampaignRepository::class), $campaign);
+
+    $this->travel(29)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 0);
+
+    $this->travel(2)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 2);
+    expect(abState()['snapshot_done'])->toBeTrue();
+
+    $this->travel(60)->minutes();
+    $this->artisan('marketing:send-ab-winners')->assertSuccessful();
+    Mail::assertSent(CampaignMail::class, 2);
+    expect(Message::forCampaign('juli')->count())->toBe(2);
 });
 
 /**

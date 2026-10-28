@@ -55,6 +55,17 @@ class SendAbWinnersCommand extends Command
                 continue;
             }
 
+            // The test pass itself died before it wrote its audience.
+            if ($ab->needsTestResume($campaign)) {
+                $ab->markTestQueued($campaigns, $campaign);
+                StartCampaignJob::dispatch($campaign->handle)
+                    ->onQueue((string) config('marketing.sending.queue', 'default'));
+                $queued++;
+                $this->info("Queued the test pass of campaign [{$campaign->handle}] again: it did not complete.");
+
+                continue;
+            }
+
             if ($ab->needsResume($campaign)) {
                 $row = $ab->decision($campaign->handle);
 

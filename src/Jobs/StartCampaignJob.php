@@ -275,7 +275,20 @@ class StartCampaignJob implements ShouldQueue
         }
 
         // Empty audience: nothing will ever finalize the campaign, so do it here.
-        if ($index === 0 && Message::forCampaign($campaign->handle)->pending()->count() === 0) {
+        //
+        // The winner pass finalises here too, whatever it queued: while it ran,
+        // SendMessageJob held the campaign open (a fast worker must not close
+        // it before the later chunks exist), so when every message is already
+        // resolved by now this is the only place left to close it. On the
+        // campaign as stored now, not the copy this job started with, which
+        // lacks the flag the pass just wrote.
+        if (($index === 0 || $this->winnerPass) && Message::forCampaign($campaign->handle)->pending()->count() === 0) {
+            $campaign = $campaigns->find($campaign->handle) ?? $campaign;
+
+            if ($campaign->status !== Campaign::STATUS_SENDING) {
+                return;
+            }
+
             $campaign->status = Campaign::STATUS_SENT;
             $campaign->sentAt = CarbonImmutable::now();
             $campaigns->save($campaign);

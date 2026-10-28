@@ -398,6 +398,13 @@ class SendMessageJob implements ShouldQueue
             return;
         }
 
+        // Nor is the campaign done while the winner pass is still writing its
+        // audience: the first messages can all be resolved before the later
+        // chunks exist. The pass closes the campaign itself when it ends.
+        if ($ab->winnerPassRunning($campaign)) {
+            return;
+        }
+
         $campaign->status = Campaign::STATUS_SENT;
         $campaign->sentAt = CarbonImmutable::now();
         $campaigns->save($campaign);

@@ -71,6 +71,35 @@ class AbTest
         return $campaign->hasTestShare() && ($this->state($campaign)['phase'] ?? null) === self::PHASE_TESTING;
     }
 
+    /** Decided, and the winner pass has not yet written its whole audience. */
+    public function winnerPassRunning(Campaign $campaign): bool
+    {
+        return $this->winnerDecided($campaign) && ! ($this->state($campaign)['winner_pass_done'] ?? false);
+    }
+
+    /**
+     * The test pass was started, never wrote its audience to the end, and has
+     * been quiet for the resume window: it died for good. Queued again; the
+     * pass is idempotent.
+     */
+    public function needsTestResume(Campaign $campaign): bool
+    {
+        $ab = $this->state($campaign);
+
+        if (! $this->isTesting($campaign) || ($ab['snapshot_done'] ?? true) || empty($ab['test_started_at'])) {
+            return false;
+        }
+
+        $last = CarbonImmutable::parse($ab['test_queued_at'] ?? $ab['test_started_at']);
+
+        return $last->addMinutes($this->resumeAfterMinutes())->lessThanOrEqualTo(CarbonImmutable::now());
+    }
+
+    public function markTestQueued(CampaignRepository $campaigns, Campaign $campaign): void
+    {
+        $this->write($campaigns, $campaign, fn (array $ab) => ['test_queued_at' => CarbonImmutable::now()->toIso8601String()] + $ab);
+    }
+
     public function winnerDecided(Campaign $campaign): bool
     {
         return $campaign->hasTestShare() && ($this->state($campaign)['phase'] ?? null) === self::PHASE_WINNER;

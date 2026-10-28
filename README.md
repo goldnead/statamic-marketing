@@ -170,6 +170,12 @@ The value is validated: 0, or 10 to 50, and only with a variant subject.
   (default 30) of silence: a running pass reports in once per chunk, so a long
   throttled pass is not started a second time. Repeating a pass mails nobody
   twice (one message row per campaign and subscription, claimed per row).
+  The same goes for the test pass, which is also queued again when it died
+  before writing its audience. A queue backed up for longer than the window can
+  make a pass run twice side by side; the second one finds the rows of the
+  first (`firstOrCreate`) and every message is claimed before it is sent, so
+  the damage is a duplicated queue entry, not a second mail. Set
+  `resume_after_minutes` above your longest expected backlog.
   Known limit: `marketing_messages` has no unique index on `(campaign_handle,
   subscription_id)`, because both columns are nullable for template sends and
   this addon refuses uniques over nullable columns; two queue workers running
