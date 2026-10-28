@@ -12,6 +12,7 @@ use Goldnead\Marketing\Events\MessageSent;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Sending\BrandMailer;
+use Goldnead\Marketing\Services\AbTest;
 use Goldnead\Marketing\Services\CampaignRenderer;
 use Goldnead\Marketing\Support\SendWindow;
 use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
@@ -384,6 +385,23 @@ class SendMessageJob implements ShouldQueue
         $campaign = $campaigns->find($campaignHandle);
 
         if (! $campaign || $campaign->status !== Campaign::STATUS_SENDING) {
+            return;
+        }
+
+        // The test pass of an A/B test is not the campaign: the winner still
+        // has to go to the rest. Note that the test is resolved and stop.
+        $ab = app(AbTest::class);
+
+        if ($ab->isTesting($campaign)) {
+            $ab->testFinished($campaigns, $campaign);
+
+            return;
+        }
+
+        // Nor is the campaign done while the winner pass is still writing its
+        // audience: the first messages can all be resolved before the later
+        // chunks exist. The pass closes the campaign itself when it ends.
+        if ($ab->winnerPassRunning($campaign)) {
             return;
         }
 

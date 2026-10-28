@@ -41,7 +41,7 @@ const props = defineProps([
     'frequencyCap',    // { enabled, max, window_hours }
     'editable',        // bool (edit only)
     'canSend',         // bool
-    'timezone',        // string — the zone a scheduled time is read in (edit only)
+    'timezone',        // string — the zone a scheduled time is read in and shown in (edit only)
     // The "series for terms" section (edit only). See CampaignController::seriesPayload().
     // { available, is_child, template?, enabled, can_toggle, settings, events,
     //   skipped_no_postal_code, columns, children }
@@ -56,8 +56,8 @@ const handle = ref(props.campaign?.handle || '');
 const subject = ref(props.campaign?.subject || '');
 // Empty means "not an A/B test". Filling it in is the only way to start one.
 const variantSubject = ref(props.campaign?.variant_subject || '');
-// 0 = split the whole audience (today's behaviour). Stored and validated now;
-// the winner send that would act on 10–50 is Phase 2.
+// 0 = split the whole audience. 10–50 = test on that share, then send the
+// winner to the rest (see README, "A/B test share").
 const abShare = ref(props.campaign?.ab_share ?? 0);
 const preheader = ref(props.campaign?.preheader || '');
 const list = ref(props.campaign?.list || '');
@@ -199,9 +199,17 @@ function statusLabel(status) {
     return label === key ? status : label;
 }
 
+// Times are shown in the zone the server names (marketing.display_timezone),
+// with its abbreviation, not in the browser's: "07:00 MEZ" must mean the same
+// to whoever looks at it. Without a zone the browser's own is used.
+function zoneOptions() {
+    return props.timezone ? { timeZone: props.timezone, timeZoneName: 'short' } : {};
+}
+
 function formatDate(value) {
     return value
         ? new Date(value).toLocaleString(undefined, {
+            ...zoneOptions(),
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
         })
         : '—';

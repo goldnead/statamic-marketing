@@ -22,6 +22,7 @@ use Goldnead\Marketing\Services\CampaignReport;
 use Goldnead\Marketing\Services\CampaignSender;
 use Goldnead\Marketing\Services\CampaignStats;
 use Goldnead\Marketing\Support\CampaignContentField;
+use Goldnead\Marketing\Support\DisplayTimezone;
 use Goldnead\Marketing\Support\EmailTemplateOptions;
 use Goldnead\Marketing\Support\HandleOwnership;
 use Goldnead\Marketing\Support\SendSnapshot;
@@ -127,6 +128,7 @@ class CampaignController extends Controller
         ])->map(fn ($c) => $c->toArray())->all();
 
         return Inertia::render('marketing::Campaigns/Index', [
+            'timezone' => app(DisplayTimezone::class)->name(),
             'campaigns' => $rows,
             'columns' => $columns,
             'createUrl' => cp_route('marketing.campaigns.create'),
@@ -264,6 +266,7 @@ class CampaignController extends Controller
         $sendingStarted = in_array($campaign->status, [Campaign::STATUS_SENDING, Campaign::STATUS_SENT], true);
 
         return Inertia::render('marketing::Campaigns/Show', $payload + [
+            'timezone' => app(DisplayTimezone::class)->name(),
             'campaign' => $campaign->toArray(),
             'tab' => $tab,
             'tabs' => $this->reportTabs(),
@@ -881,7 +884,7 @@ class CampaignController extends Controller
             // The zone a scheduled time is read in. The field is a plain
             // datetime-local, which carries no zone of its own; saying which
             // one applies is cheaper than a mail that goes out an hour early.
-            'timezone' => (string) config('app.timezone', 'UTC'),
+            'timezone' => app(DisplayTimezone::class)->name(),
             'series' => $this->seriesPayload($campaign),
         ]);
     }
@@ -1174,12 +1177,29 @@ class CampaignController extends Controller
         $campaign = $this->campaigns->find($handle);
         abort_unless($campaign, 404);
 
+        // The field is a zone-less datetime-local: it is read in the display
+        // zone (Europe/Berlin by default), never in app.timezone, and stored
+        // as UTC. "After now" is checked on the same instant.
+        $zone = app(DisplayTimezone::class);
+
         $data = $request->validate([
-            'scheduled_at' => ['required', 'date', 'after:now'],
+            'scheduled_at' => ['required', 'date', function (string $attribute, mixed $value, \Closure $fail) use ($zone): void {
+                try {
+                    $past = $zone->parse((string) $value)->lessThanOrEqualTo(CarbonImmutable::now());
+                } catch (\Throwable) {
+                    $fail(__('validation.date', ['attribute' => $attribute]));
+
+                    return;
+                }
+
+                if ($past) {
+                    $fail(__('validation.after', ['attribute' => $attribute, 'date' => 'now']));
+                }
+            }],
         ]);
 
         try {
-            $sender->schedule($campaign, CarbonImmutable::parse($data['scheduled_at']));
+            $sender->schedule($campaign, $zone->parse($data['scheduled_at'])->setTimezone('UTC'));
         } catch (InvalidArgumentException $e) {
             return back()->withErrors(['send' => $e->getMessage()]);
         }

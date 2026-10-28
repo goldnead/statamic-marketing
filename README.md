@@ -135,11 +135,59 @@ percent. `0` — the default, and what every campaign that exists today has —
 means the whole audience is split half and half between the two subjects. `10`
 to `50` means "test on this share, then send the winner to the rest".
 
-**The winner send is not built yet.** The column, the field on the campaign
-editor and the validation (0, or 10 to 50, and only with a variant subject)
-ship first so a campaign written now carries the answer. Until the winner send
-lands, a campaign with `ab_share = 20` sends exactly like one with `0`: the
-whole audience, split evenly, no winner picked. The field says so.
+The value is validated: 0, or 10 to 50, and only with a variant subject.
+
+> **Behaviour change.** Before the winner send existed, `ab_share` 10 to 50 was stored and ignored:
+> the campaign went to the whole audience, half and half. Such a campaign that is still unsent now
+> runs as the two-pass test below, without an opt-in. `php artisan marketing:ab-campaigns` lists
+> them (read only); set a campaign's test share to 0 to keep the old behaviour.
+
+**The winner send** works in two passes:
+
+1. **Test.** Only the test group is mailed: about `ab_share` percent of the
+   audience, chosen by a stable hash of brand, campaign and subscription uuid
+   (so a retry, a restart or a rebuilt row never moves anybody). The group is
+   split half and half between subject A and B. The campaign stays `sending`.
+2. **Winner.** `marketing:send-ab-winners` (scheduled every minute) waits
+   `marketing.ab.wait_minutes` (default 240, env `MARKETING_AB_WAIT_MINUTES`)
+   after the last test mail was resolved, picks the winner and sends it to
+   everybody the test did not reach. The audience is read again at that
+   moment: somebody who unsubscribed or was suppressed meanwhile gets nothing,
+   a new subscriber gets the winner. The campaign is `sent` when that pass is
+   done.
+
+**The assumptions** (product decisions the code takes until they are changed):
+
+- The criterion is the **open rate** among delivered test mails, counted in
+  people and without machine opens (a click counts as an open). There is no
+  click criterion and no setting for it.
+- A **tie**, or fewer than `marketing.ab.min_per_variant` delivered mails
+  (default 10, env `MARKETING_AB_MIN_PER_VARIANT`) in either variant, sends
+  **variant A**.
+- Who decides is settled by the database, not a cache lock: the decision is one unique insert into
+  `marketing_ab_decisions`, so two hosts cannot both queue the winner. A winner pass that did not
+  write its audience to the end is queued again after `marketing.ab.resume_after_minutes`
+  (default 30) of silence: a running pass reports in once per chunk, so a long
+  throttled pass is not started a second time. Repeating a pass mails nobody
+  twice (one message row per campaign and subscription, claimed per row).
+  The same goes for the test pass, which is also queued again when it died
+  before writing its audience. A queue backed up for longer than the window can
+  make a pass run twice side by side; the second one finds the rows of the
+  first (`firstOrCreate`) and every message is claimed before it is sent, so
+  the damage is a duplicated queue entry, not a second mail. Set
+  `resume_after_minutes` above your longest expected backlog.
+  Known limit: `marketing_messages` has no unique index on `(campaign_handle,
+  subscription_id)`, because both columns are nullable for template sends and
+  this addon refuses uniques over nullable columns; two queue workers running
+  the same pass at the very same instant could still both create a row.
+- The decision is stored on the campaign (`meta.ab`: `winner`, `reason` as
+  `higher_open_rate`, `tie` or `sample_too_small`, the delivered and opened
+  counts per variant, `decided_at`), so the reason is never implied.
+- Messages of the winner pass carry the winning variant, so the per-variant
+  report counts them with the test mails of that variant.
+
+A campaign with `ab_share = 0`, or without a variant subject, is not touched:
+one pass, the whole audience.
 
 ### Sequences
 
@@ -721,6 +769,7 @@ refused with a message naming the brand that holds it.
 | `delivery.ignored_query_parameters` | 11 provider names | Parameters a click counter may append without breaking the signed redirect |
 | `leadhub.tag_subscribers` | `true` | Tag contacts with `list:{handle}` |
 | `tag_links` | `[]` | Named links that tag the reader who clicks them (see [Tag links](#tag-links-a-click-that-tags-the-reader)) |
+| `display_timezone` | `Europe/Berlin` (`MARKETING_DISPLAY_TIMEZONE`) | The zone the campaign "send at" field is read in and times are shown in; stored times stay UTC. Falls back to `app.timezone` |
 | `day_gate.timezone` | `Europe/Berlin` (`MARKETING_DAY_GATE_TIMEZONE`) | The calendar day the `newsletter_day_gate` node draws |
 | `frequency_cap.enabled` | `false` | Off until you turn it on — updating the package changes no send |
 | `frequency_cap.max` / `.window_hours` | `3` / `168` | Three marketing mails per seven days |
