@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.41.0 - 2026-10-28
+
 ### Added
 
 - The subscriber table of a list links each address to its LeadHub contact, resolved like the
