@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The subscriber table of a list links each address to its LeadHub contact, resolved like the
+  campaign report does (normalised address, one lookup per page, no link for readers without
+  the contact permission, plain text when there is no contact).
+
+### Fixed
+
+- The campaign "send at" field is read in `marketing.display_timezone` (default `Europe/Berlin`,
+  env `MARKETING_DISPLAY_TIMEZONE`, falls back to `app.timezone`) instead of `app.timezone`. Typing
+  07:00 no longer sends at 08:00 or 09:00 on a UTC application. Stored times stay UTC and
+  `app.timezone` is untouched; already scheduled campaigns do not move. The editor, the campaign
+  listing and the report show scheduled and sent times in the same zone, with its abbreviation.
+
 ## 2.40.0 - 2026-10-28
 
 ### Changed (behaviour change, read before updating)
@@ -21,14 +37,6 @@
   `marketing.ab.wait_minutes` (default 240) have passed. A tie, or fewer than
   `marketing.ab.min_per_variant` (default 10) delivered mails in either variant, sends variant A;
   the reason is stored in `meta.ab`. Campaigns with `ab_share` 0 send as before.
-
-### Fixed
-
-- The campaign "send at" field is read in `marketing.display_timezone` (default `Europe/Berlin`,
-  env `MARKETING_DISPLAY_TIMEZONE`, falls back to `app.timezone`) instead of `app.timezone`. Typing
-  07:00 no longer sends at 08:00 or 09:00 on a UTC application. Stored times stay UTC and
-  `app.timezone` is untouched; already scheduled campaigns do not move. The editor, the campaign
-  listing and the report show scheduled and sent times in the same zone, with its abbreviation.
 
 ## 2.39.2 - 2026-10-23
 

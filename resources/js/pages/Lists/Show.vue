@@ -9,7 +9,7 @@ import {
 const props = defineProps([
     'list',                    // { handle, name, description, double_opt_in, double_opt_in_effective }
     'stats',                   // { subscribed, pending, unsubscribed, bounced, complained, total }
-    'subscribers',             // [{ id, email, name, status, subscribed_at, contact_uuid, unsubscribe_url, delete_url }]
+    'subscribers',             // [{ id, email, contact_url|null, name, status, subscribed_at, contact_uuid, unsubscribe_url, delete_url }]
     'columns',                 // Array<Column>
     'pagination',              // { current_page, last_page, total }
     'filters',                 // { status, search }
@@ -334,7 +334,8 @@ function destroy() {
             :sortable="false"
         >
             <template #cell-email="{ row }">
-                <span class="font-medium">{{ row.email }}</span>
+                <a v-if="row.contact_url" :href="row.contact_url" class="font-medium hover:underline">{{ row.email }}</a>
+                <span v-else class="font-medium">{{ row.email }}</span>
             </template>
 
             <template #cell-name="{ row }">
