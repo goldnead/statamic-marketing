@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.40.0 - 2026-10-28
 
 ### Changed (behaviour change, read before updating)
 
