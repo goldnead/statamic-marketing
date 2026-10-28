@@ -73,11 +73,10 @@ class Campaign
         /**
          * The share of the audience an A/B test runs on, in percent.
          *
-         * `0` means what every campaign does today: with a variant subject
-         * the whole audience is split half and half. `10`–`50` is the test
-         * share for a winner send, which the send path does not do yet — the
-         * value is stored and validated so a campaign written now carries the
-         * answer when that arrives. See README, "A/B test share".
+         * `0` means that with a variant subject the whole audience is split
+         * half and half. `10`–`50` is the test share of a winner send: the
+         * test group gets both subjects, the rest gets the winner later. See
+         * the AbTest service and README, "A/B test share".
          */
         public int $abShare = 0,
         /**
@@ -104,7 +103,7 @@ class Campaign
         public array $meta = [],
     ) {}
 
-    /** Is a test share set that a winner send would act on? */
+    /** Is a test share set that the winner send acts on? */
     public function hasTestShare(): bool
     {
         return $this->hasVariants() && $this->abShare > 0;

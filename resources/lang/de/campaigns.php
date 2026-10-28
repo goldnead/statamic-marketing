@@ -115,7 +115,7 @@ return [
         'activity_beyond' => ':count weitere Ereignisse liegen nach dem letzten Balken.',
     ],
     'ab_share' => 'A/B-Testanteil (%)',
-    'ab_share_help' => '0: Der ganze Verteiler wird halbe-halbe auf die beiden Betreffzeilen verteilt, so läuft es heute. 10 bis 50: Nur dieser Anteil wird zuerst getestet. Der Versand des Gewinners an den Rest ist noch nicht gebaut, der Wert wird gespeichert und ändert den Versand nicht.',
+    'ab_share_help' => '0: Der ganze Verteiler wird halbe-halbe auf die beiden Betreffzeilen verteilt, so läuft es heute. 10 bis 50: Nur dieser Anteil wird zuerst getestet, halbe-halbe. Nach der Wartezeit (4 Stunden, wenn nicht anders eingestellt) geht die Betreffzeile mit der höheren Öffnungsrate an den Rest. Bei Gleichstand oder zu wenig Mails zum Vergleichen geht Betreff A.',
     'schedule_timezone' => 'Zeiten gelten in :timezone.',
     'errors' => [
         'no_list' => 'Diese Kampagne hat keine gültige Mailingliste.',

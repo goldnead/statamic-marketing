@@ -56,8 +56,8 @@ const handle = ref(props.campaign?.handle || '');
 const subject = ref(props.campaign?.subject || '');
 // Empty means "not an A/B test". Filling it in is the only way to start one.
 const variantSubject = ref(props.campaign?.variant_subject || '');
-// 0 = split the whole audience (today's behaviour). Stored and validated now;
-// the winner send that would act on 10–50 is Phase 2.
+// 0 = split the whole audience. 10–50 = test on that share, then send the
+// winner to the rest (see README, "A/B test share").
 const abShare = ref(props.campaign?.ab_share ?? 0);
 const preheader = ref(props.campaign?.preheader || '');
 const list = ref(props.campaign?.list || '');
