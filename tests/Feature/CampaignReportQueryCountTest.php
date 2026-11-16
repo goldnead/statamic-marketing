@@ -154,13 +154,23 @@ it('keeps every tab inside a small fixed budget', function (string $tab, int $ce
     //
     // The ceilings are those numbers plus room for one honest addition, and
     // nowhere near enough for anything resolved per row.
+    //
+    // Added on 16.11.2026, and written down here as this test asks: the report
+    // is a detail route, and the `brand.setup-guard` middleware of
+    // statamic-brand-context checks that the campaign tables exist before the
+    // route binds anything. That is a `Schema::hasTable()` per table on every
+    // request (two on the flat driver, three on eloquent; on SQLite each costs
+    // two queries, a probe and the listing). Measured with the guard, eloquent
+    // driver, worst case: overview 21, delivery 10, opens 10, clicks 11,
+    // unsubscribes 10. The ceilings moved by exactly the guard's share and
+    // still stop anything per row.
     ($this->campaignOf)(50);
 
     expect(($this->queriesFor)($tab))->toBeLessThanOrEqual($ceiling);
 })->with([
-    ['overview', 18],
-    ['delivery', 9],
-    ['opens', 9],
-    ['clicks', 10],
-    ['unsubscribes', 9],
+    ['overview', 22],
+    ['delivery', 11],
+    ['opens', 11],
+    ['clicks', 12],
+    ['unsubscribes', 11],
 ]);
