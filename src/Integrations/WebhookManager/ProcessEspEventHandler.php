@@ -11,7 +11,8 @@ use Goldnead\WebhookManager\Domain\InboundEndpoint\Models\InboundEndpoint;
  * complaints, unsubscribes) into the marketing addon. Configure an inbound
  * endpoint per ESP, optionally map the payload to the normalized keys
  * (type/email/message_uuid/hard) or pass the raw body with a `provider`
- * of mailgun/postmark for automatic normalization.
+ * of mailgun/postmark/lettermint/brevo for automatic normalization (a raw
+ * Brevo body is also recognized without a provider field).
  */
 class ProcessEspEventHandler implements InboundActionHandlerInterface
 {

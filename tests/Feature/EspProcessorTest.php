@@ -152,3 +152,63 @@ it('ignores events without a recipient', function (): void {
 
     expect($result['handled'])->toBeFalse();
 });
+
+// Brevo: https://developers.brevo.com/docs/transactional-webhooks and
+// https://developers.brevo.com/docs/marketing-webhooks
+dataset('brevo events', [
+    'hard_bounce' => ['hard_bounce', 'bounce', true],
+    'invalid_email' => ['invalid_email', 'bounce', true],
+    'blocked' => ['blocked', 'bounce', true],
+    'soft_bounce' => ['soft_bounce', 'bounce', false],
+    'spam' => ['spam', 'complaint', false],
+    'unsubscribed' => ['unsubscribed', 'unsubscribe', false],
+    'unsubscribe (campaign)' => ['unsubscribe', 'unsubscribe', false],
+]);
+
+it('normalizes brevo events', function (string $event, string $type, bool $hard): void {
+    $payload = ['event' => $event, 'email' => 'jane@example.com', 'message-id' => '<abc@smtp-relay.mailin.fr>', 'ts_event' => 1700000000, 'tags' => ['news']];
+
+    foreach (['brevo', null] as $provider) {
+        $normalized = app(EspEventProcessor::class)->normalize($payload, $provider);
+
+        expect($normalized['type'])->toBe($type)
+            ->and($normalized['email'])->toBe('jane@example.com')
+            ->and($normalized['hard'])->toBe($hard)
+            ->and($normalized['meta']['message_id'])->toBe('<abc@smtp-relay.mailin.fr>');
+    }
+})->with('brevo events');
+
+it('applies brevo events to the subscription', function (string $event, string $status): void {
+    app(EspEventProcessor::class)->process(['event' => $event, 'email' => 'jane@example.com', 'message-id' => 'x', 'ts_event' => 1], 'brevo');
+
+    expect($this->subscription->fresh()->status)->toBe($status);
+})->with([
+    ['hard_bounce', Subscription::STATUS_BOUNCED],
+    ['invalid_email', Subscription::STATUS_BOUNCED],
+    ['blocked', Subscription::STATUS_BOUNCED],
+    ['soft_bounce', Subscription::STATUS_SUBSCRIBED],
+    ['spam', Subscription::STATUS_COMPLAINED],
+    ['unsubscribed', Subscription::STATUS_UNSUBSCRIBED],
+]);
+
+it('ignores brevo events without an effect', function (): void {
+    $r = app(EspEventProcessor::class)->process(['event' => 'delivered', 'email' => 'jane@example.com', 'message-id' => 'x'], 'brevo');
+
+    expect($r['handled'])->toBeFalse()
+        ->and($this->subscription->fresh()->status)->toBe(Subscription::STATUS_SUBSCRIBED);
+});
+
+it('leaves mailgun, postmark, lettermint and normalized payloads unchanged next to brevo', function (): void {
+    $p = app(EspEventProcessor::class);
+
+    expect($p->normalize(['event-data' => ['event' => 'failed', 'severity' => 'permanent', 'recipient' => 'a@b.de']], 'mailgun'))
+        ->toMatchArray(['type' => 'bounce', 'email' => 'a@b.de', 'hard' => true])
+        ->and($p->normalize(['RecordType' => 'Bounce', 'Type' => 'HardBounce', 'Email' => 'a@b.de'], 'postmark'))
+        ->toMatchArray(['type' => 'bounce', 'hard' => true])
+        ->and($p->normalize(['event' => 'message.soft_bounced', 'data' => ['recipient' => 'a@b.de']], 'lettermint'))
+        ->toMatchArray(['type' => 'bounce', 'hard' => false])
+        ->and($p->normalize(['type' => 'bounce', 'email' => 'a@b.de', 'hard' => true]))
+        ->toMatchArray(['type' => 'bounce', 'hard' => true])
+        ->and($p->normalize(['event' => 'spam', 'email' => 'a@b.de']))
+        ->toMatchArray(['type' => 'spam']);
+});

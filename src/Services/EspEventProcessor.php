@@ -75,7 +75,14 @@ class EspEventProcessor
      */
     public function normalize(array $payload, ?string $provider = null): array
     {
+        // Brevo posts its raw body without any provider marker, so it is
+        // recognized by shape when the endpoint did not name a provider.
+        if ($provider === null && $this->looksLikeBrevo($payload)) {
+            $provider = 'brevo';
+        }
+
         return match ($provider) {
+            'brevo' => $this->normalizeBrevo($payload),
             'mailgun' => $this->normalizeMailgun($payload),
             'postmark' => $this->normalizePostmark($payload),
             'lettermint' => $this->normalizeLettermint($payload),
@@ -88,6 +95,56 @@ class EspEventProcessor
                 'meta' => $payload,
             ],
         };
+    }
+
+    /**
+     * Brevo names the outcome in `event`. Transactional webhooks use
+     * `unsubscribed`, marketing (campaign) webhooks `unsubscribe`; both map.
+     * `hard_bounce`, `invalid_email` and `blocked` are permanent, `soft_bounce`
+     * is not. `deferred`, `error`, `delivered`, `opened`, `click` and the rest
+     * map to no type.
+     *
+     * Docs: https://developers.brevo.com/docs/transactional-webhooks and
+     * https://developers.brevo.com/docs/marketing-webhooks
+     */
+    protected function normalizeBrevo(array $payload): array
+    {
+        $event = $payload['event'] ?? null;
+
+        $type = match ($event) {
+            'hard_bounce', 'invalid_email', 'blocked', 'soft_bounce' => 'bounce',
+            'spam' => 'complaint',
+            'unsubscribed', 'unsubscribe' => 'unsubscribe',
+            default => null,
+        };
+
+        $email = $payload['email'] ?? null;
+
+        return [
+            'type' => $type,
+            'email' => is_string($email) && $email !== '' ? $email : null,
+            'message_uuid' => null,
+            'hard' => in_array($event, ['hard_bounce', 'invalid_email', 'blocked'], true),
+            'meta' => [
+                'provider' => 'brevo',
+                'event' => $event,
+                'reason' => $payload['reason'] ?? null,
+                'message_id' => $payload['message-id'] ?? null,
+                'tags' => $payload['tags'] ?? $payload['tag'] ?? null,
+                'ts_event' => $payload['ts_event'] ?? null,
+            ],
+        ];
+    }
+
+    protected function looksLikeBrevo(array $payload): bool
+    {
+        if (isset($payload['type']) || isset($payload['event-data']) || isset($payload['RecordType'])) {
+            return false;
+        }
+
+        return in_array($payload['event'] ?? null, [
+            'hard_bounce', 'soft_bounce', 'invalid_email', 'blocked', 'spam', 'unsubscribed', 'unsubscribe',
+        ], true) && (isset($payload['message-id']) || isset($payload['camp_id']) || isset($payload['ts_event']));
     }
 
     protected function normalizeMailgun(array $payload): array
