@@ -8,6 +8,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Lettermint's event webhook: bounces, spam complaints and unsubscribes end up
@@ -49,12 +51,35 @@ class LettermintWebhookController extends Controller
 
         // Lettermint retries on anything but a 2xx and sends the same event id
         // each time; a retry must not be counted twice.
+        //
+        // The mark is taken before processing, so two deliveries racing each
+        // other cannot both apply the event, and given back when processing
+        // throws. Without the give back, the throw answers 500, Lettermint
+        // retries, and the retry is told "Duplicate delivery" with a 200: the
+        // unsubscribe or complaint is acknowledged and never applied.
         $id = $payload['id'] ?? null;
+        $key = is_string($id) && $id !== '' ? 'marketing:lettermint:event:'.$id : null;
 
-        if (is_string($id) && $id !== '' && ! Cache::add('marketing:lettermint:event:'.$id, 1, now()->addDay())) {
+        if ($key !== null && ! Cache::add($key, 1, now()->addDay())) {
             return response()->json(['ok' => true, 'handled' => false, 'message' => 'Duplicate delivery.']);
         }
 
-        return response()->json($processor->process($payload, 'lettermint'));
+        try {
+            $result = $processor->process($payload, 'lettermint');
+        } catch (Throwable $e) {
+            if ($key !== null) {
+                Cache::forget($key);
+            }
+
+            Log::error('Marketing could not process Lettermint event ['.($key !== null ? $id : 'without id').']; the mark was released so the retry is processed.', [
+                'event_id' => $key !== null ? $id : null,
+                'event' => $payload['event'] ?? null,
+                'exception' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+
+        return response()->json($result);
     }
 }

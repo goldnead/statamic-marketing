@@ -10,6 +10,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Normalizes ESP feedback payloads (bounces, complaints, unsubscribes) and
@@ -55,9 +56,24 @@ class EspEventProcessor
             default => null,
         };
 
+        // Handled means something was applied. An event for an address with no
+        // subscription and no matching message changed nothing, and reporting
+        // it as handled made a lost unsubscribe look like a processed one.
+        $handled = in_array($event['type'], ['bounce', 'complaint', 'unsubscribe'], true)
+            && ($message !== null || $subscriptions->isNotEmpty());
+
+        if (! $handled) {
+            Log::warning('Marketing received a '.$event['type'].' event that matched no subscription or message; nothing was applied.', [
+                'type' => $event['type'],
+                'provider' => $provider,
+                'email_hash' => $event['email'] ? substr(hash('sha256', (string) EmailNormalizer::normalize($event['email'])), 0, 16) : null,
+                'message_uuid' => $event['message_uuid'],
+            ]);
+        }
+
         return [
             'ok' => true,
-            'handled' => in_array($event['type'], ['bounce', 'complaint', 'unsubscribe'], true),
+            'handled' => $handled,
             'type' => $event['type'],
             'email' => $event['email'],
             'message' => 'Processed '.$event['type'].' event.',

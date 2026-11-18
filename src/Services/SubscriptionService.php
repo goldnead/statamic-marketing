@@ -22,6 +22,7 @@ use Goldnead\Suppression\Contracts\Gate as SuppressionGate;
 use Goldnead\Suppression\Exceptions\SuppressionCheckFailed;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SubscriptionService
 {
@@ -249,7 +250,7 @@ class SubscriptionService
             return $value instanceof \DateTimeInterface
                 ? CarbonImmutable::instance($value)->toIso8601String()
                 : CarbonImmutable::parse((string) $value)->toIso8601String();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             throw new \InvalidArgumentException('The consent "given_at" is not a date: '.$e->getMessage(), 0, $e);
         }
     }
@@ -327,7 +328,7 @@ class SubscriptionService
 
         try {
             $withheld = $throttle->charge((string) $subscription->email, $list->handle);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             /*
              * A cache that is unreachable THROWS; it does not answer zero. An
              * uncaught Redis timeout here would be a 500 on an anonymous
@@ -574,13 +575,33 @@ class SubscriptionService
         ]);
         $subscription->save();
 
-        $this->recordUnsubscribeEvent($subscription, $metadata);
+        // The unsubscribe is final from here on; everything below is
+        // bookkeeping around it. Each step runs on its own and a failure is
+        // reported, never thrown: a throw here used to answer the unsubscribe
+        // page with a 500 although the person was already off the list, and
+        // it skipped the steps after it, the LeadHub opt-out among them.
+        $this->afterUnsubscribe('report event', fn () => $this->recordUnsubscribeEvent($subscription, $metadata));
 
-        $this->syncContactOnUnsubscribe($subscription, $metadata);
+        $this->afterUnsubscribe('LeadHub sync', fn () => $this->syncContactOnUnsubscribe($subscription, $metadata));
 
-        event(new MarketingUnsubscribed($subscription, $metadata));
+        $this->afterUnsubscribe('unsubscribed event', fn () => event(new MarketingUnsubscribed($subscription, $metadata)));
 
         return $subscription;
+    }
+
+    /** One follow-up step of an unsubscribe that is already saved. */
+    protected function afterUnsubscribe(string $step, callable $callback): void
+    {
+        try {
+            $callback();
+        } catch (Throwable $e) {
+            report($e);
+
+            Log::error('Marketing saved an unsubscribe, but its follow-up step ['.$step.'] failed.', [
+                'step' => $step,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -745,7 +766,7 @@ class SubscriptionService
                 null,
                 new ConfirmSubscriptionMail($list, $subscription),
             );
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             report($e);
 
             /*
@@ -813,7 +834,9 @@ class SubscriptionService
             return;
         }
 
-        LeadHub::ingest([
+        // Timeline and tag are guarded on their own, so neither can stand
+        // between the person and the opt-out below.
+        $this->afterUnsubscribe('LeadHub timeline', fn () => LeadHub::ingest([
             'email' => $subscription->email,
             'type' => 'marketing.unsubscribed',
             'summary' => __('Unsubscribed from mailing list :list', ['list' => $subscription->list_handle]),
@@ -821,10 +844,10 @@ class SubscriptionService
             'source_id' => $subscription->uuid,
             'dedupe_key' => 'marketing:unsubscribed:'.$subscription->uuid.':'.$subscription->unsubscribed_at?->timestamp,
             'payload' => array_merge(['list' => $subscription->list_handle], $metadata),
-        ]);
+        ]));
 
         if (config('marketing.leadhub.tag_subscribers', true)) {
-            LeadHub::removeTag($contact['uuid'], config('marketing.leadhub.tag_prefix', 'list:').$subscription->list_handle);
+            $this->afterUnsubscribe('LeadHub tag', fn () => LeadHub::removeTag($contact['uuid'], config('marketing.leadhub.tag_prefix', 'list:').$subscription->list_handle));
         }
 
         if (config('marketing.unsubscribe.global_opt_out', false)) {
