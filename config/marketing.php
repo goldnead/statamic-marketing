@@ -70,6 +70,17 @@ return [
         'claim_lease_minutes' => (int) env('MARKETING_CLAIM_LEASE_MINUTES', 15),
 
         /*
+         * How often a message is handed to the transport before it ends as
+         * failed, and how many minutes lie between the attempts (the last
+         * value repeats). A refused connection or a rate limit is usually
+         * passing; failing the message on the first one turned a short outage
+         * into a campaign that reported itself sent to nobody. On the `sync`
+         * queue there is no later, so a message fails on the first attempt.
+         */
+        'transport_attempts' => (int) env('MARKETING_TRANSPORT_ATTEMPTS', 3),
+        'transport_backoff_minutes' => [1, 5, 15],
+
+        /*
          * When a message may be delivered, in the RECIPIENT's local time.
          *
          * Both unset means every hour is allowed, which is what every

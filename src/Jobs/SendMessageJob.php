@@ -3,6 +3,8 @@
 namespace Goldnead\Marketing\Jobs;
 
 use Carbon\CarbonImmutable;
+use Goldnead\Leadhub\Contracts\Repositories\ContactRepository;
+use Goldnead\Leadhub\Support\EmailNormalizer;
 use Goldnead\Marketing\Contracts\FrequencyCap;
 use Goldnead\Marketing\Contracts\Repositories\CampaignRepository;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
@@ -11,6 +13,7 @@ use Goldnead\Marketing\Events\CampaignSent;
 use Goldnead\Marketing\Events\MessageSent;
 use Goldnead\Marketing\Mail\CampaignMail;
 use Goldnead\Marketing\Models\Message;
+use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Sending\BrandMailer;
 use Goldnead\Marketing\Services\AbTest;
 use Goldnead\Marketing\Services\CampaignRenderer;
@@ -28,7 +31,13 @@ class SendMessageJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable;
 
-    public function __construct(public int $messageId) {}
+    /**
+     * @param  int  $transportAttempt  Which handover to the transport this is.
+     *                                 Counted here and not on the row: only a
+     *                                 failed handover is retried, and the job
+     *                                 that retries it is the one that knows.
+     */
+    public function __construct(public int $messageId, public int $transportAttempt = 1) {}
 
     /**
      * Hand the claim back when this job gives up for good.
@@ -146,6 +155,22 @@ class SendMessageJob implements ShouldQueue
             return;
         }
 
+        // The opt-out of record, asked again for the same reason as the
+        // suppression gate above: StartCampaignJob checked `do_not_contact`
+        // when it built the audience, and somebody who opts out while a large
+        // campaign is still running must not get the rest of it. SingleSend
+        // asks the same question in the same way. Fail closed: no contact to
+        // ask is not consent.
+        if ($this->contactOptedOut($subscription)) {
+            $message->update([
+                'status' => Message::STATUS_SKIPPED,
+                'error' => 'Opted out: the LeadHub contact says do_not_contact, or no contact could be found to ask.',
+            ]);
+            $this->maybeFinalize($campaigns, $campaign->handle);
+
+            return;
+        }
+
         // Last of the three gates, and the only one that says "later" rather
         // than "no". In this method the order on the page is: what the reader
         // said they want (`isSubscribed`), then suppression, then this. The
@@ -189,7 +214,19 @@ class SendMessageJob implements ShouldQueue
 
         try {
             $rendered = $renderer->render($campaign, $list, $subscription, $message);
+        } catch (Throwable $e) {
+            // Rendering is deterministic: the same campaign fails the same way
+            // on every attempt, so this one ends here.
+            $message->update(['status' => Message::STATUS_FAILED, 'sent_at' => null, 'error' => $e->getMessage()]);
 
+            report($e);
+
+            $this->maybeFinalize($campaigns, $campaign->handle);
+
+            return;
+        }
+
+        try {
             // As the brand the message belongs to — its transport, its From.
             // `$message->brand_id` and not the brand in context: a queue worker
             // has no request behind it, and the row is where the answer was
@@ -210,51 +247,166 @@ class SendMessageJob implements ShouldQueue
                 null,
                 new CampaignMail($campaign, $rendered),
             );
-
-            // A brand that declared a mail identity and then broke it half —
-            // a transport with no address, a mailer name `config/mail.php` does
-            // not define — sends nothing at all rather than under the host's
-            // own name. `false` is that answer, and it is not an exception
-            // because a fan-out has to keep going for the brands that are fine.
-            //
-            // Recorded as failed for the same reason a throw is: this recipient
-            // did not get the mail, so the row must not claim they did and the
-            // frequency cap below must not spend their budget. The reason is
-            // already in the log, once per brand per window; repeating it on
-            // every row of a fan-out would put it in the database too.
-            if (! $sent) {
-                $message->update([
-                    'status' => Message::STATUS_FAILED,
-                    'sent_at' => null,
-                    'error' => 'No sender identity for this brand — see the log for the reason.',
-                ]);
-
-                $this->maybeFinalize($campaigns, $campaign->handle);
-
-                return;
-            }
-
-            $message->update(['status' => Message::STATUS_SENT, 'sent_at' => now()]);
-
-            // After delivery, never before it. A mail that threw did not reach
-            // anybody and may not consume their budget.
-            $cap->record(
-                $subscription->email,
-                $mailClass,
-                $message->brand_id === null ? null : (int) $message->brand_id,
-                $campaign->handle,
-            );
-
-            event(new MessageSent($message->fresh()));
         } catch (Throwable $e) {
-            // sent_at back to null: the stamp is a claim that the transport
-            // took it, and a throw says it did not.
-            $message->update(['status' => Message::STATUS_FAILED, 'sent_at' => null, 'error' => $e->getMessage()]);
+            // The transport did not take it. That is usually passing (a
+            // timeout, a refused connection, a rate limit), so the message
+            // goes back and is tried again later instead of ending as failed
+            // on the first hiccup.
+            $this->transportFailed($message, $e, $campaigns, $campaign->handle);
 
-            report($e);
+            return;
         }
 
-        $this->maybeFinalize($campaigns, $campaign->handle);
+        // A brand that declared a mail identity and then broke it half —
+        // a transport with no address, a mailer name `config/mail.php` does
+        // not define — sends nothing at all rather than under the host's
+        // own name. `false` is that answer, and it is not an exception
+        // because a fan-out has to keep going for the brands that are fine.
+        //
+        // Recorded as failed for the same reason a throw is: this recipient
+        // did not get the mail, so the row must not claim they did and the
+        // frequency cap below must not spend their budget. The reason is
+        // already in the log, once per brand per window; repeating it on
+        // every row of a fan-out would put it in the database too.
+        if (! $sent) {
+            $message->update([
+                'status' => Message::STATUS_FAILED,
+                'sent_at' => null,
+                'error' => 'No sender identity for this brand — see the log for the reason.',
+            ]);
+
+            $this->maybeFinalize($campaigns, $campaign->handle);
+
+            return;
+        }
+
+        // From here on the mail is out. Nothing below may turn that into
+        // `failed`, and nothing may throw back into handle(), whose catch
+        // would release the row and let the retry send a second copy. Each
+        // step is reported on its own instead.
+        //
+        // If even the status write fails, the row stays `sending` with
+        // `sent_at` stamped, which is exactly what the sweeper reads as
+        // "handed over, do not send again".
+        $this->afterSend('status write', $message, fn () => $message->update(['status' => Message::STATUS_SENT, 'sent_at' => now()]));
+
+        // After delivery, never before it. A mail that threw did not reach
+        // anybody and may not consume their budget.
+        $this->afterSend('frequency cap record', $message, fn () => $cap->record(
+            $subscription->email,
+            $mailClass,
+            $message->brand_id === null ? null : (int) $message->brand_id,
+            $campaign->handle,
+        ));
+
+        $this->afterSend('MessageSent event', $message, fn () => event(new MessageSent($message->fresh())));
+
+        $this->afterSend('campaign finalisation', $message, fn () => $this->maybeFinalize($campaigns, $campaign->handle));
+    }
+
+    /** One bookkeeping step after a mail has already left. */
+    protected function afterSend(string $step, Message $message, callable $callback): void
+    {
+        try {
+            $callback();
+        } catch (Throwable $e) {
+            report($e);
+
+            Log::error("Marketing sent message [{$message->uuid}], but the step [{$step}] after the send failed. The message stays sent.", [
+                'step' => $step,
+                'exception' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The transport threw: try again later, or give up out loud.
+     *
+     * Back to `pending` with the claim released, so the campaign keeps
+     * counting the message as outstanding and the redelivery can claim it
+     * again. After `sending.transport_attempts` handovers the message ends as
+     * `failed`, and the campaign reports how many did when it finishes.
+     *
+     * On the `sync` connection there is no later (see hold()), so the message
+     * fails at once rather than retrying inside the same request.
+     */
+    protected function transportFailed(Message $message, Throwable $e, CampaignRepository $campaigns, string $campaignHandle): void
+    {
+        report($e);
+
+        $maxAttempts = max(1, (int) config('marketing.sending.transport_attempts', 3));
+        $canRetry = config('queue.default') !== 'sync' && $this->transportAttempt < $maxAttempts;
+
+        if (! $canRetry) {
+            // sent_at back to null: the stamp is a claim that the transport
+            // took it, and a throw says it did not.
+            $message->update([
+                'status' => Message::STATUS_FAILED,
+                'sent_at' => null,
+                'error' => "Transport failed on attempt {$this->transportAttempt} of {$maxAttempts}: ".$e->getMessage(),
+            ]);
+
+            $this->maybeFinalize($campaigns, $campaignHandle);
+
+            return;
+        }
+
+        $backoff = (array) config('marketing.sending.transport_backoff_minutes', [1, 5, 15]);
+        $minutes = max(1, (int) ($backoff[$this->transportAttempt - 1] ?? end($backoff) ?: 15));
+
+        $message->update([
+            'status' => Message::STATUS_PENDING,
+            'claimed_at' => null,
+            'sent_at' => null,
+            'error' => "Transport failed on attempt {$this->transportAttempt} of {$maxAttempts}, retrying in {$minutes} min: ".$e->getMessage(),
+        ]);
+
+        Log::warning("Marketing could not hand message [{$message->uuid}] of campaign [{$campaignHandle}] to the transport "
+            ."(attempt {$this->transportAttempt} of {$maxAttempts}); retrying in {$minutes} minutes.", [
+                'exception' => $e->getMessage(),
+            ]);
+
+        static::dispatch($message->id, $this->transportAttempt + 1)
+            ->onQueue(config('marketing.sending.queue', 'default'))
+            ->delay(now()->addMinutes($minutes));
+    }
+
+    /**
+     * Has the person opted out in LeadHub since the audience was built?
+     *
+     * The same lookup as StartCampaignJob and SingleSend: by contact uuid
+     * first, then by normalised address, and true when neither resolves a
+     * contact, because an opt-out that cannot be read may not be read as
+     * consent.
+     */
+    protected function contactOptedOut(Subscription $subscription): bool
+    {
+        $contacts = app(ContactRepository::class);
+
+        $contact = $subscription->contact_uuid
+            ? $contacts->findByUuid((string) $subscription->contact_uuid)
+            : null;
+
+        if (! $contact) {
+            $normalized = (string) ($subscription->email_normalized
+                ?: EmailNormalizer::normalize((string) $subscription->email));
+
+            $contact = $normalized !== ''
+                ? $contacts->findByEmailNormalized($normalized)
+                : null;
+        }
+
+        if (! $contact) {
+            Log::warning(
+                'Marketing skipped a campaign message to subscription ['.$subscription->uuid.'] on list ['
+                .$subscription->list_handle.']: no LeadHub contact resolvable by uuid or email, '
+                .'so the opt-out state cannot be verified (fail-closed).'
+            );
+
+            return true;
+        }
+
+        return (bool) ($contact->do_not_contact ?? false);
     }
 
     /**
@@ -409,6 +561,17 @@ class SendMessageJob implements ShouldQueue
         $campaign->sentAt = CarbonImmutable::now();
         $campaigns->save($campaign);
 
-        event(new CampaignSent($campaign));
+        // "Sent" means nothing is outstanding, not that everything arrived.
+        // The failures are counted and said out loud, so a run where the
+        // transport refused thousands of mails cannot pass for a clean one.
+        $failed = Message::forCampaign($campaignHandle)->where('status', Message::STATUS_FAILED)->count();
+        $total = Message::forCampaign($campaignHandle)->count();
+
+        if ($failed > 0) {
+            Log::warning("Marketing finished campaign [{$campaignHandle}] with {$failed} of {$total} messages failed. "
+                .'The error column of each failed message says why.');
+        }
+
+        event(new CampaignSent($campaign, ['failed' => $failed, 'messages' => $total]));
     }
 }
