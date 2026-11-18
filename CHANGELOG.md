@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.42.0 - 2026-11-18
+
+### Added
+
+- `sending.transport_attempts` (default 3, env `MARKETING_TRANSPORT_ATTEMPTS`) and `sending.transport_backoff_minutes` (default `[1, 5, 15]`): a message whose transport refused it (a refused connection, a rate limit) goes back to pending and is tried again with a backoff, and fails only after the last attempt. Only `TransportExceptionInterface` is retried; a render error or any other failure still fails at once, so nothing is delivered twice. On the `sync` queue a message fails on the first attempt.
+- `sending.degraded_failure_percent` (default 5, env `MARKETING_DEGRADED_FAILURE_PERCENT`): a finished campaign with at least this share of failed messages gets `meta.delivery_degraded`, is logged with `Log::error` instead of a warning, and `CampaignSent` carries `delivery_degraded`.
+
+### Changed
+
+- Once a message is handed to the transport it stays `sent`. The follow-up steps (status, frequency cap, `MessageSent`, finalising) are reported one by one and no longer flip it to `failed`. Finalising counts failed messages (warning in the log, `failed` and `messages` in the `CampaignSent` data).
+
+### Fixed
+
+- Unsubscribing and ESP events no longer lose anything silently. The Lettermint webhook releases its dedupe mark when processing throws, so the retry applies the unsubscribe or complaint (the log carries the `event_id`). `EspEventProcessor` reports `handled` only when a subscription or message was hit, otherwise a warning with a hashed address. After `SubscriptionService::unsubscribe()` saved, the follow-up steps are guarded one by one; the unsubscribe page always answers with success and the LeadHub opt-out runs even when the timeline or tag step fails.
+- The send job checks `do_not_contact` before sending, fail closed like `SingleSend` and `StartCampaignJob`.
+
+### Upgrading
+
+- No migration. The two retry keys are on by default (3 attempts), so a short transport outage no longer ends a campaign as failed. Set `MARKETING_TRANSPORT_ATTEMPTS=1` to keep the old behaviour.
+
 ## 2.41.1 - 2026-11-16
 
 ### Fixed
