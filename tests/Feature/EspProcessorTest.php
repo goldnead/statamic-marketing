@@ -8,6 +8,7 @@ use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\EspEventProcessor;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function (): void {
@@ -145,6 +146,34 @@ it('treats a postmark bounce without a type as soft', function (): void {
     ], 'postmark');
 
     expectStillSubscribed();
+});
+
+it('does not report an event as handled when no subscription or message matched', function (): void {
+    Log::spy();
+
+    $result = app(EspEventProcessor::class)->process([
+        'type' => 'unsubscribe',
+        'email' => 'nobody@example.com',
+    ]);
+
+    expect($result['handled'])->toBeFalse();
+
+    // Said out loud, but without the address in clear text.
+    Log::shouldHaveReceived('warning')->withArgs(function (string $line, array $context = []): bool {
+        return str_contains($line, 'unsubscribe')
+            && ! str_contains($line.json_encode($context), 'nobody@example.com')
+            && ($context['email_hash'] ?? null) === substr(hash('sha256', 'nobody@example.com'), 0, 16);
+    })->once();
+});
+
+it('still reports a matched event as handled', function (): void {
+    $result = app(EspEventProcessor::class)->process([
+        'type' => 'unsubscribe',
+        'email' => 'jane@example.com',
+    ]);
+
+    expect($result['handled'])->toBeTrue()
+        ->and($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
 });
 
 it('ignores events without a recipient', function (): void {

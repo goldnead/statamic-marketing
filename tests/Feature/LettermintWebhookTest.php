@@ -5,6 +5,7 @@ use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Marketing\Services\EspEventProcessor;
 use Goldnead\Marketing\Services\SubscriptionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
@@ -208,4 +209,23 @@ it('processes a repeated delivery id only once', function (): void {
     lettermint($payload)->assertOk();
 
     expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_SUBSCRIBED);
+});
+
+it('does not swallow the retry when processing the first delivery threw', function (): void {
+    $payload = lmMessageEvent('message.unsubscribed');
+
+    $broken = Mockery::mock(EspEventProcessor::class);
+    $broken->shouldReceive('process')->once()->andThrow(new RuntimeException('database went away'));
+    app()->instance(EspEventProcessor::class, $broken);
+
+    lettermint($payload)->assertStatus(500);
+
+    expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_SUBSCRIBED);
+
+    app()->forgetInstance(EspEventProcessor::class);
+
+    // Lettermint retries with the same event id; the unsubscribe must land now.
+    lettermint($payload)->assertOk()->assertJson(['handled' => true]);
+
+    expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
 });
