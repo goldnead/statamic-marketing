@@ -25,6 +25,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Throwable;
 
 class SendMessageJob implements ShouldQueue
@@ -247,12 +248,23 @@ class SendMessageJob implements ShouldQueue
                 null,
                 new CampaignMail($campaign, $rendered),
             );
-        } catch (Throwable $e) {
+        } catch (TransportExceptionInterface $e) {
             // The transport did not take it. That is usually passing (a
             // timeout, a refused connection, a rate limit), so the message
             // goes back and is tried again later instead of ending as failed
             // on the first hiccup.
             $this->transportFailed($message, $e, $campaigns, $campaign->handle);
+
+            return;
+        } catch (Throwable $e) {
+            // Anything else is not a transport hiccup but a fault (a broken
+            // mailable, a bug). Retrying repeats it, and may repeat a mail
+            // that was already accepted, so it ends here.
+            $message->update(['status' => Message::STATUS_FAILED, 'sent_at' => null, 'error' => $e->getMessage()]);
+
+            report($e);
+
+            $this->maybeFinalize($campaigns, $campaign->handle);
 
             return;
         }
@@ -330,7 +342,7 @@ class SendMessageJob implements ShouldQueue
      * On the `sync` connection there is no later (see hold()), so the message
      * fails at once rather than retrying inside the same request.
      */
-    protected function transportFailed(Message $message, Throwable $e, CampaignRepository $campaigns, string $campaignHandle): void
+    protected function transportFailed(Message $message, TransportExceptionInterface $e, CampaignRepository $campaigns, string $campaignHandle): void
     {
         report($e);
 
@@ -557,21 +569,39 @@ class SendMessageJob implements ShouldQueue
             return;
         }
 
-        $campaign->status = Campaign::STATUS_SENT;
-        $campaign->sentAt = CarbonImmutable::now();
-        $campaigns->save($campaign);
-
         // "Sent" means nothing is outstanding, not that everything arrived.
         // The failures are counted and said out loud, so a run where the
         // transport refused thousands of mails cannot pass for a clean one.
+        // Over the threshold the campaign carries `meta.delivery_degraded`,
+        // so the state is on the campaign itself and not only in a log.
         $failed = Message::forCampaign($campaignHandle)->where('status', Message::STATUS_FAILED)->count();
         $total = Message::forCampaign($campaignHandle)->count();
+        $threshold = max(0.0, (float) config('marketing.sending.degraded_failure_percent', 5));
+        $degraded = $failed > 0 && $total > 0 && ($failed / $total * 100) >= $threshold;
 
-        if ($failed > 0) {
-            Log::warning("Marketing finished campaign [{$campaignHandle}] with {$failed} of {$total} messages failed. "
-                .'The error column of each failed message says why.');
+        $campaign->status = Campaign::STATUS_SENT;
+        $campaign->sentAt = CarbonImmutable::now();
+
+        if ($degraded) {
+            $campaign->meta['delivery_degraded'] = [
+                'failed' => $failed,
+                'messages' => $total,
+                'threshold_percent' => $threshold,
+                'at' => CarbonImmutable::now()->toIso8601String(),
+            ];
         }
 
-        event(new CampaignSent($campaign, ['failed' => $failed, 'messages' => $total]));
+        $campaigns->save($campaign);
+
+        $line = "Marketing finished campaign [{$campaignHandle}] with {$failed} of {$total} messages failed. "
+            .'The error column of each failed message says why.';
+
+        if ($degraded) {
+            Log::error($line." Delivery is degraded: at or over the threshold of {$threshold} %.");
+        } elseif ($failed > 0) {
+            Log::warning($line);
+        }
+
+        event(new CampaignSent($campaign, ['failed' => $failed, 'messages' => $total, 'delivery_degraded' => $degraded]));
     }
 }

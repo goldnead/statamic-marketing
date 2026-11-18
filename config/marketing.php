@@ -81,6 +81,15 @@ return [
         'transport_backoff_minutes' => [1, 5, 15],
 
         /*
+         * From which share of failed messages (in percent) a finished
+         * campaign counts as degraded: it gets `meta.delivery_degraded` and
+         * the finish is logged as an error instead of a warning. Only
+         * transport failures (TransportExceptionInterface) are retried above;
+         * everything else fails at once.
+         */
+        'degraded_failure_percent' => (float) env('MARKETING_DEGRADED_FAILURE_PERCENT', 5),
+
+        /*
          * When a message may be delivered, in the RECIPIENT's local time.
          *
          * Both unset means every hour is allowed, which is what every

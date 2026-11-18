@@ -126,9 +126,72 @@ it('fails a message for good after the last transport attempt and reports the co
 
     Event::assertDispatched(CampaignSent::class, fn (CampaignSent $e) => ($e->metadata['failed'] ?? null) === 1);
 
-    Log::shouldHaveReceived('warning')->withArgs(
+    // 1 of 1 is over any threshold, so this is an error, not a warning.
+    Log::shouldHaveReceived('error')->withArgs(
         fn (string $line) => str_contains($line, 'stille-kampagne') && str_contains($line, '1 of 1')
     )->once();
+});
+
+it('does not retry an error that is not a transport failure', function (): void {
+    Queue::fake();
+    config()->set('queue.default', 'database');
+
+    // A permanent fault inside the mailer (a bug, a broken mailable), not a
+    // refused connection: retrying it only repeats it, and may repeat a mail
+    // the transport already accepted.
+    $mailer = Mockery::mock(BrandMailer::class);
+    $mailer->shouldReceive('send')->andThrow(new LogicException('mailable is broken'));
+    app()->instance(BrandMailer::class, $mailer);
+
+    stillSenden($this->message->id);
+
+    expect($this->message->fresh()->status)->toBe(Message::STATUS_FAILED);
+
+    Queue::assertNotPushed(SendMessageJob::class);
+});
+
+it('flags the campaign as degraded when the failure rate crosses the threshold', function (): void {
+    Log::spy();
+    config()->set('queue.default', 'sync');
+    config()->set('marketing.sending.degraded_failure_percent', 5);
+    brechenderTransport();
+
+    stillSenden($this->message->id);
+
+    $campaign = app(CampaignRepository::class)->find('stille-kampagne');
+
+    expect($campaign->status)->toBe(Campaign::STATUS_SENT)
+        ->and($campaign->meta['delivery_degraded']['failed'] ?? null)->toBe(1)
+        ->and($campaign->meta['delivery_degraded']['messages'] ?? null)->toBe(1);
+
+    Log::shouldHaveReceived('error')->withArgs(
+        fn (string $line) => str_contains($line, 'stille-kampagne') && str_contains($line, 'degraded')
+    )->once();
+});
+
+it('does not flag a campaign whose failure rate stays below the threshold', function (): void {
+    config()->set('marketing.sending.degraded_failure_percent', 5);
+
+    // 1 failed of 21 is under 5 %.
+    foreach (range(1, 20) as $i) {
+        Message::create([
+            'campaign_handle' => 'stille-kampagne',
+            'subscription_id' => $this->recipient->id,
+            'email' => "andere{$i}@example.com",
+            'status' => Message::STATUS_SENT,
+            'sent_at' => now(),
+        ]);
+    }
+
+    config()->set('queue.default', 'sync');
+    brechenderTransport();
+
+    stillSenden($this->message->id);
+
+    $campaign = app(CampaignRepository::class)->find('stille-kampagne');
+
+    expect($campaign->status)->toBe(Campaign::STATUS_SENT)
+        ->and($campaign->meta)->not->toHaveKey('delivery_degraded');
 });
 
 it('fails at once on the sync queue, where there is no later to retry in', function (): void {
