@@ -13,7 +13,8 @@ use Goldnead\Suppression\Facades\Suppression;
 use Goldnead\Suppression\Reasons;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
  * Normalizes ESP feedback payloads (bounces, complaints, unsubscribes) and
@@ -39,7 +40,11 @@ class EspEventProcessor
         }
 
         $message = $event['message_uuid']
-            ? Message::query()->where('uuid', $event['message_uuid'])->first()
+            // Across brands on purpose: a webhook has no current brand, and in
+            // multi-brand mode the brand scope would hide every message. The
+            // uuid is unique, and the message then tells which brand the mail
+            // came from (needed to scope a complaint).
+            ? Message::query()->acrossBrands()->where('uuid', $event['message_uuid'])->first()
             : null;
 
         $subscriptions = $this->resolveSubscriptions($message, $event['email']);
@@ -133,7 +138,16 @@ class EspEventProcessor
             // Mailgun reports `severity: permanent|temporary`; anything else,
             // including a missing field, is unknown severity — treat as soft.
             'hard' => ($data['severity'] ?? null) === 'permanent',
-            'meta' => ['provider' => 'mailgun', 'reason' => $data['reason'] ?? null],
+            // `id` is the event id of Mailgun's webhook payload and the
+            // message id sits in the stored message headers (field names as
+            // Mailgun documents them; unverified against a live delivery).
+            // Both only feed the suppression list's dedupe, absent is fine.
+            'meta' => [
+                'provider' => 'mailgun',
+                'reason' => $data['reason'] ?? null,
+                'event_id' => $data['id'] ?? null,
+                'message_id' => $data['message']['headers']['message-id'] ?? null,
+            ],
         ];
     }
 
@@ -155,7 +169,15 @@ class EspEventProcessor
             // Only Postmark's explicit HardBounce is permanent; a missing or
             // unrecognized `Type` is unknown severity — treat as soft.
             'hard' => ($payload['Type'] ?? null) === 'HardBounce',
-            'meta' => ['provider' => 'postmark', 'description' => $payload['Description'] ?? null],
+            // `ID` is Postmark's bounce or complaint id, `MessageID` the
+            // message it belongs to (as Postmark documents them; unverified
+            // against a live delivery). Absent is fine.
+            'meta' => [
+                'provider' => 'postmark',
+                'description' => $payload['Description'] ?? null,
+                'event_id' => $payload['ID'] ?? null,
+                'message_id' => $payload['MessageID'] ?? null,
+            ],
         ];
     }
 
@@ -230,48 +252,90 @@ class EspEventProcessor
 
     /**
      * Writes the fact to the suppression list, the one list every send asks
-     * (campaigns, sequences, single sends). The subscription status below
-     * only protects the newsletter; a hard bounce is a property of the
-     * mailbox and has to stop mail to a buyer or a login address as well.
+     * (campaigns, sequences, single sends). The subscription status only
+     * protects the newsletter; a hard bounce is a property of the mailbox and
+     * has to stop mail to a buyer or a login address as well.
      *
      * A hard bounce suppresses, a soft bounce is only counted (the list
      * promotes it when the threshold trips), a complaint suppresses for the
-     * brand. A repeated provider event id changes nothing. A failure here
-     * propagates: the webhook answers 5xx and the provider retries, which is
-     * better than a bounce that was acknowledged and never listed.
+     * brand the mail came from. A repeated provider event id changes nothing.
      *
-     * @return bool whether the list took the event (false without an address)
+     * Runs last, after the subscription, the message and the LeadHub contact
+     * have been updated, so a problem here never undoes them.
+     *
+     * Failure policy, decided deliberately: nothing here answers 5xx.
+     * - Without the suppression package or its table the event is logged as a
+     *   warning and skipped: a host that has not migrated yet keeps working.
+     * - Any other failure is reported and logged, then swallowed. A retry
+     *   would not be harmless: the steps above are not idempotent (a second
+     *   MessageEvent row, a second MessageBounced event), and the newsletter
+     *   is already protected by the subscription status.
+     *
+     * @return bool whether the list took the event
      */
     protected function recordInSuppressionList($subscriptions, ?Message $message, array $event, ?string $provider, string $kind): bool
     {
         $email = $event['email'] ?: $subscriptions->first()?->email;
+        $email = is_string($email) ? trim($email) : '';
 
-        if (! is_string($email) || $email === '') {
+        if ($email === '') {
             return false;
         }
+
+        if (! class_exists(Suppression::class) || ! Schema::hasTable('suppressions')) {
+            Log::warning('Marketing could not write a '.$kind.' to the suppression list: the package or its table is missing. Run the migrations of goldnead/statamic-suppression.', [
+                'provider' => $provider ?? ($event['meta']['provider'] ?? null),
+            ]);
+
+            return false;
+        }
+
+        $eventId = $event['meta']['event_id'] ?? null;
+        $messageId = $event['meta']['message_id'] ?? null;
 
         $attributes = array_filter([
             'source' => 'esp_webhook',
             'provider' => $provider ?? ($event['meta']['provider'] ?? null),
-            'provider_event_id' => $event['meta']['event_id'] ?? null,
-            'provider_message_id' => $event['meta']['message_id'] ?? null,
+            'provider_event_id' => is_scalar($eventId) ? (string) $eventId : null,
+            'provider_message_id' => is_scalar($messageId) ? (string) $messageId : null,
             'message_uuid' => $event['message_uuid'] ?? ($message !== null ? $message->uuid : null),
+            // A complaint is scoped to a brand. Without this the list falls
+            // back to the brand current in the request, which in a webhook is
+            // the default brand, not the one that sent the mail.
+            'brand_id' => $kind === 'complaint'
+                ? ($message !== null && $message->brand_id !== null ? $message->brand_id : $this->brandIdOf($subscriptions->first()))
+                : null,
         ], fn ($value) => $value !== null && $value !== '');
 
-        match ($kind) {
-            'hard_bounce' => Suppression::suppress($email, Reasons::HARD_BOUNCE, $attributes),
-            'soft_bounce' => Suppression::recordSoftBounce($email, $attributes),
-            'complaint' => Suppression::suppress($email, Reasons::COMPLAINT, $attributes),
-            default => throw new InvalidArgumentException('Unknown suppression kind ['.$kind.'].'),
-        };
+        try {
+            match ($kind) {
+                'hard_bounce' => Suppression::suppress($email, Reasons::HARD_BOUNCE, $attributes),
+                'soft_bounce' => Suppression::recordSoftBounce($email, $attributes),
+                'complaint' => Suppression::suppress($email, Reasons::COMPLAINT, $attributes),
+            };
+        } catch (Throwable $e) {
+            report($e);
+            Log::error('Marketing could not write a '.$kind.' to the suppression list; the subscription was updated anyway.', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'email_hash' => substr(hash('sha256', (string) EmailNormalizer::normalize($email)), 0, 16),
+            ]);
+
+            return false;
+        }
 
         return true;
     }
 
+    protected function brandIdOf(mixed $subscription): ?int
+    {
+        return $subscription instanceof Subscription && $subscription->brand_id !== null
+            ? (int) $subscription->brand_id
+            : null;
+    }
+
     protected function applyBounce($subscriptions, ?Message $message, array $event, ?string $provider = null): bool
     {
-        $listed = $this->recordInSuppressionList($subscriptions, $message, $event, $provider, $event['hard'] ? 'hard_bounce' : 'soft_bounce');
-
         if ($message) {
             $message->update(['status' => Message::STATUS_BOUNCED]);
 
@@ -285,7 +349,7 @@ class EspEventProcessor
         }
 
         if (! $event['hard']) {
-            return $listed;
+            return $this->recordInSuppressionList($subscriptions, $message, $event, $provider, 'soft_bounce');
         }
 
         $subscriptions->each(function (Subscription $subscription) {
@@ -296,13 +360,11 @@ class EspEventProcessor
             }
         });
 
-        return $listed;
+        return $this->recordInSuppressionList($subscriptions, $message, $event, $provider, 'hard_bounce');
     }
 
     protected function applyComplaint($subscriptions, ?Message $message, array $event, ?string $provider = null): bool
     {
-        $listed = $this->recordInSuppressionList($subscriptions, $message, $event, $provider, 'complaint');
-
         if ($message) {
             MessageEvent::create([
                 'message_id' => $message->id,
@@ -321,6 +383,6 @@ class EspEventProcessor
             }
         });
 
-        return $listed;
+        return $this->recordInSuppressionList($subscriptions, $message, $event, $provider, 'complaint');
     }
 }
