@@ -13,6 +13,7 @@ use Goldnead\Suppression\Facades\Suppression;
 use Goldnead\Suppression\Reasons;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 /**
  * Normalizes ESP feedback payloads (bounces, complaints, unsubscribes) and
@@ -254,13 +255,14 @@ class EspEventProcessor
             'provider' => $provider ?? ($event['meta']['provider'] ?? null),
             'provider_event_id' => $event['meta']['event_id'] ?? null,
             'provider_message_id' => $event['meta']['message_id'] ?? null,
-            'message_uuid' => $message?->uuid ?? $event['message_uuid'],
+            'message_uuid' => $event['message_uuid'] ?? ($message !== null ? $message->uuid : null),
         ], fn ($value) => $value !== null && $value !== '');
 
         match ($kind) {
             'hard_bounce' => Suppression::suppress($email, Reasons::HARD_BOUNCE, $attributes),
             'soft_bounce' => Suppression::recordSoftBounce($email, $attributes),
             'complaint' => Suppression::suppress($email, Reasons::COMPLAINT, $attributes),
+            default => throw new InvalidArgumentException('Unknown suppression kind ['.$kind.'].'),
         };
 
         return true;
