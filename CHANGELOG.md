@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- ESP bounces and complaints now reach the suppression list (`goldnead/statamic-suppression`). Until now `EspEventProcessor` only set the subscription to `bounced`/`complained` and opted the LeadHub contact out, so the list stayed empty and every send that asks the suppression gate (and every address without a subscription, such as a buyer or a login address) went through unchanged. A hard bounce is now suppressed (`hard_bounce`), a complaint is suppressed for the brand (`complaint`), a soft bounce is counted and promoted by the list's own threshold. The provider event id is the dedupe key, so a redelivery writes nothing twice. A failure while writing the list propagates, the webhook answers 5xx and the provider retries. Applies to every provider the processor knows (Lettermint, Mailgun, Postmark, normalised payloads). Unsubscribes stay off the list: they are a consent fact of one subscription.
+
+### Upgrading
+
+- No migration here; the `suppressions` tables come from statamic-suppression (`php artisan migrate` on a host that has not run them yet, otherwise a hard bounce answers 5xx).
+
 ## 2.42.0 - 2026-11-18
 
 ### Added

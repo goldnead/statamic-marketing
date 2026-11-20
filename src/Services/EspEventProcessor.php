@@ -9,6 +9,8 @@ use Goldnead\Marketing\Events\MessageComplained;
 use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\MessageEvent;
 use Goldnead\Marketing\Models\Subscription;
+use Goldnead\Suppression\Facades\Suppression;
+use Goldnead\Suppression\Reasons;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -41,9 +43,14 @@ class EspEventProcessor
 
         $subscriptions = $this->resolveSubscriptions($message, $event['email']);
 
+        // Whether the suppression list took the event. It can, even when no
+        // subscription matched: a bounce for a buyer or a login address is
+        // exactly what the list is for.
+        $listed = false;
+
         match ($event['type']) {
-            'bounce' => $this->applyBounce($subscriptions, $message, $event),
-            'complaint' => $this->applyComplaint($subscriptions, $message, $event),
+            'bounce' => $listed = $this->applyBounce($subscriptions, $message, $event, $provider),
+            'complaint' => $listed = $this->applyComplaint($subscriptions, $message, $event, $provider),
             // The provider names the message it saw the unsubscribe on; pass
             // it along so the report counts it there rather than on whichever
             // mail happened to leave last.
@@ -60,7 +67,7 @@ class EspEventProcessor
         // subscription and no matching message changed nothing, and reporting
         // it as handled made a lost unsubscribe look like a processed one.
         $handled = in_array($event['type'], ['bounce', 'complaint', 'unsubscribe'], true)
-            && ($message !== null || $subscriptions->isNotEmpty());
+            && ($message !== null || $subscriptions->isNotEmpty() || $listed);
 
         if (! $handled) {
             Log::warning('Marketing received a '.$event['type'].' event that matched no subscription or message; nothing was applied.', [
@@ -195,7 +202,12 @@ class EspEventProcessor
             'email' => is_string($email) && $email !== '' ? $email : null,
             'message_uuid' => null,
             'hard' => $hard,
-            'meta' => ['provider' => 'lettermint', 'event' => $event, 'event_id' => $payload['id'] ?? null],
+            'meta' => [
+                'provider' => 'lettermint',
+                'event' => $event,
+                'event_id' => $payload['id'] ?? null,
+                'message_id' => $data['message_id'] ?? null,
+            ],
         ];
     }
 
@@ -215,8 +227,49 @@ class EspEventProcessor
             ->get();
     }
 
-    protected function applyBounce($subscriptions, ?Message $message, array $event): void
+    /**
+     * Writes the fact to the suppression list, the one list every send asks
+     * (campaigns, sequences, single sends). The subscription status below
+     * only protects the newsletter; a hard bounce is a property of the
+     * mailbox and has to stop mail to a buyer or a login address as well.
+     *
+     * A hard bounce suppresses, a soft bounce is only counted (the list
+     * promotes it when the threshold trips), a complaint suppresses for the
+     * brand. A repeated provider event id changes nothing. A failure here
+     * propagates: the webhook answers 5xx and the provider retries, which is
+     * better than a bounce that was acknowledged and never listed.
+     *
+     * @return bool whether the list took the event (false without an address)
+     */
+    protected function recordInSuppressionList($subscriptions, ?Message $message, array $event, ?string $provider, string $kind): bool
     {
+        $email = $event['email'] ?: $subscriptions->first()?->email;
+
+        if (! is_string($email) || $email === '') {
+            return false;
+        }
+
+        $attributes = array_filter([
+            'source' => 'esp_webhook',
+            'provider' => $provider ?? ($event['meta']['provider'] ?? null),
+            'provider_event_id' => $event['meta']['event_id'] ?? null,
+            'provider_message_id' => $event['meta']['message_id'] ?? null,
+            'message_uuid' => $message?->uuid ?? $event['message_uuid'],
+        ], fn ($value) => $value !== null && $value !== '');
+
+        match ($kind) {
+            'hard_bounce' => Suppression::suppress($email, Reasons::HARD_BOUNCE, $attributes),
+            'soft_bounce' => Suppression::recordSoftBounce($email, $attributes),
+            'complaint' => Suppression::suppress($email, Reasons::COMPLAINT, $attributes),
+        };
+
+        return true;
+    }
+
+    protected function applyBounce($subscriptions, ?Message $message, array $event, ?string $provider = null): bool
+    {
+        $listed = $this->recordInSuppressionList($subscriptions, $message, $event, $provider, $event['hard'] ? 'hard_bounce' : 'soft_bounce');
+
         if ($message) {
             $message->update(['status' => Message::STATUS_BOUNCED]);
 
@@ -230,7 +283,7 @@ class EspEventProcessor
         }
 
         if (! $event['hard']) {
-            return;
+            return $listed;
         }
 
         $subscriptions->each(function (Subscription $subscription) {
@@ -240,10 +293,14 @@ class EspEventProcessor
                 LeadHub::optOut($subscription->contact_uuid);
             }
         });
+
+        return $listed;
     }
 
-    protected function applyComplaint($subscriptions, ?Message $message, array $event): void
+    protected function applyComplaint($subscriptions, ?Message $message, array $event, ?string $provider = null): bool
     {
+        $listed = $this->recordInSuppressionList($subscriptions, $message, $event, $provider, 'complaint');
+
         if ($message) {
             MessageEvent::create([
                 'message_id' => $message->id,
@@ -261,5 +318,7 @@ class EspEventProcessor
                 LeadHub::optOut($subscription->contact_uuid);
             }
         });
+
+        return $listed;
     }
 }

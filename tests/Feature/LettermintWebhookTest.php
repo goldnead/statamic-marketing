@@ -7,6 +7,10 @@ use Goldnead\Marketing\Data\MailingList;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\EspEventProcessor;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Contracts\Gate;
+use Goldnead\Suppression\Facades\Suppression;
+use Goldnead\Suppression\Models\SuppressionEvent;
+use Goldnead\Suppression\Reasons;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -228,4 +232,58 @@ it('does not swallow the retry when processing the first delivery threw', functi
     lettermint($payload)->assertOk()->assertJson(['handled' => true]);
 
     expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
+});
+
+it('lists a hard bounce on the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.hard_bounced'))->assertOk();
+
+    $suppression = Suppression::find('jane@example.com');
+
+    expect($suppression)->not->toBeNull()
+        ->and($suppression->reason)->toBe(Reasons::HARD_BOUNCE)
+        ->and(app(Gate::class)->isSuppressed('jane@example.com'))->toBeTrue();
+});
+
+it('lists a hard bounce for an address that is not a subscriber', function (): void {
+    lettermint(lmMessageEvent('message.hard_bounced', ['recipient' => 'buyer@example.com']))
+        ->assertOk()
+        ->assertJson(['handled' => true]);
+
+    expect(app(Gate::class)->isSuppressed('buyer@example.com'))->toBeTrue();
+});
+
+it('lists a hard_bounce suppression.added event', function (): void {
+    lettermint(lmSuppression('hard_bounce', 'gone@example.com'))->assertOk();
+
+    expect(Suppression::find('gone@example.com')?->reason)->toBe(Reasons::HARD_BOUNCE);
+});
+
+it('lists a spam complaint on the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.spam_complaint'))->assertOk();
+
+    expect(Suppression::find('jane@example.com')?->reason)->toBe(Reasons::COMPLAINT);
+});
+
+it('counts a soft bounce without listing the address', function (): void {
+    lettermint(lmMessageEvent('message.soft_bounced'))->assertOk();
+
+    expect(Suppression::find('jane@example.com'))->toBeNull()
+        ->and(app(Gate::class)->isSuppressed('jane@example.com'))->toBeFalse()
+        ->and(SuppressionEvent::query()->where('event_type', SuppressionEvent::TYPE_SOFT_BOUNCE)->count())->toBe(1);
+});
+
+it('leaves an unsubscribe off the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.unsubscribed'))->assertOk();
+
+    expect(Suppression::find('jane@example.com'))->toBeNull();
+});
+
+it('writes the suppression event only once per provider event id', function (): void {
+    $event = lmMessageEvent('message.hard_bounced');
+    lettermint($event)->assertOk();
+
+    Cache::flush();
+    lettermint($event)->assertOk();
+
+    expect(SuppressionEvent::query()->where('email_normalized', 'jane@example.com')->count())->toBe(1);
 });
