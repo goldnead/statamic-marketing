@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- ESP bounces and complaints now reach the suppression list (`goldnead/statamic-suppression`). Until now `EspEventProcessor` only set the subscription to `bounced`/`complained` and opted the LeadHub contact out, so the list stayed empty and every send that asks the suppression gate (and every address without a subscription, such as a buyer or a login address) went through unchanged. A hard bounce is now suppressed (`hard_bounce`), a complaint is suppressed for the brand (`complaint`), a soft bounce is counted and promoted by the list's own threshold. The list is written last, after the subscription, message and LeadHub contact, so a problem there never undoes them. Without the suppression package or its tables the event is logged as a warning and skipped; any other failure is reported and logged, and the webhook still answers 2xx (a retry would duplicate the message event). A complaint is scoped to the brand of the message. The provider event id is the dedupe key (Lettermint, Mailgun `event-data.id`, Postmark `ID`; the two field names are unverified against live deliveries, a payload without one is not deduplicated), so a redelivery writes nothing twice. Lettermint sends `message.hard_bounced` and then `suppression.added` for the same address: one row, two `suppressed` events in the history, by design. The message lookup of an ESP event now ignores the brand scope (a webhook has no current brand); the subscription lookup by address does not, which in multi-brand mode finds nothing without a current brand (existing behaviour, not changed here). Unsubscribes stay off the list: they are a consent fact of one subscription.
+
+### Upgrading
+
+- No migration here; the `suppressions` tables come from statamic-suppression (`php artisan migrate` on a host that has not run them yet, otherwise a hard bounce answers 5xx).
+
 ## 2.42.0 - 2026-11-18
 
 ### Added

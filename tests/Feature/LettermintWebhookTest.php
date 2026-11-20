@@ -1,14 +1,23 @@
 <?php
 
+use Goldnead\BrandContext\Facades\BrandContext;
+use Goldnead\BrandContext\Models\Brand;
 use Goldnead\Leadhub\Facades\LeadHub;
 use Goldnead\Leadhub\Models\Contact;
 use Goldnead\Marketing\Contracts\Repositories\MailingListRepository;
 use Goldnead\Marketing\Data\MailingList;
+use Goldnead\Marketing\Models\Message;
 use Goldnead\Marketing\Models\Subscription;
 use Goldnead\Marketing\Services\EspEventProcessor;
 use Goldnead\Marketing\Services\SubscriptionService;
+use Goldnead\Suppression\Contracts\Gate;
+use Goldnead\Suppression\Facades\Suppression;
+use Goldnead\Suppression\Models\SuppressionEvent;
+use Goldnead\Suppression\Reasons;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 
@@ -228,4 +237,132 @@ it('does not swallow the retry when processing the first delivery threw', functi
     lettermint($payload)->assertOk()->assertJson(['handled' => true]);
 
     expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_UNSUBSCRIBED);
+});
+
+it('lists a hard bounce on the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.hard_bounced'))->assertOk();
+
+    $suppression = Suppression::find('jane@example.com');
+
+    expect($suppression)->not->toBeNull()
+        ->and($suppression->reason)->toBe(Reasons::HARD_BOUNCE)
+        ->and(app(Gate::class)->isSuppressed('jane@example.com'))->toBeTrue();
+});
+
+it('lists a hard bounce for an address that is not a subscriber', function (): void {
+    lettermint(lmMessageEvent('message.hard_bounced', ['recipient' => 'buyer@example.com']))
+        ->assertOk()
+        ->assertJson(['handled' => true]);
+
+    expect(app(Gate::class)->isSuppressed('buyer@example.com'))->toBeTrue();
+});
+
+it('lists a hard_bounce suppression.added event', function (): void {
+    lettermint(lmSuppression('hard_bounce', 'gone@example.com'))->assertOk();
+
+    expect(Suppression::find('gone@example.com')?->reason)->toBe(Reasons::HARD_BOUNCE);
+});
+
+it('lists a spam complaint on the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.spam_complaint'))->assertOk();
+
+    expect(Suppression::find('jane@example.com')?->reason)->toBe(Reasons::COMPLAINT);
+});
+
+it('counts a soft bounce without listing the address', function (): void {
+    lettermint(lmMessageEvent('message.soft_bounced'))->assertOk();
+
+    expect(Suppression::find('jane@example.com'))->toBeNull()
+        ->and(app(Gate::class)->isSuppressed('jane@example.com'))->toBeFalse()
+        ->and(SuppressionEvent::query()->where('event_type', SuppressionEvent::TYPE_SOFT_BOUNCE)->count())->toBe(1);
+});
+
+it('leaves an unsubscribe off the suppression list', function (): void {
+    lettermint(lmMessageEvent('message.unsubscribed'))->assertOk();
+
+    expect(Suppression::find('jane@example.com'))->toBeNull();
+});
+
+it('still marks the subscription bounced and answers 200 when the suppression tables are missing', function (): void {
+    Log::spy();
+    Schema::dropIfExists('suppression_events');
+    Schema::dropIfExists('suppressions');
+
+    lettermint(lmMessageEvent('message.hard_bounced'))->assertOk();
+
+    expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_BOUNCED);
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('keeps the subscription update and answers 200 when writing the suppression list throws', function (): void {
+    Log::spy();
+    Suppression::shouldReceive('suppress')->once()->andThrow(new RuntimeException('database went away'));
+
+    lettermint(lmMessageEvent('message.hard_bounced'))->assertOk();
+
+    $contact = LeadHub::findByEmail('jane@example.com');
+
+    expect($this->subscription->fresh()->status)->toBe(Subscription::STATUS_BOUNCED)
+        ->and((bool) Contact::query()->where('uuid', $contact['uuid'])->first()->do_not_contact)->toBeTrue();
+    Log::shouldHaveReceived('error');
+});
+
+it('scopes a complaint to the brand of the message, not to the default brand', function (): void {
+    config()->set('brand-context.multi_brand', true);
+    app('brand-context')->forget();
+
+    $brandB = Brand::create(['handle' => 'brand-b', 'name' => 'Brand B']);
+
+    $uuid = BrandContext::runFor($brandB, function (): string {
+        app(MailingListRepository::class)->save(new MailingList(handle: 'news-b', name: 'News B', doubleOptIn: false));
+        $subscription = app(SubscriptionService::class)->subscribe(app(MailingListRepository::class)->find('news-b'), 'bee@example.com');
+
+        return Message::create([
+            'campaign_handle' => 'b-1',
+            'subscription_id' => $subscription->id,
+            'email' => 'bee@example.com',
+            'status' => Message::STATUS_SENT,
+        ])->uuid;
+    });
+
+    // A webhook runs with no current brand.
+    app('brand-context')->forget();
+
+    app(EspEventProcessor::class)->process(['RecordType' => 'SpamComplaint', 'Email' => 'bee@example.com', 'ID' => 9, 'Metadata' => ['marketing_message' => $uuid]], 'postmark');
+
+    $row = Goldnead\Suppression\Models\Suppression::query()->where('email_normalized', 'bee@example.com')->first();
+
+    expect($row)->not->toBeNull()
+        ->and((int) $row->brand_id)->toBe($brandB->id)
+        ->and($row->reason)->toBe(Reasons::COMPLAINT);
+});
+
+it('counts a repeated Mailgun soft bounce once and a repeated Postmark one once', function (): void {
+    $processor = app(EspEventProcessor::class);
+
+    $mailgun = ['event-data' => ['id' => 'mg-evt-1', 'event' => 'failed', 'severity' => 'temporary', 'recipient' => 'jane@example.com']];
+    $postmark = ['RecordType' => 'Bounce', 'Type' => 'SoftBounce', 'ID' => 4242, 'MessageID' => 'pm-1', 'Email' => 'jane@example.com'];
+
+    foreach ([[$mailgun, 'mailgun'], [$postmark, 'postmark']] as [$payload, $provider]) {
+        $processor->process($payload, $provider);
+        $processor->process($payload, $provider);
+    }
+
+    expect(SuppressionEvent::query()->where('event_type', SuppressionEvent::TYPE_SOFT_BOUNCE)->count())->toBe(2);
+});
+
+it('trims the address and accepts an integer provider event id', function (): void {
+    app(EspEventProcessor::class)->process(['type' => 'bounce', 'email' => '  jane@example.com ', 'hard' => true, 'event_id' => 12345]);
+
+    expect(Suppression::find('jane@example.com')?->reason)->toBe(Reasons::HARD_BOUNCE);
+});
+
+it('writes the suppression event only once per provider event id', function (): void {
+    $event = lmMessageEvent('message.hard_bounced');
+    lettermint($event)->assertOk();
+
+    Cache::flush();
+    lettermint($event)->assertOk();
+
+    expect(SuppressionEvent::query()->where('email_normalized', 'jane@example.com')->count())->toBe(1);
 });
