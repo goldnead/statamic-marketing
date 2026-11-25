@@ -23,6 +23,9 @@ on:
 permissions:
   contents: read
 
+env:
+  STATAMIC_CMS_VERSION: '6.42.0'
+
 jobs:
   dist-fresh:
     runs-on: ubuntu-latest
@@ -36,6 +39,17 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
           coverage: none
+
+      # The committed bundle inlines code from the @statamic/cms npm package,
+      # which comes from the installed statamic/cms Composer package. composer.lock
+      # is not committed, so an unpinned install pulls whatever Statamic released
+      # last and the fresh build drifts from the committed dist with no source
+      # change (6.42.0 -> 6.44.0 did exactly that). Pin the version the dist was
+      # built against. To bump: change STATAMIC_CMS_VERSION, `composer require
+      # statamic/cms:<v> -W --no-update && composer update`, `npm ci && npm run
+      # build`, commit resources/dist together with this file.
+      - name: Pin statamic/cms to the dist build version
+        run: composer require "statamic/cms:${STATAMIC_CMS_VERSION}" --no-update --no-interaction
 
       # @statamic/cms is a `file:` npm dependency resolved from the installed
       # Composer package, so Composer must run before npm.
